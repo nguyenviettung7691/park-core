@@ -10,7 +10,7 @@
 
 **Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative.
 
-**Status:** Draft ready for owner review; implementation is not authorized by this document.
+**Status:** Approved by the project owner on 2026-11-02. Native execution is preferred for a future implementation session; implementation has not been authorized or started in this documentation-only request.
 
 ## Global Constraints
 
@@ -527,9 +527,7 @@ Review the file boundaries, interfaces and acceptance thresholds before
 authorizing implementation. Missing real hardware/art/instructor evidence
 blocks the corresponding release claim, not unrelated logic development.
 
-Recommended execution method: **Native**, because tasks share a small set of
+Selected execution method: **Native**, confirmed by the project owner. Tasks share a small set of
 rig/snapshot/state interfaces and modify the same application owner; one
 implementation thread reduces context cost and coordination churn. Use the
 execution skill's required review gates, including an independent final review.
-Subagent-driven execution remains available if per-task independent review is
-preferred over the additional context cost.
