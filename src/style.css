@@ -68,7 +68,7 @@ body {
     '. front .'
     '. status .'
     '. rear .'
-    'telemetry view-controls overhead';
+    'telemetry view-controls driving-controls';
   gap: var(--space-1);
   padding: var(--space-1);
   pointer-events: none;
@@ -78,6 +78,25 @@ body {
 #hud input,
 #hud select {
   pointer-events: auto;
+}
+
+#driving-controls {
+  grid-area: driving-controls;
+  align-self: end;
+  justify-self: end;
+  width: min(100% - 16px, 32rem);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+#session-controls {
+  position: absolute;
+  z-index: 3;
+  top: var(--space-1);
+  right: var(--space-1);
+  max-width: min(45%, 32rem);
+  justify-content: flex-end;
 }
 
 #lesson-strip {
@@ -101,6 +120,26 @@ body {
 #telemetry {
   grid-area: telemetry;
   align-self: end;
+  max-width: 24rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  padding: var(--space-1);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+@media (max-width: 768px) {
+  #hud {
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas:
+      'lesson lesson lesson'
+      '. front .'
+      '. status .'
+      '. rear .'
+      'telemetry telemetry telemetry'
+      'driving-controls driving-controls driving-controls';
+  }
 }
 
 #view-controls {
@@ -122,10 +161,16 @@ body {
   flex-direction: column;
   padding: var(--space-2);
   overflow-y: auto;
+  pointer-events: none;
 }
 
 #screen-layer:empty {
   pointer-events: none;
+}
+
+#screen-layer .screen.panel,
+#screen-layer .preview-shell {
+  pointer-events: auto;
 }
 
 .screen {
@@ -210,6 +255,33 @@ select {
   padding: var(--space-1);
 }
 
+.preview-badge {
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-panel);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius);
+  font-weight: 600;
+}
+
+.calibration label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+  min-width: 0;
+}
+
+.calibration input {
+  max-width: 8rem;
+  margin-left: auto;
+}
+
+.calibration pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 :focus-visible {
   outline: 3px solid var(--color-accent-light);
   outline-offset: 2px;
@@ -223,21 +295,18 @@ select {
 
 .preview-shell {
   width: min(100%, 32rem);
-  margin-top: auto;
+  margin: 0;
+  gap: var(--space-1);
+  padding: var(--space-1);
   align-self: flex-start;
 }
 
-.preview-badge {
-  position: absolute;
-  top: var(--space-1);
-  left: var(--space-1);
-  z-index: 3;
-  max-width: calc(100% - 2 * var(--space-1));
-  padding: var(--space-1) var(--space-2);
-  background: var(--color-panel);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius);
-  font-weight: 600;
+.preview-shell p {
+  font-size: 0.8rem;
+}
+
+.preview-shell .preview-badge {
+  position: static;
 }
 
 #status-message:not(:empty) {

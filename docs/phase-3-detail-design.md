@@ -2,7 +2,7 @@
 
 Date: 2026-11-03
 
-Status: Approved by the project owner on 2026-11-03. No Phase 3 code or dependencies installed.
+Status: Design, plan and targeted braking correction approved by the owner on 2026-11-03. Implemented software gates pass (165 unit/DOM/physics tests, typecheck/build, 12 Chromium/Firefox tests); final branch review pending.
 
 Sources: [technical roadmap](tech-design.md), [approved product design](detail-design.md),
 [original implementation plan, Tasks 2–3](implementation-plan.md), and the
@@ -174,6 +174,17 @@ Keep `rollInfluence=1.0` and documented damping as initial seeds. Tune only
 after a real failure/measurement, record changed values and rationale, and
 remeasure affected gates. Do not add damping feedforward merely to eliminate
 an error already inside the approved creep tolerance.
+
+### Approved engine correction
+
+Real measurements exposed unstable four-wheel braking in stock Cannon-es
+0.20.0: P prevented settling and produced alternating low-speed motion.
+The owner explicitly approved a version-specific `RaycastVehicle` subclass
+that divides the zero-contact-velocity braking correction by the grounded
+wheel count before limiting the impulse. All original acceptance gates,
+force-to-impulse caps and profile seeds remain unchanged. The adapted method
+retains the upstream MIT notice; re-audit it on any engine upgrade.
+See [failed-stock and corrected-adapter measurements](phase-3-measurements.md).
 
 ## 5. Input, calibration and resume
 
@@ -381,9 +392,10 @@ Vietnamese wording polish, bounded settling convergence thresholds, and
 measurement helpers. No new framework, premature camera/aids work, changed
 acceptance tolerances or claimed real-device validation without approval.
 
-The fresh builder check and owner approval are complete. The next deliverable
-is the implementation plan. Engine behavior is source-verified, not
-experimentally verified yet.
+The fresh builder check, owner design/plan approval and approval of the measured
+braking correction are complete. Software verification is recorded in
+[the measurement report](phase-3-measurements.md); real hardware, reference-PC
+performance, Windows and instructor evidence remain unestablished.
 
 ### Builder check
 

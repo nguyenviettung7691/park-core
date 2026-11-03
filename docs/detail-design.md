@@ -272,6 +272,11 @@ advancing position or setting a desired speed every frame.
 - Convert desired per-wheel braking force to Cannon's `setBrake` impulse limit
   using `brakeImpulse = wheelBrakeForce * h`. The current engine implementation
   uses this value as a per-step impulse bound; do not label it wheel torque.
+  Phase 3's measured four-wheel low-speed instability required an owner-approved,
+  version-specific grounded-wheel correction in the adapter; see the
+  [phase design](phase-3-detail-design.md#approved-engine-correction) and
+  [measurements](phase-3-measurements.md). Brake-force budgets and acceptance
+  thresholds are unchanged.
 - P applies a holding brake to all wheels, without freezing the entire rigid
   body. The parking brake applies rear-wheel holding brakes. Begin with a
   total holding-force budget of `mass * g` for each mechanism and use the

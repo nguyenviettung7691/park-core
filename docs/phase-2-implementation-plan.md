@@ -12,7 +12,7 @@
 
 **Date / status:** Approved and implemented on 2026-11-03. All three task verification gates passed (46 unit/DOM tests, typecheck, production build, six Chromium/Firefox tests). The owner supplied Git author identity and approved committing and merging locally into `main`, without a push.
 
-> **Supersession note:** the [Phase 3 plan](phase-3-implementation-plan.md) (pending owner review) will replace the static preview and change `Preview.resume()` to return `boolean`, resolving the deferred resume race; not yet implemented. The evidence above stays historical.
+> **Supersession note:** the approved [Phase 3 plan](phase-3-implementation-plan.md) replaces the static preview and makes `Preview.resume()` return `boolean`, resolving the deferred resume race with regression coverage. Phase 3 software gates pass (165 unit/DOM/physics, 12 browser tests). The evidence above stays historical.
 
 ## Global Constraints
 

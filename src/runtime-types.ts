@@ -91,11 +91,17 @@ export type ScreenAction =
   | { readonly type: 'update-settings'; readonly settings: SettingsSaveV1 }
   | { readonly type: 'open-preview' }
   | { readonly type: 'close-preview' }
+  | { readonly type: 'pause' }
+  | { readonly type: 'reset-preview' }
+  | { readonly type: 'input-action'; readonly action: InputAction }
   | { readonly type: 'select-vehicle'; readonly vehicleId: VehicleId };
 
 export type PreviewPhase = 'closed' | 'running' | 'paused';
+export type PreviewPauseReason = 'user' | 'focus' | 'controller' | 'contact';
 
 export interface ShellView {
   readonly state: AppState;
   readonly preview: PreviewPhase;
+  readonly calibrating?: boolean;
+  readonly pauseReason?: PreviewPauseReason | null;
 }

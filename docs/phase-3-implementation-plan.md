@@ -10,7 +10,9 @@
 
 **Spec:** [Approved Phase 3 design](phase-3-detail-design.md) (source of truth, approved 2026-11-03); refines Tasks 2-3 of [implementation-plan.md](implementation-plan.md) and Sections 4-6 of [detail-design.md](detail-design.md).
 
-**Date / status:** Design approved 2026-11-03. This plan is **pending owner plan review**; no Phase 3 code or dependency is installed. Baseline: `main` at `7aa24ca` (46 unit/DOM tests, six browser tests).
+**Date / status:** Design, plan and targeted engine correction approved by the owner on 2026-11-03. Implemented in the isolated `phase-3-physics-input` worktree: 165 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests pass; final branch review pending. Implementation baseline: `473939a`.
+
+**Execution refinements:** native Pause/Reset/Menu controls persist across screen redraws so focus-loss pausing cannot remove a button before its click. `Hud` therefore also exposes `setSession(phase: PreviewPhase): void`. Calibration implementation lives in `src/ui/calibration.ts` and is re-exported by `screens.ts`; focused rendering tests live in `render/prototype.test.ts`; complete typed test pads share `src/test/gamepad.ts`. The owner approved the version-specific grounded-wheel braking correction in `rig.ts`, with upstream MIT attribution and unchanged acceptance gates. Interdependent changes are committed atomically rather than leaving intermediate commits with mismatched shared message/UI contracts.
 
 ## Global Constraints
 

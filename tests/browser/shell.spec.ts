@@ -10,13 +10,13 @@ test('menu, real rendering, resize, keyboard focus and repeated preview lifecycl
   await expect(page.locator('canvas')).toHaveCount(0);
   const select = page.getByLabel('Chọn xe');
   await select.selectOption('cuv');
-  await select.focus();
+  await page.getByLabel('Nguồn điều khiển', { exact: true }).focus();
   await page.keyboard.press('Tab');
-  const open = page.getByRole('button', { name: 'Xem thử mô hình (không lái được)', exact: true });
+  const open = page.getByRole('button', { name: 'Lái thử mô hình', exact: true });
   await expect(open).toBeFocused();
   expect(await open.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Bản xem thử — không lái được', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bản thử vật lý — chưa có bài học', exact: true })).toBeVisible();
   const canvas = page.locator('canvas#simulation');
   await expect(canvas).toBeVisible();
   const screenshot = await canvas.screenshot();
@@ -71,7 +71,7 @@ test('missing WebGL2 shows honest feedback with no retry or training controls', 
     });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Xem thử mô hình (không lái được)', exact: true }).click();
+  await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('không hỗ trợ WebGL2');
   await expect(page.getByRole('button')).toHaveText('Quay lại menu');
   await expect(page.locator('canvas')).toHaveCount(0);
@@ -82,10 +82,10 @@ test('blur needs explicit resume and context loss returns to an honest recovery 
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  const open = page.getByRole('button', { name: 'Xem thử mô hình (không lái được)', exact: true });
+  const open = page.getByRole('button', { name: 'Lái thử mô hình', exact: true });
   await open.click();
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
-  const resume = page.getByRole('button', { name: 'Tiếp tục xem thử', exact: true });
+  const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });
   await expect(resume).toBeFocused();
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(resume).toBeVisible();

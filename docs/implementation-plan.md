@@ -8,9 +8,9 @@
 
 **Tech Stack:** Strict TypeScript, Vite, Three.js, Cannon-es; Vitest for logic/physics tests, jsdom for DOM tests, Playwright for browser integration.
 
-**Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative. Phase 2 refinements: [phase design](phase-2-detail-design.md) and [phase plan](phase-2-implementation-plan.md). Phase 3 refinements for Tasks 2-3: [phase design](phase-3-detail-design.md) (approved) and [phase plan](phase-3-implementation-plan.md) (pending owner review).
+**Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative. Phase 2 refinements: [phase design](phase-2-detail-design.md) and [phase plan](phase-2-implementation-plan.md). Approved Phase 3 refinements for Tasks 2-3: [phase design](phase-3-detail-design.md) and [phase plan](phase-3-implementation-plan.md).
 
-**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed. The owner supplied Git identity and approved committing and merging locally. Tasks 2-8 remain unimplemented and outside the current execution approval.
+**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are now implemented in the isolated phase branch: 165 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed; final independent review and integration remain pending. Tasks 4-8 remain unimplemented.
 
 ## Global Constraints
 
@@ -214,7 +214,7 @@ Menu has the preview entry “Xem thử mô hình (không lái được)” (no 
 
 ### Task 2: Real low-speed vehicle on a prototype test ground
 
-> **Phase 3 mapping (planned, pending owner plan review; not implemented):** this task is delivered as Phase 3 Tasks 1 and 3 of the [phase plan](phase-3-implementation-plan.md) under the [approved phase design](phase-3-detail-design.md). Refinements: the rig is stepped externally, contact flags are captured before wheel-transform refresh, `SimulationStateError` is typed, the yard/spawn coordinates are designer choices, a chassis/mirror contact is a laboratory stop (not `AppState.fail`), and measured gates are recorded in `docs/phase-3-measurements.md`.
+> **Phase 3 mapping (implemented; software gates passed, final review pending):** delivered as Phase 3 Tasks 1 and 3 of the [phase plan](phase-3-implementation-plan.md) under the [approved phase design](phase-3-detail-design.md). Refinements: externally stepped rig, contact flags retained before wheel-transform refresh, typed `SimulationStateError`, authored yard/spawn, non-lesson contact stop, and an owner-approved version-specific braking correction. Actual measured gates are in [the evidence report](phase-3-measurements.md).
 
 **Setup:** first run `npm install --save-exact cannon-es@0.20.0` (deferred from Task 1) and commit the updated `package.json` and `package-lock.json` with this task.
 
@@ -255,7 +255,7 @@ against a 0.1 m thick solid box at the allowed training speed.
 
 ### Task 3: Keyboard, wheel calibration and safe input ownership
 
-> **Phase 3 mapping (planned, pending owner plan review; not implemented):** delivered as Phase 3 Tasks 2-4. Refinements: `InputController` also exposes `checkNeutral(): MessageKey | null`; `Preview.resume()` returns `boolean` and the shell shows running only on `true`; `validateCalibration` returns `null` on failure (the caller shows the notice); calibration and the selected device stay in session memory (no Storage until Task 7); keyboard steering ramp runs in the rig at fixed-step time; pointer-lock tests move to Task 4.
+> **Phase 3 mapping (implemented; software gates passed, final review pending):** delivered as Phase 3 Tasks 2-4. Refinements: `InputController.checkNeutral(): MessageKey | null`; boolean `Preview.resume()` gates running UI; invalid calibration produces visible feedback; device selection/verification stay in session memory; keyboard steering ramps at fixed-step time. Native session controls survive focus-loss redraws. Pointer-lock tests move to Task 4.
 
 **Files:** Create `src\input\calibration.ts`, `controller.ts`, `input.test.ts`,
 `tests\browser\driving.spec.ts`; modify `src\app.ts`, `runtime-types.ts`,
