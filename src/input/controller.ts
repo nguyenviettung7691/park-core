@@ -32,7 +32,7 @@ const indicatorKeys: Readonly<Record<string, Exclude<Indicator, 'off'>>> = {
 type GamepadRead =
   | { readonly issue: MessageKey }
   | { readonly issue: null; readonly frame: InputFrame;
-      readonly reverse: boolean; readonly drive: boolean };
+      readonly reverse: boolean; readonly drive: boolean; readonly parkingBrake: boolean };
 
 function isEditable(target: EventTarget | null): boolean {
   if (typeof Element === 'undefined' || !(target instanceof Element)) return false;
@@ -56,20 +56,20 @@ export function createInputController(
   let pendingIssue: MessageKey | null = null;
   const held = new Set<string>();
   const suppressed = new Set<string>();
-  let shoulders: { reverse: boolean; drive: boolean } | null = null;
+  let gamepadEdges: { reverse: boolean; drive: boolean; parkingBrake: boolean } | null = null;
 
   const zeroFrame = (): InputFrame =>
     ({ source, throttle: 0, brake: 0, steering: 0 });
   const fail = (issue: MessageKey): InputPoll => {
     queue = [];
-    shoulders = null;
+    gamepadEdges = null;
     return { frame: zeroFrame(), actions: [], issue };
   };
 
   function clearState(): void {
     queue = [];
     pendingIssue = null;
-    shoulders = null;
+    gamepadEdges = null;
     for (const code of held) suppressed.add(code);
     held.clear();
   }
@@ -154,16 +154,17 @@ export function createInputController(
     if (pad.id !== calibration.deviceId) return { issue: 'controllerReplaced' };
     const cal = calibration;
     const axes = pad.axes;
-    const buttons = pad.buttons;
+    const padButtons = pad.buttons;
     const pedalRaw = (binding: ControllerCalibration['throttle']): number | undefined =>
-      binding.kind === 'axis' ? axes[binding.index] : buttons[binding.index]?.value;
+      binding.kind === 'axis' ? axes[binding.index] : padButtons[binding.index]?.value;
     const steeringRaw = axes[cal.steeringAxis];
     const throttleRaw = pedalRaw(cal.throttle);
     const brakeRaw = pedalRaw(cal.brake);
-    const reverse = buttons[cal.reverseButton];
-    const drive = buttons[cal.driveButton];
+    const reverse = padButtons[cal.reverseButton];
+    const drive = padButtons[cal.driveButton];
+    const parkingBrake = padButtons[0];
     if (steeringRaw === undefined || throttleRaw === undefined || brakeRaw === undefined
-      || reverse === undefined || drive === undefined) {
+      || reverse === undefined || drive === undefined || parkingBrake === undefined) {
       return { issue: 'controllerControlsMissing' };
     }
     try {
@@ -173,7 +174,13 @@ export function createInputController(
         throttle: normalizePedal(throttleRaw, cal.throttle),
         brake: normalizePedal(brakeRaw, cal.brake),
       };
-      return { issue: null, frame, reverse: reverse.pressed === true, drive: drive.pressed === true };
+      return {
+        issue: null,
+        frame,
+        reverse: reverse.pressed === true,
+        drive: drive.pressed === true,
+        parkingBrake: parkingBrake.pressed === true,
+      };
     } catch (error) {
       if (error instanceof RangeError) return { issue: 'controllerInvalid' };
       throw error;
@@ -200,11 +207,16 @@ export function createInputController(
     if (read.issue !== null) return fail(read.issue);
     const actions = queue;
     queue = [];
-    if (shoulders !== null) {
-      if (read.reverse && !shoulders.reverse) actions.push({ type: 'request-gear', gear: 'R' });
-      if (read.drive && !shoulders.drive) actions.push({ type: 'request-gear', gear: 'D' });
+    if (gamepadEdges !== null) {
+      if (read.reverse && !gamepadEdges.reverse) actions.push({ type: 'request-gear', gear: 'R' });
+      if (read.drive && !gamepadEdges.drive) actions.push({ type: 'request-gear', gear: 'D' });
+      if (read.parkingBrake && !gamepadEdges.parkingBrake) {
+        actions.push({ type: 'toggle-parking-brake' });
+      }
     }
-    shoulders = { reverse: read.reverse, drive: read.drive };
+    gamepadEdges = {
+      reverse: read.reverse, drive: read.drive, parkingBrake: read.parkingBrake,
+    };
     return { frame: read.frame, actions, issue: null };
   }
 
@@ -233,7 +245,7 @@ export function createInputController(
       const valid = validateCalibration(value);
       calibration = valid;
       calibrationInvalid = valid === null;
-      shoulders = null;
+      gamepadEdges = null;
     },
     clear() {
       if (!disposed) clearState();
@@ -246,7 +258,7 @@ export function createInputController(
       queue = [];
       held.clear();
       suppressed.clear();
-      shoulders = null;
+      gamepadEdges = null;
       pendingIssue = null;
     },
   };

@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mountCalibration, mountScreen } from './screens';
 import { mountHud } from './hud';
 import type { ScreenContext } from '../runtime-types';
-import type { VehicleTelemetry } from '../contracts';
+import type { SensorSnapshot, VehicleTelemetry } from '../contracts';
 import { testGamepad } from '../test/gamepad';
 
 afterEach(() => document.body.replaceChildren());
@@ -47,8 +47,7 @@ it('keeps unavailable HUD features empty and hidden with a discrete live status'
   const element = root();
   const hud = mountHud(element, vi.fn());
   for (const id of [
-    'lesson-strip', 'proximity-front', 'proximity-rear',
-    'telemetry', 'view-controls', 'overhead-frame',
+    'lesson-strip', 'proximity-front', 'proximity-rear', 'telemetry', 'overhead-frame',
   ]) {
     const node = element.querySelector<HTMLElement>('#' + id);
     expect(node?.hidden).toBe(true);
@@ -57,6 +56,59 @@ it('keeps unavailable HUD features empty and hidden with a discrete live status'
   expect(element.querySelector('#status-message')?.getAttribute('aria-live')).toBe('polite');
   hud.dispose();
   expect(element.children.length).toBe(0);
+});
+
+it('keeps proximity warnings hidden until a real sample, then labels bands and distances', () => {
+  const element = root();
+  const hud = mountHud(element, vi.fn());
+  const front = element.querySelector<HTMLElement>('#proximity-front')!;
+  const rear = element.querySelector<HTMLElement>('#proximity-rear')!;
+  expect(front.hidden).toBe(true);
+  expect(front.textContent).toBe('');
+  expect(rear.hidden).toBe(true);
+  expect(rear.textContent).toBe('');
+
+  const sensors: SensorSnapshot = {
+    sampledAtS: 1,
+    readings: [
+      { id: 'front-left-outer', distanceM: 0.8, obstacleId: 'barrier-1', band: 'yellow' },
+      { id: 'front-center', distanceM: 0.55, obstacleId: 'barrier-2', band: 'red' },
+      { id: 'rear-center', distanceM: null, obstacleId: null, band: 'clear' },
+    ],
+  };
+  hud.updateSensors(sensors);
+
+  expect(front.hidden).toBe(false);
+  expect(front.textContent).toContain('Trước');
+  expect(front.textContent).toContain('ĐỎ');
+  expect(front.textContent).toContain('0,55');
+  expect(rear.hidden).toBe(false);
+  expect(rear.textContent).toContain('Sau');
+  expect(rear.textContent).toContain('không có cảnh báo');
+  expect(front.className).toContain('sensor-red');
+
+  hud.updateSensors(null);
+  expect(front.hidden).toBe(true);
+  expect(front.textContent).toBe('');
+  expect(rear.hidden).toBe(true);
+  expect(rear.textContent).toBe('');
+  hud.dispose();
+});
+
+it('shows the most severe warning band rather than the nearest lower-severity sensor', () => {
+  const element = root();
+  const hud = mountHud(element, vi.fn());
+  hud.updateSensors({
+    sampledAtS: 1,
+    readings: [
+      { id: 'front-center', distanceM: 0.2, obstacleId: 'near', band: 'red' },
+      { id: 'front-left', distanceM: 0.3, obstacleId: 'latched', band: 'stop' },
+    ],
+  });
+  const front = element.querySelector<HTMLElement>('#proximity-front')!;
+  expect(front.textContent).toContain('DỪNG');
+  expect(front.className).toContain('sensor-stop');
+  hud.dispose();
 });
 
 it('shows only real telemetry and sends semantic driving actions from the gamepad HUD', () => {
@@ -82,6 +134,73 @@ it('shows only real telemetry and sends semantic driving actions from the gamepa
     expect(element.querySelector<HTMLElement>(`#${id}`)?.hidden).toBe(true);
     expect(element.querySelector(`#${id}`)?.textContent).toBe('');
   }
+  hud.dispose();
+});
+
+it('provides labeled view settings and emits settings and recenter actions', () => {
+  const element = root();
+  const action = vi.fn();
+  const hud = mountHud(element, action);
+  hud.updateSettings(context.settings);
+  const controls = element.querySelector<HTMLElement>('#view-controls')!;
+  expect(controls.hidden).toBe(true);
+  expect(controls.getAttribute('role')).toBe('group');
+  hud.setSession('running');
+  expect(controls.hidden).toBe(false);
+
+  const mode = element.querySelector<HTMLSelectElement>('#camera-mode')!;
+  expect(element.querySelector('label[for="camera-mode"]')?.textContent).not.toBe('');
+  mode.value = 'chase';
+  mode.dispatchEvent(new Event('change'));
+  expect(action).toHaveBeenLastCalledWith({
+    type: 'update-settings', settings: { ...context.settings, cameraMode: 'chase' },
+  });
+
+  const overhead = element.querySelector<HTMLInputElement>('#overhead-view')!;
+  overhead.checked = true;
+  overhead.dispatchEvent(new Event('change'));
+  expect(action).toHaveBeenLastCalledWith({
+    type: 'update-settings', settings: { ...context.settings, cameraMode: 'chase', overhead: true },
+  });
+
+  const trajectory = element.querySelector<HTMLInputElement>('#trajectory-view')!;
+  trajectory.checked = true;
+  trajectory.dispatchEvent(new Event('change'));
+  expect(action).toHaveBeenLastCalledWith({
+    type: 'update-settings',
+    settings: { ...context.settings, cameraMode: 'chase', overhead: true, trajectory: true },
+  });
+
+  const fov = element.querySelector<HTMLInputElement>('#driver-fov')!;
+  fov.value = '75';
+  fov.dispatchEvent(new Event('change'));
+  expect(action).toHaveBeenLastCalledWith({
+    type: 'update-settings',
+    settings: { ...context.settings, cameraMode: 'chase', overhead: true, trajectory: true, driverFovDeg: 75 },
+  });
+
+  const volume = element.querySelector<HTMLInputElement>('#volume')!;
+  volume.value = '0.25';
+  volume.dispatchEvent(new Event('change'));
+  expect(action).toHaveBeenLastCalledWith({
+    type: 'update-settings',
+    settings: { ...context.settings, cameraMode: 'chase', overhead: true, trajectory: true,
+      driverFovDeg: 75, volume: 0.25 },
+  });
+
+  const muted = element.querySelector<HTMLInputElement>('#mute-audio')!;
+  muted.checked = true;
+  muted.dispatchEvent(new Event('change'));
+  expect(action).toHaveBeenLastCalledWith({
+    type: 'update-settings',
+    settings: { ...context.settings, cameraMode: 'chase', overhead: true, trajectory: true,
+      driverFovDeg: 75, volume: 0.25, muted: true },
+  });
+  element.querySelector<HTMLButtonElement>('#recenter-view')!.click();
+  expect(action).toHaveBeenLastCalledWith({ type: 'recenter-view' });
+
+  hud.setSession('closed');
+  expect(controls.hidden).toBe(true);
   hud.dispose();
 });
 

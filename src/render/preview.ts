@@ -1,21 +1,28 @@
 import { PerspectiveCamera, WebGLRenderer } from 'three';
 import type { World } from 'cannon-es';
 import type {
-  ControllerCalibration, InputAction, InputSource, MessageKey, VehicleId, VehicleTelemetry,
+  ControllerCalibration, InputAction, InputSource, MessageKey, SensorSnapshot, VehicleId,
+  VehicleTelemetry,
 } from '../contracts';
-import type { PreviewPauseReason } from '../runtime-types';
+import type { PreviewPauseReason, SettingsSaveV1 } from '../runtime-types';
 import { createClock } from '../clock';
 import { createInputController } from '../input/controller';
+import { createAudio, type AudioOutput } from '../sensors/audio';
+import { createSensors } from '../sensors/proximity';
 import { profiles } from '../vehicle/profiles';
 import { createVehicleRig, SimulationStateError } from '../vehicle/rig';
 import { addColliderBoxes, createWorld, prototypeSpawn, prototypeYard } from '../world/colliders';
+import { createViews, type ViewSystem } from '../views/cameras';
+import type { RendererPort } from '../views/auxiliary';
 import { buildPrototypeScene } from './prototype';
 import { fitDrawingBuffer } from './fit';
 
-export type PreviewRenderer = Pick<WebGLRenderer, 'render' | 'setSize' | 'dispose' | 'forceContextLoss'>;
+export type PreviewRenderer = RendererPort &
+  Pick<WebGLRenderer, 'setSize' | 'dispose' | 'forceContextLoss'>;
 export interface PreviewContext {
   getExtension(name: 'WEBGL_lose_context'): WEBGL_lose_context | null;
 }
+type PointerLockRequest = Promise<void> | void | false;
 export interface PreviewDeps {
   now(): number;
   requestFrame(cb: (time: number) => void): number;
@@ -23,6 +30,8 @@ export interface PreviewDeps {
   createRenderer(canvas: HTMLCanvasElement): PreviewRenderer;
   createContext(canvas: HTMLCanvasElement): PreviewContext | null;
   createWorld(): World;
+  requestPointerLock(canvas: HTMLCanvasElement): PointerLockRequest;
+  exitPointerLock(): void;
 }
 export interface PrototypeOptions {
   readonly vehicleId: VehicleId;
@@ -30,19 +39,25 @@ export interface PrototypeOptions {
   readonly gamepadIndex: number | null;
   readonly calibration: ControllerCalibration | null;
   readonly getGamepads: () => readonly (Gamepad | null)[];
+  readonly settings: SettingsSaveV1;
 }
 export interface PreviewEvents {
   onPaused(reason: PreviewPauseReason): void;
   onFault(kind: 'context-lost' | 'runtime-error', error?: unknown): void;
   onTelemetry(telemetry: VehicleTelemetry): void;
+  onSensors(sensors: SensorSnapshot): void;
   onNotice(messageKey: MessageKey): void;
 }
 export interface Preview {
+  unlockAudio(): void;
   resume(): boolean;
   pause(): void;
   enqueue(action: InputAction): void;
   selectSource(source: InputSource, index?: number): void;
   setCalibration(value: ControllerCalibration): void;
+  requestPointerLock(): Promise<boolean>;
+  updateSettings(settings: SettingsSaveV1): void;
+  recenterView(): void;
   dispose(): void;
 }
 export class PreviewStartError extends Error {
@@ -53,6 +68,12 @@ export class PreviewStartError extends Error {
     super(reason, options);
     this.name = 'PreviewStartError';
   }
+}
+
+function expectedPointerLockDenial(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('name' in error)) return false;
+  return error.name === 'NotAllowedError' || error.name === 'SecurityError' ||
+    error.name === 'NotSupportedError';
 }
 
 export function createPreview(
@@ -66,6 +87,13 @@ export function createPreview(
     createContext: (element) => element.getContext('webgl2'),
     createRenderer: (element) => new WebGLRenderer({ canvas: element }),
     createWorld,
+    requestPointerLock: (element) => {
+      const request = element.requestPointerLock;
+      return typeof request === 'function' ? request.call(element) : false;
+    },
+    exitPointerLock: () => {
+      if (typeof document.exitPointerLock === 'function') document.exitPointerLock();
+    },
     ...overrides,
   };
   let context: PreviewContext | null = null;
@@ -86,8 +114,15 @@ export function createPreview(
   let running = false;
   let contactStopped = false;
   let frameId: number | null = null;
+  const pointerLockWaiters = new Set<(acquired: boolean) => void>();
   const clock = createClock();
   let pending: InputAction[] = [];
+  function settlePointerLockWaiters(acquired: boolean) {
+    for (const settle of [...pointerLockWaiters]) settle(acquired);
+  }
+  function releasePointerLock() {
+    if (document.pointerLockElement === canvas) deps.exitPointerLock();
+  }
   function stop() {
     running = false;
     if (frameId !== null) deps.cancelFrame(frameId);
@@ -99,6 +134,8 @@ export function createPreview(
     if (disposed) return;
     disposed = true;
     stop();
+    settlePointerLockWaiters(false);
+    releasePointerLock();
     for (const cleanup of cleanups.reverse()) cleanup();
     renderer.dispose();
     if (!lost) renderer.forceContextLoss();
@@ -108,6 +145,7 @@ export function createPreview(
     cleanups.push(addColliderBoxes(world, prototypeYard));
     const profile = profiles[prototype.vehicleId];
     const rig = createVehicleRig(world, profile);
+    const sensors = createSensors(world, rig.body, profile);
     cleanups.push(() => rig.dispose());
     rig.settle(prototypeSpawn(profile));
     let current = rig.snapshot(0);
@@ -115,6 +153,18 @@ export function createPreview(
     let simulationTime = 0;
     const content = buildPrototypeScene(profile, prototypeYard);
     cleanups.push(() => content.dispose());
+    const views: ViewSystem = createViews(
+      renderer, content.scene, content.assets, profile, prototypeYard,
+    );
+    cleanups.push(() => views.dispose());
+    let currentSettings = prototype.settings;
+    function applySettings(value: SettingsSaveV1) {
+      views.setCamera(value.cameraMode);
+      views.setOverhead(value.overhead);
+      views.setTrajectory(value.trajectory);
+      views.setFov(value.driverFovDeg);
+    }
+    applySettings(currentSettings);
     const camera = new PerspectiveCamera(60, 1, 0.1, 100);
     const input = createInputController(canvas, prototype.getGamepads);
     cleanups.push(() => input.dispose());
@@ -122,11 +172,15 @@ export function createPreview(
     input.selectSource(prototype.source, prototype.gamepadIndex ?? undefined);
     let lastTime = deps.now();
     let lastTelemetry = -Infinity;
+    let latestSensors: SensorSnapshot | null = null;
+    let audio: AudioOutput | null = null;
 
     function pause(reason: PreviewPauseReason) {
       if (!running || disposed || faulted) return;
       stop();
       input.clear();
+      audio?.suspend();
+      releasePointerLock();
       events.onPaused(reason);
     }
     function fault(kind: 'context-lost' | 'runtime-error', error?: unknown) {
@@ -134,16 +188,23 @@ export function createPreview(
       faulted = true;
       stop();
       input.clear();
+      audio?.suspend();
+      releasePointerLock();
       if (kind === 'context-lost') events.onFault(kind);
       else events.onFault(kind, error);
     }
     function resize() {
       const rect = container.getBoundingClientRect();
-      const size = fitDrawingBuffer(rect.width, rect.height, window.devicePixelRatio);
-      if (!size) return;
+      const requestedPixelRatio = window.devicePixelRatio * currentSettings.resolutionScale;
+      const size = fitDrawingBuffer(rect.width, rect.height, requestedPixelRatio);
+      if (!size) {
+        views.resize(rect.width, rect.height, requestedPixelRatio);
+        return;
+      }
       camera.aspect = rect.width / rect.height;
       camera.updateProjectionMatrix();
       renderer.setSize(size.width, size.height, false);
+      views.resize(rect.width, rect.height, size.width / rect.width);
     }
     function onResize() {
       if (disposed || faulted) return;
@@ -166,6 +227,11 @@ export function createPreview(
         }
         pending.push(...poll.actions);
         const time = deps.now();
+        const audioUpdates: {
+          readonly sensors: SensorSnapshot;
+          readonly speedMps: number;
+          readonly simulationTimeS: number;
+        }[] = [];
         const { alpha } = clock.advance((time - lastTime) / 1000, () => {
           if (!running || disposed || faulted) return;
           const actions = pending;
@@ -178,11 +244,25 @@ export function createPreview(
           simulationTime += 1 / 120;
           previous = current;
           current = rig.snapshot(simulationTime);
+          const sample = sensors.sample(simulationTime);
+          if (sample !== latestSensors) {
+            latestSensors = sample;
+            events.onSensors(sample);
+            audioUpdates.push({
+              sensors: sample,
+              speedMps: current.telemetry.signedSpeedMps,
+              simulationTimeS: simulationTime,
+            });
+          }
         });
+        const audioUpdate = audioUpdates.at(-1);
+        if (audioUpdate) {
+          audio?.update(audioUpdate.sensors, audioUpdate.speedMps, audioUpdate.simulationTimeS);
+        }
         lastTime = time;
         if (!running || disposed || faulted) return;
         content.apply({ previous, current, alpha }, camera);
-        renderer.render(content.scene, camera);
+        views.render({ previous, current, alpha }, time);
         if (time - lastTelemetry >= 50) {
           lastTelemetry = time;
           events.onTelemetry(current.telemetry);
@@ -209,14 +289,32 @@ export function createPreview(
     function onCanvasBlur() {
       if (prototype.source === 'keyboard') pause('focus');
     }
+    function onPointerLockChange() {
+      if (document.pointerLockElement === canvas) {
+        settlePointerLockWaiters(true);
+      } else if (running) pause('focus');
+    }
+    function onPointerLockError() { settlePointerLockWaiters(false); }
+    function onMouseMove(event: MouseEvent) {
+      if (!running || document.pointerLockElement !== canvas) return;
+      try { views.look(event.movementX, event.movementY); }
+      catch (error) { fault('runtime-error', error); }
+    }
     function onLost(event: Event) {
       event.preventDefault();
       lost = true;
       fault('context-lost');
     }
+    audio = createAudio((error) => fault('runtime-error', error));
+    audio.setVolume(currentSettings.volume);
+    audio.setMuted(currentSettings.muted);
+    cleanups.push(() => audio?.dispose());
     window.addEventListener('resize', onResize);
     window.addEventListener('blur', onBlur);
     document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener('pointerlockchange', onPointerLockChange);
+    document.addEventListener('pointerlockerror', onPointerLockError);
+    document.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('blur', onCanvasBlur);
     canvas.addEventListener('webglcontextlost', onLost);
     container.addEventListener('keydown', onKey);
@@ -225,6 +323,9 @@ export function createPreview(
       window.removeEventListener('resize', onResize);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('pointerlockchange', onPointerLockChange);
+      document.removeEventListener('pointerlockerror', onPointerLockError);
+      document.removeEventListener('mousemove', onMouseMove);
       canvas.removeEventListener('blur', onCanvasBlur);
       canvas.removeEventListener('webglcontextlost', onLost);
       container.removeEventListener('keydown', onKey);
@@ -241,12 +342,30 @@ export function createPreview(
     }));
     resize();
     content.apply({ previous, current, alpha: 0 }, camera);
-    renderer.render(content.scene, camera);
+    views.render({ previous, current, alpha: 0 }, lastTime);
     return {
+      unlockAudio() {
+        if (disposed || faulted || !audio) return;
+        try {
+          void audio.unlock().then((result) => {
+            if (!disposed && !faulted && result === 'unavailable') {
+              events.onNotice('audioUnavailable');
+            }
+          }, (error: unknown) => fault('runtime-error', error));
+        } catch (error) { fault('runtime-error', error); }
+      },
       resume() {
         if (running || disposed || faulted || contactStopped || document.hidden) return false;
+        if (document.pointerLockElement !== canvas) {
+          events.onNotice('pointerLockDenied');
+          return false;
+        }
         const issue = input.checkNeutral();
-        if (issue) { events.onNotice(issue); return false; }
+        if (issue) {
+          events.onNotice(issue);
+          releasePointerLock();
+          return false;
+        }
         input.clear();
         pending = [];
         clock.reset();
@@ -264,6 +383,48 @@ export function createPreview(
         pending = [];
       },
       setCalibration: (value) => input.setCalibration(value),
+      requestPointerLock() {
+        if (disposed || faulted) return Promise.resolve(false);
+        if (document.pointerLockElement === canvas) return Promise.resolve(true);
+        return new Promise<boolean>((resolve) => {
+          let settled = false;
+          const settle = (acquired: boolean) => {
+            if (settled) return;
+            settled = true;
+            pointerLockWaiters.delete(settle);
+            resolve(acquired);
+          };
+          pointerLockWaiters.add(settle);
+          function fail(error: unknown) {
+            settle(false);
+            if (!expectedPointerLockDenial(error)) fault('runtime-error', error);
+          }
+          try {
+            const request = deps.requestPointerLock(canvas);
+            if (request === false) settle(false);
+            else if (request && typeof request.then === 'function') {
+              void request.then(() => {
+                if (document.pointerLockElement !== canvas) return;
+                if (disposed || faulted) {
+                  releasePointerLock();
+                  settle(false);
+                } else settle(true);
+              }, fail);
+            }
+          } catch (error) { fail(error); }
+        });
+      },
+      updateSettings(value) {
+        if (disposed || faulted) return;
+        try {
+          currentSettings = value;
+          applySettings(value);
+          audio?.setVolume(value.volume);
+          audio?.setMuted(value.muted);
+          resize();
+        } catch (error) { fault('runtime-error', error); }
+      },
+      recenterView: () => views.recenter(),
       dispose,
     };
   } catch (error) {

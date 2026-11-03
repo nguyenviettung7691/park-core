@@ -34,6 +34,8 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   const verified = new Map<number, string>();
   const listeners = new AbortController();
   let generation = 0;
+  let resumeAttempt = 0;
+  let resumePending = false;
   let disposed = false;
   let unmountScreen: (() => void) | undefined;
   const hud = mountHud(root, onAction);
@@ -41,8 +43,15 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   layer.id = 'screen-layer';
   root.append(layer);
   const status = root.querySelector<HTMLElement>('#status-message')!;
+  let audioUnavailable = false;
 
-  function notice(key: MessageKey) { status.textContent = vi[key]; }
+  function notice(key: MessageKey) {
+    if (key === 'audioUnavailable') audioUnavailable = true;
+    status.textContent = vi[key];
+  }
+  function clearStatus() {
+    status.textContent = audioUnavailable ? vi.audioUnavailable : '';
+  }
   function readDevices() {
     try {
       devices = deps.getGamepads().filter((pad): pad is Gamepad => pad !== null && pad.connected);
@@ -89,6 +98,8 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     }
   }
   function closePreview() {
+    resumeAttempt++;
+    resumePending = false;
     generation++;
     const current = preview;
     preview = null;
@@ -96,6 +107,8 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     canvas?.remove();
     canvas = null;
     hud.update(null, context.settings.inputSource);
+    hud.updateSensors(null);
+    audioUnavailable = false;
   }
   function showError(messageKey: MessageKey, retryable: boolean) {
     closePreview();
@@ -114,17 +127,32 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     return false;
   }
   function resumePreview() {
-    if (!preview || !ready() || view.pauseReason === 'contact') return;
+    const current = preview;
+    const token = generation;
+    if (!current || resumePending || !ready() || view.pauseReason === 'contact') return;
     canvas?.focus();
-    if (!preview.resume()) {
-      view = { ...view, preview: 'paused' };
+    current.unlockAudio();
+    resumePending = true;
+    const attempt = ++resumeAttempt;
+    void current.requestPointerLock().then((locked) => {
+      if (disposed || token !== generation || attempt !== resumeAttempt || current !== preview) return;
+      resumePending = false;
+      if (!locked) {
+        view = { ...view, preview: 'paused' };
+        drawScreen();
+        notice('pointerLockDenied');
+        return;
+      }
+      if (!current.resume()) {
+        view = { ...view, preview: 'paused' };
+        drawScreen();
+        return;
+      }
+      view = { ...view, preview: 'running', pauseReason: null };
+      clearStatus();
+      hud.setDriveControls(context.settings.inputSource === 'gamepad');
       drawScreen();
-      return;
-    }
-    view = { ...view, preview: 'running', pauseReason: null };
-    status.textContent = '';
-    hud.setDriveControls(context.settings.inputSource === 'gamepad');
-    drawScreen();
+    });
   }
   function openPreview() {
     if (!ready()) return;
@@ -136,6 +164,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     canvas.setAttribute('aria-label', vi.previewBadge);
     root.prepend(canvas);
     view = { state: { kind: 'menu' }, preview: 'paused', pauseReason: null };
+    audioUnavailable = false;
     status.textContent = '';
     drawScreen();
     const pad = devices.find((candidate) => candidate.index === gamepadIndex);
@@ -143,6 +172,8 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       const opened = deps.createPreview(canvas, root, {
         onPaused(reason) {
           if (disposed || token !== generation) return;
+          resumeAttempt++;
+          resumePending = false;
           view = { ...view, preview: 'paused', pauseReason: reason };
           hud.update(null, context.settings.inputSource);
           notice(reason === 'contact' ? 'contactStop' : 'pausedNotice');
@@ -160,6 +191,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
             hud.update(value, context.settings.inputSource);
           }
         },
+        onSensors(value) {
+          if (!disposed && token === generation) hud.updateSensors(value);
+        },
         onNotice(key) {
           if (disposed || token !== generation) return;
           if (key === 'controllerDisconnected' || key === 'controllerReplaced') {
@@ -171,10 +205,10 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       }, {
         vehicleId: context.selectedVehicleId, source: context.settings.inputSource,
         gamepadIndex, calibration: pad ? calibrations.get(pad.id) ?? null : null,
-        getGamepads: deps.getGamepads,
+        getGamepads: deps.getGamepads, settings: context.settings,
       });
       if (disposed || token !== generation) opened.dispose();
-      else { preview = opened; resumePreview(); }
+      else { preview = opened; void resumePreview(); }
     } catch (error) {
       if (disposed || token !== generation) return;
       const reason = error instanceof PreviewStartError ? error.reason : 'renderer-failed';
@@ -214,6 +248,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         if (view.preview === 'running' || view.calibrating) return;
         gamepadIndex = action.gamepadIndex;
         context = { ...context, settings: { ...context.settings, inputSource: action.source } };
+        hud.updateSettings(context.settings);
         if (action.source === 'gamepad') readDevices();
         preview?.selectSource(action.source, gamepadIndex ?? undefined);
         if (gamepadIndex !== null) {
@@ -222,6 +257,14 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
           if (calibration) preview?.setCalibration(calibration);
         }
         drawScreen();
+        break;
+      case 'update-settings':
+        context = { ...context, settings: action.settings };
+        preview?.updateSettings(action.settings);
+        hud.updateSettings(action.settings);
+        break;
+      case 'recenter-view':
+        preview?.recenterView();
         break;
       case 'open-calibration':
         if (view.preview === 'running' || gamepadIndex === null || view.pauseReason === 'contact') return;

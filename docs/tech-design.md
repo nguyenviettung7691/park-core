@@ -98,8 +98,11 @@ Here is the detailed task breakdown mapped to the optimal AI model tiers.
 
 **Phase 4: Vision & Support Systems**
 
-* **Tasks:** Create the orthographic camera setup for the 360-degree view, attach Cannon-es raycasters to vehicle bumpers, and map raycast distances to UI sensor arcs and audio.
-* **Model Routing:** Premium for 3D-to-2D matrix projections (orthographic mapping). Standard for UI data binding.
+* **Phase 4 scope:** Add profile-anchored driver and collision-adjusted chase views, bounded mouse-look with pointer-lock safety, rear/side mirrors, a simulated overhead view, estimated trajectory aids, and front/rear proximity sensors with labeled visual warnings and optional audio. Integrate them into the existing preview loop, renderer and Vietnamese HUD.
+* **Prototype boundary:** Current cockpit/mirror geometry and anchors are placeholders. Trajectory and sensors are guidance only; this phase does not deliver lessons, parking evaluation, release assets, validated vehicle/hardware support or training-readiness evidence. See [the phase detail design](phase-4-detail-design.md) and [the phase implementation plan](phase-4-implementation-plan.md).
+* **Constraints:** Keep one WebGL renderer and the preview's single simulation/animation loop. Bound mirror updates to 15 Hz, overhead updates to 30 Hz and sensor/DOM updates to 20 Hz. Audio unlocks only after a deliberate user action and stops on pause, outcome and disposal; visual warnings remain available when audio is muted or unavailable.
+* **Model Routing:** Premium for camera/projection and trajectory geometry; Standard for preview lifecycle, sensor/audio behavior and cross-system verification; Lightweight only for repetitive CSS/DOM scaffolding after interfaces and behavior are fixed.
+* **Validation status:** Prototype software gates pass; labeled mirror-landmark, garage-wall, supported-Node, asset, wheel and reference-hardware validation remain pending. See the [phase detail design](phase-4-detail-design.md) and [phase plan](phase-4-implementation-plan.md) for evidence and limits.
 
 **Phase 5: Environments & Assets**
 

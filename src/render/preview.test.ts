@@ -1,16 +1,31 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BufferGeometry, MeshBasicMaterial } from 'three';
+import * as CANNON from 'cannon-es';
+import { BufferGeometry, Color, MeshBasicMaterial, PerspectiveCamera, Vector4 } from 'three';
 import * as clockModule from '../clock';
 import { createWorld } from '../world/colliders';
 import { testGamepad } from '../test/gamepad';
+import type { SensorReading } from '../contracts';
 import { createPreview as startPreview, PreviewStartError, type PreviewDeps, type PreviewRenderer } from './preview';
 
-afterEach(() => { vi.restoreAllMocks(); document.body.replaceChildren(); });
+const pointerLockDescriptor = Object.getOwnPropertyDescriptor(document, 'pointerLockElement');
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  document.body.replaceChildren();
+  if (pointerLockDescriptor) Object.defineProperty(document, 'pointerLockElement', pointerLockDescriptor);
+  else Reflect.deleteProperty(document, 'pointerLockElement');
+});
+
+const settings = {
+  version: 1, volume: 0.5, muted: false, driverFovDeg: 60,
+  cameraMode: 'driver', overhead: false, trajectory: false,
+  inputSource: 'keyboard', resolutionScale: 1,
+} as const;
 
 const options = {
   vehicleId: 'sedan', source: 'keyboard', gamepadIndex: null,
-  calibration: null, getGamepads: () => [],
+  calibration: null, getGamepads: () => [], settings,
 } as const;
 
 function gamepadOptions() {
@@ -36,6 +51,7 @@ function createPreview(
 ) {
   const preview = startPreview(canvas, container, events, options, deps);
   canvas.focus();
+  void preview.requestPointerLock();
   preview.resume();
   return preview;
 }
@@ -52,14 +68,38 @@ function fixture() {
   let height = 720;
   let time = 0;
   let nextId = 0;
+  let lockedElement: Element | null = null;
   const frames = new Map<number, (t: number) => void>();
+  const renderTarget = { value: null as Parameters<PreviewRenderer['setRenderTarget']>[0] };
+  const viewport = new Vector4(0, 0, width, height);
+  const scissor = new Vector4(0, 0, width, height);
+  const clearColor = new Color('#000000');
+  let clearAlpha = 1;
+  let scissorTest = false;
   const renderer = {
     render: vi.fn<PreviewRenderer['render']>(),
     setSize: vi.fn(),
     dispose: vi.fn(),
     forceContextLoss: vi.fn(),
+    setRenderTarget: vi.fn((target: typeof renderTarget.value) => { renderTarget.value = target; }),
+    getRenderTarget: vi.fn(() => renderTarget.value),
+    setViewport: vi.fn((x: number, y: number, w: number, h: number) => viewport.set(x, y, w, h)),
+    getViewport: vi.fn((target: Vector4) => target.copy(viewport)),
+    setScissor: vi.fn((x: number, y: number, w: number, h: number) => scissor.set(x, y, w, h)),
+    getScissor: vi.fn((target: Vector4) => target.copy(scissor)),
+    setScissorTest: vi.fn((enabled: boolean) => { scissorTest = enabled; }),
+    getScissorTest: vi.fn(() => scissorTest),
+    setClearColor: vi.fn((color: string | number | Color, alpha = 1) => {
+      clearColor.set(color); clearAlpha = alpha;
+    }),
+    getClearColor: vi.fn((target: Color) => target.copy(clearColor)),
+    getClearAlpha: vi.fn(() => clearAlpha),
+    clear: vi.fn(),
   };
-  const events = { onPaused: vi.fn(), onFault: vi.fn(), onTelemetry: vi.fn(), onNotice: vi.fn() };
+  const events = {
+    onPaused: vi.fn(), onFault: vi.fn(), onTelemetry: vi.fn(), onNotice: vi.fn(),
+    onSensors: vi.fn(),
+  };
   vi.spyOn(container, 'getBoundingClientRect').mockImplementation(() =>
     new DOMRect(0, 0, width, height));
   const deps: PreviewDeps = {
@@ -69,9 +109,28 @@ function fixture() {
     createRenderer: vi.fn(() => renderer),
     createContext: vi.fn(() => ({ getExtension: () => null })),
     createWorld: () => world,
+    requestPointerLock: vi.fn(() => {
+      lockedElement = canvas;
+      document.dispatchEvent(new Event('pointerlockchange'));
+    }),
+    exitPointerLock: vi.fn(() => { lockedElement = null; }),
   };
+  Object.defineProperty(document, 'pointerLockElement', {
+    configurable: true, get: () => lockedElement,
+  });
   return {
     canvas, container, renderer, events, deps, frames, world,
+    setPointerLock(element: Element | null) {
+      lockedElement = element;
+      document.dispatchEvent(new Event('pointerlockchange'));
+    },
+    mouseMove(x: number, y: number) {
+      const event = new MouseEvent('mousemove');
+      Object.defineProperties(event, {
+        movementX: { value: x }, movementY: { value: y },
+      });
+      document.dispatchEvent(event);
+    },
     key(code: string, type = 'keydown') {
       canvas.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
     },
@@ -88,12 +147,55 @@ function fixture() {
 }
 
 describe('preview lifecycle', () => {
+  it('coalesces audio warnings during a catch-up frame so a beep is not cancelled immediately', async () => {
+    class CatchupAudioContext {
+      state = 'suspended';
+      currentTime = 0;
+      destination = {};
+      gain = {
+        value: 0,
+        setValueAtTime: vi.fn((value: number) => { this.gain.value = value; }),
+        cancelScheduledValues: vi.fn(),
+      };
+      gainNode = { gain: this.gain, connect: vi.fn(), disconnect: vi.fn() };
+      oscillator = {
+        frequency: { value: 0, setValueAtTime: vi.fn() },
+        type: 'sine',
+        connect: vi.fn(), start: vi.fn(), stop: vi.fn(), disconnect: vi.fn(),
+      };
+      createGain = vi.fn(() => this.gainNode);
+      createOscillator = vi.fn(() => this.oscillator);
+      resume = vi.fn(async () => { this.state = 'running'; });
+      suspend = vi.fn(async () => { this.state = 'suspended'; });
+      close = vi.fn(async () => { this.state = 'closed'; });
+      constructor() { contexts.push(this); }
+    }
+    const contexts: CatchupAudioContext[] = [];
+    vi.stubGlobal('AudioContext', CatchupAudioContext);
+    const f = fixture();
+    const obstacle = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC });
+    obstacle.addShape(new CANNON.Box(new CANNON.Vec3(0.3, 0.2, 0.05)));
+    obstacle.position.set(0, 0.45, 1.335);
+    f.world.addBody(obstacle);
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
+    p.unlockAudio();
+    await vi.waitFor(() => expect(contexts[0]?.state).toBe('running'));
+    f.frame(100);
+
+    expect(f.events.onSensors.mock.calls.at(-1)?.[0].readings
+      .some((reading: SensorReading) => reading.band === 'red')).toBe(true);
+    expect(contexts[0]!.gain.value).toBeGreaterThan(0);
+    p.dispose();
+  });
+
   it('creates a settled paused preview and only runs after a successful explicit resume', () => {
     const f = fixture();
     const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
     expect(f.frames.size).toBe(0);
-    expect(f.renderer.render).toHaveBeenCalledTimes(1);
+    expect(f.renderer.render.mock.calls.some(([, camera]) => camera.name === 'driver-camera')).toBe(true);
     f.canvas.focus();
+    expect(p.resume()).toBe(false);
+    void p.requestPointerLock();
     expect(p.resume()).toBe(true);
     expect(p.resume()).toBe(false);
     p.pause();
@@ -119,6 +221,113 @@ describe('preview lifecycle', () => {
     p.dispose();
   });
 
+  it('publishes real sensor snapshots at no more than 20 Hz of simulation time', () => {
+    const f = fixture();
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
+    for (let i = 1; i <= 120; i++) f.frame(i * 1000 / 60);
+    const snapshots = f.events.onSensors.mock.calls.map(([value]) => value);
+
+    expect(snapshots.length).toBeGreaterThan(0);
+    expect(snapshots.length).toBeLessThanOrEqual(41);
+    expect(snapshots.every(({ readings }) => readings.length === 10)).toBe(true);
+    for (let i = 1; i < snapshots.length; i++) {
+      expect(snapshots[i]!.sampledAtS - snapshots[i - 1]!.sampledAtS)
+        .toBeGreaterThanOrEqual(0.05 - 1e-9);
+    }
+    p.dispose();
+  });
+
+  it('starts audio only when explicitly unlocked and suspends and disposes with the preview', async () => {
+    const contexts: {
+      state: string;
+      gain: { value: number; setValueAtTime(value: number): void; cancelScheduledValues(): void };
+      oscillator: {
+        frequency: { setValueAtTime(value: number): void };
+        connect(): void; start(): void; stop(): void; disconnect(): void;
+      };
+      suspend: ReturnType<typeof vi.fn>;
+      close: ReturnType<typeof vi.fn>;
+    }[] = [];
+    class TestAudioContext {
+      state = 'suspended';
+      currentTime = 0;
+      destination = {};
+      gain = {
+        value: 0,
+        setValueAtTime: vi.fn((value: number) => { this.gain.value = value; }),
+        cancelScheduledValues: vi.fn(),
+      };
+      oscillator = {
+        frequency: { setValueAtTime: vi.fn() },
+        connect: vi.fn(), start: vi.fn(), stop: vi.fn(), disconnect: vi.fn(),
+      };
+      gainNode = { gain: this.gain, connect: vi.fn(), disconnect: vi.fn() };
+      suspend = vi.fn(async () => { this.state = 'suspended'; });
+      close = vi.fn(async () => { this.state = 'closed'; });
+      constructor() { contexts.push(this); }
+      createOscillator() { return this.oscillator; }
+      createGain() { return this.gainNode; }
+      resume = vi.fn(async () => { this.state = 'running'; });
+    }
+    vi.stubGlobal('AudioContext', TestAudioContext);
+    const f = fixture();
+    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    expect(contexts).toHaveLength(0);
+    p.unlockAudio();
+    await Promise.resolve();
+    expect(contexts).toHaveLength(1);
+    f.canvas.focus();
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    p.pause();
+    expect(contexts[0]!.suspend).toHaveBeenCalledOnce();
+    p.dispose();
+    expect(contexts[0]!.close).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps sensor warnings available when audio is unavailable', async () => {
+    vi.stubGlobal('AudioContext', undefined);
+    const f = fixture();
+    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    p.unlockAudio();
+    await vi.waitFor(() => expect(f.events.onNotice).toHaveBeenCalledWith('audioUnavailable'));
+    expect(f.events.onFault).not.toHaveBeenCalled();
+    p.dispose();
+  });
+
+  it('routes unexpected audio unlock failures through the preview fault path', async () => {
+    const failure = new Error('Audio initialization failed');
+    class FailedAudioContext {
+      state = 'suspended';
+      currentTime = 0;
+      destination = {};
+      createOscillator() {
+        return {
+          type: 'sine',
+          frequency: { setValueAtTime: vi.fn() },
+          connect: vi.fn(), start: vi.fn(), stop: vi.fn(), disconnect: vi.fn(),
+        };
+      }
+      createGain() {
+        return {
+          gain: { value: 0, setValueAtTime: vi.fn(), cancelScheduledValues: vi.fn() },
+          connect: vi.fn(), disconnect: vi.fn(),
+        };
+      }
+      resume() { return Promise.reject(failure); }
+      suspend() { return Promise.resolve(); }
+      close() { return Promise.resolve(); }
+    }
+    vi.stubGlobal('AudioContext', FailedAudioContext);
+    const f = fixture();
+    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    p.unlockAudio();
+    await vi.waitFor(() => expect(f.events.onFault)
+      .toHaveBeenCalledWith('runtime-error', failure));
+    p.dispose();
+  });
+
   it('retains gear actions through a zero-step frame and consumes them once', () => {
     const f = fixture();
     const p = createPreview(f.canvas, f.container, f.events, f.deps);
@@ -138,9 +347,13 @@ describe('preview lifecycle', () => {
     const p = createPreview(f.canvas, f.container, f.events, f.deps);
     f.key('KeyS'); f.key('Digit2'); f.frame(1);
     p.pause();
+    f.setPointerLock(f.canvas);
     expect(p.resume()).toBe(false);
     expect(f.events.onNotice).toHaveBeenLastCalledWith('keysNotReleased');
+    expect(f.deps.exitPointerLock).toHaveBeenCalledTimes(2);
+    expect(document.pointerLockElement).toBe(null);
     f.key('KeyS', 'keyup'); f.key('Digit2', 'keyup');
+    void p.requestPointerLock();
     expect(p.resume()).toBe(true);
     f.frame(60);
     expect(f.events.onTelemetry.mock.lastCall?.[0].gear).toBe('P');
@@ -172,6 +385,7 @@ describe('preview lifecycle', () => {
     expect(p.resume()).toBe(false);
     window.dispatchEvent(new Event('focus'));
     expect(f.frames.size).toBe(0);
+    void p.requestPointerLock();
     expect(p.resume()).toBe(true);
     f.canvas.dispatchEvent(new KeyboardEvent('keydown', {
       code: 'KeyS', repeat: true, bubbles: true,
@@ -207,10 +421,12 @@ describe('preview lifecycle', () => {
     const f = fixture();
     const gamepad = gamepadOptions();
     const p = startPreview(f.canvas, f.container, f.events, gamepad.options, f.deps);
+    void p.requestPointerLock();
     gamepad.pad.buttons[7]!.value = 0.03;
     expect(p.resume()).toBe(false);
     expect(f.events.onNotice).toHaveBeenLastCalledWith('pedalsNotReleased');
     gamepad.pad.buttons[7]!.value = 0.02;
+    void p.requestPointerLock();
     expect(p.resume()).toBe(true);
     const step = vi.spyOn(f.world, 'step');
     gamepad.pad.connected = false;
@@ -226,6 +442,7 @@ describe('preview lifecycle', () => {
     const gamepad = gamepadOptions();
     const p = startPreview(f.canvas, f.container, f.events, gamepad.options, f.deps);
     f.canvas.focus();
+    void p.requestPointerLock();
     p.resume();
     gamepad.pad.buttons[6]!.value = 1;
     const button = document.createElement('button');
@@ -274,11 +491,122 @@ describe('preview lifecycle', () => {
     expect(f.renderer.setSize).toHaveBeenLastCalledWith(2560, 720, false);
     f.frame();
     f.frame();
-    const [scene, camera] = f.renderer.render.mock.calls[0];
+    const [scene, camera] = f.renderer.render.mock.calls.find(([, candidate]) =>
+      candidate.name === 'driver-camera')!;
     expect(scene.children.length).toBeGreaterThan(1);
     expect(camera).toHaveProperty('aspect', 5120 / 1440);
-    expect(f.renderer.render).toHaveBeenLastCalledWith(scene, camera);
+    expect(f.renderer.render.mock.calls.some(([renderedScene, renderedCamera]) =>
+      renderedScene === scene && renderedCamera === camera)).toBe(true);
     p.dispose();
+  });
+
+  it('uses initial camera settings and applies later view changes in the shared render loop', () => {
+    const f = fixture();
+    const initial = {
+      ...settings, driverFovDeg: 72, cameraMode: 'chase' as const,
+      overhead: true, trajectory: true,
+    };
+    const p = startPreview(f.canvas, f.container, f.events, { ...options, settings: initial }, f.deps);
+    const scene = f.renderer.render.mock.calls[0]![0];
+    expect(f.renderer.render.mock.calls.some(([, camera]) => camera.name === 'chase-camera')).toBe(true);
+    expect(f.renderer.render.mock.calls.some(([, camera]) => camera.name === 'overhead-camera')).toBe(true);
+    expect(scene.getObjectByName('trajectory-estimate')?.visible).toBe(true);
+    const compositesBefore = f.renderer.render.mock.calls.filter(([, camera]) =>
+      camera.name === 'overhead-composite').length;
+
+    p.updateSettings({
+      ...initial, cameraMode: 'driver', overhead: false, trajectory: false,
+      driverFovDeg: 75, resolutionScale: 0.5,
+    });
+    expect(f.renderer.setSize).toHaveBeenLastCalledWith(640, 360, false);
+    f.canvas.focus();
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    f.frame(20);
+    expect(f.events.onFault).not.toHaveBeenCalled();
+    expect(f.events.onPaused).not.toHaveBeenCalled();
+
+    expect(f.renderer.render.mock.calls.map(([, camera]) => camera.name)).toContain('driver-camera');
+    const mainCamera = f.renderer.render.mock.calls.find(([, camera]) =>
+      camera.name === 'driver-camera')?.[1];
+    if (!(mainCamera instanceof PerspectiveCamera)) throw new Error('Driver camera was not rendered');
+    expect(mainCamera.fov).toBe(75);
+    expect(scene.getObjectByName('trajectory-estimate')?.visible).toBe(false);
+    expect(f.renderer.render.mock.calls.filter(([, camera]) =>
+      camera.name === 'overhead-composite')).toHaveLength(compositesBefore);
+    p.dispose();
+  });
+
+  it('accepts mouse-look only while pointer-locked and pauses when the lock is lost', async () => {
+    const f = fixture();
+    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    f.canvas.focus();
+    expect(p.resume()).toBe(false);
+    vi.mocked(f.deps.requestPointerLock).mockImplementation(() => undefined);
+    const pending = p.requestPointerLock();
+    let settled = false;
+    void pending.then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    f.setPointerLock(f.canvas);
+    await expect(pending).resolves.toBe(true);
+    expect(p.resume()).toBe(true);
+    f.frame(20);
+    expect(f.events.onFault).not.toHaveBeenCalled();
+    expect(f.events.onPaused).not.toHaveBeenCalled();
+    const camera = f.renderer.render.mock.calls.find(([, candidate]) =>
+      candidate.name === 'driver-camera')![1];
+    const before = camera.quaternion.clone();
+    f.mouseMove(40, 0);
+    f.frame(30);
+    expect(camera.quaternion.angleTo(before)).toBeGreaterThan(0.01);
+
+    f.setPointerLock(null);
+    expect(f.events.onPaused).toHaveBeenCalledExactlyOnceWith('focus');
+    expect(f.frames.size).toBe(0);
+    expect(p.resume()).toBe(false);
+    expect(f.frames.size).toBe(0);
+    p.dispose();
+  });
+
+  it('resolves denied or unavailable pointer lock and settles pending requests on disposal', async () => {
+    const f = fixture();
+    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    vi.mocked(f.deps.requestPointerLock).mockRejectedValueOnce(
+      Object.assign(new Error('Denied'), { name: 'NotAllowedError' }),
+    );
+    await expect(p.requestPointerLock()).resolves.toBe(false);
+
+    vi.mocked(f.deps.requestPointerLock).mockReturnValueOnce(false);
+    await expect(p.requestPointerLock()).resolves.toBe(false);
+
+    let acquireLate!: () => void;
+    vi.mocked(f.deps.requestPointerLock).mockReturnValueOnce(new Promise((resolve) => {
+      acquireLate = resolve;
+    }));
+    const pending = p.requestPointerLock();
+    p.dispose();
+    await expect(pending).resolves.toBe(false);
+    f.setPointerLock(f.canvas);
+    acquireLate();
+    await Promise.resolve();
+    expect(f.deps.exitPointerLock).toHaveBeenCalledOnce();
+    expect(document.pointerLockElement).toBe(null);
+    expect(f.deps.requestPointerLock).toHaveBeenCalledWith(f.canvas);
+  });
+
+  it('releases pointer lock, listeners and view render targets on disposal', async () => {
+    const targetDispose = vi.spyOn((await import('three')).WebGLRenderTarget.prototype, 'dispose');
+    const f = fixture();
+    const add = vi.spyOn(document, 'addEventListener');
+    const remove = vi.spyOn(document, 'removeEventListener');
+    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    f.setPointerLock(f.canvas);
+    p.dispose();
+    expect(f.deps.exitPointerLock).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledWith('mousemove', expect.any(Function));
+    expect(targetDispose).toHaveBeenCalledTimes(4);
+    expect(add.mock.calls.some(([type]) => type === 'mousemove')).toBe(true);
   });
 
   it('skips zero-size layouts and reports invalid resize instead of escaping the listener', () => {
@@ -307,6 +635,7 @@ describe('preview lifecycle', () => {
     expect(f.events.onPaused).toHaveBeenCalledTimes(1);
     f.setTime(60_000);
     window.dispatchEvent(new Event('focus'));
+    void p.requestPointerLock();
     expect(f.frames.size).toBe(0);
     p.resume();
     p.resume();
@@ -326,7 +655,8 @@ describe('preview lifecycle', () => {
     f.frames.delete(id);
     callback(999);
     expect(f.events.onFault).not.toHaveBeenCalled();
-    expect(f.renderer.render).toHaveBeenCalledTimes(2);
+    expect(f.renderer.render.mock.calls.filter(([, camera]) => camera.name === 'driver-camera'))
+      .toHaveLength(2);
     p.dispose();
   });
 
