@@ -87,7 +87,7 @@ Here is the detailed task breakdown mapped to the optimal AI model tiers.
 
 **Phase 2: Design & Scaffolding**
 
-* **Tasks:** Initialize Vite, TypeScript configuration, Three.js rendering loop, base Amethyst Purple CSS theme, and HUD DOM containers. Write TypeScript interfaces for game states and vehicle telemetry.
+* **Tasks:** Initialize Vite, TypeScript configuration, Three.js rendering loop, base Amethyst Purple CSS theme, and HUD DOM containers. Write TypeScript interfaces for game states and vehicle telemetry. Phase 2 delivers only a static, non-drivable renderer preview (no physics, input or assets); see [the phase design](phase-2-detail-design.md) and [the phase plan](phase-2-implementation-plan.md).
 * **Model Routing:** Lightweight (Claude 3 Haiku / GPT-4o-mini) for boilerplate and CSS. Standard (Claude 3.5 Sonnet) for TypeScript interfaces.
 
 **Phase 3: Physics & Input Mechanics**

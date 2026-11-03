@@ -576,6 +576,10 @@ Success/Fail contain the recap; they are not states that auto-dismiss. Only
 Success unlocks the next stage. Previously completed stages remain replayable.
 Completing stage 5 shows curriculum completion without promising driving mastery.
 
+Phase 2 clarification ([phase design](phase-2-detail-design.md)): a static,
+non-drivable inspection preview is a shell view flag (`PreviewPhase`) beside
+`AppState`, not an `AppState`; `state` stays `menu` while it runs or pauses.
+
 ### Local persistence
 
 Use a versioned key `park-core.progress.v1`, storing completed stage IDs and
@@ -872,6 +876,12 @@ controls into a labeled menu and reduce/hide the optional inset with an
 explanation; do not hide gear/speed or critical warnings. Mobile driving is
 not a first-release target.
 
+Phase 2 clarification: before their feature exists, HUD containers may be
+present but empty and `hidden`, with no placeholder values. The menu entry to
+the preview reads “Xem thử mô hình (không lái được)”, the exit “Quay lại menu”,
+and a visible badge “Bản xem thử — không lái được”; “Bắt đầu” returns when a
+drivable session exists.
+
 ### Visual tokens and accessibility
 
 | Token | Value/use |
@@ -928,6 +938,11 @@ Only one active session owns its geometries, materials, textures, RenderTargets,
 listeners and audio. Dispose/reuse them deliberately on retry/menu/scene changes;
 do not accumulate new physics callbacks or WebGL contexts on each attempt.
 Pause on WebGL context loss and offer reload/recovery rather than running blind.
+
+Phase 2 clarification: the drawing buffer is CSS size x `devicePixelRatio`,
+scaled uniformly by `min(1, 2560/w, 1440/h)`, each side rounded and at least 1
+px. Missing WebGL2 offers only Menu; context loss is recovered by building a
+new renderer on a fresh canvas, not by in-place restoration.
 
 ### Performance target and evidence
 
@@ -998,6 +1013,10 @@ The builder may choose small-file organization, test runner, asset URLs,
 exact obstacle coordinates within the authored constraints, wording polish,
 and reasonable camera/physics tuning that preserves these behaviors.
 Record tuned values and measurements alongside the profiles.
+
+Phase 2 designer's call, subject to the owner's approval already recorded in
+the phase design: a static non-drivable renderer preview, with `cannon-es`
+deferred to Task 2. No lesson, physics or learner-behavior rule changes.
 
 The following are release-validation prerequisites, not unspecified features:
 select reference/minimum hardware, obtain suitable licensed cockpit/environment

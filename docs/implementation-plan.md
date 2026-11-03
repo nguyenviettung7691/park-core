@@ -8,9 +8,9 @@
 
 **Tech Stack:** Strict TypeScript, Vite, Three.js, Cannon-es; Vitest for logic/physics tests, jsdom for DOM tests, Playwright for browser integration.
 
-**Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative.
+**Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative. Phase 2 refinements: [phase design](phase-2-detail-design.md) and [phase plan](phase-2-implementation-plan.md).
 
-**Status:** Approved by the project owner on 2026-11-02. Native execution is preferred for a future implementation session; implementation has not been authorized or started in this documentation-only request.
+**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed. The owner supplied Git identity and approved committing and merging locally. Tasks 2-8 remain unimplemented and outside the current execution approval.
 
 ## Global Constraints
 
@@ -42,15 +42,15 @@
 
 ## Execution conventions and tools
 
-Current repository: documentation and instructions only; no package manifest or
-application exists. Inspect the worktree before execution. Preserve unrelated
+Repository state at planning time: documentation and instructions only; no package manifest or
+application yet. Inspect the worktree before execution. Preserve unrelated
 untracked files. Create execution isolation with the required worktree skill
 when execution begins, not while writing this plan.
 
 Choose a supported Node version satisfying the selected packages' engine
 requirements. In Task 1 install compatible stable versions with `--save-exact`
 and commit `package-lock.json`; subsequent tasks use the lockfile, not fresh
-version selections. Runtime packages are `three` and `cannon-es`. Development
+version selections. Runtime package in Task 1 is `three`; `cannon-es` is installed with `--save-exact` in Task 2's setup and the lockfile updated then. Development
 packages are `typescript`, `vite`, `@types/three`, `vitest`, `jsdom` and
 `@playwright/test`. Do not add a framework, state-machine library, compression
 decoder, CSS library or additional test runner.
@@ -93,6 +93,7 @@ Paths are relative to the repository root.
 |---|---|
 | `index.html`, `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.ts`, `playwright.config.ts`, `.gitignore` | Entry, exact dependencies, build/test configuration and generated-file exclusions |
 | `src\main.ts`, `src\app.ts` | Bootstrap and session lifecycle; glue only, not physics/lesson algorithms |
+| `src\render\fit.ts`, `preview.ts` and tests | Phase 2: pure drawing-buffer sizing; single-owner static preview renderer lifecycle (see phase design) |
 | `src\contracts.ts`, `src\runtime-types.ts`, `src\messages.ts` | Approved boundary contracts, implementation-only adapter types and finite Vietnamese message keys |
 | `src\clock.ts`, `src\clock.test.ts` | Fixed-step accumulator and pause/reset behavior |
 | `src\ui\screens.ts`, `src\ui\hud.ts`, `src\ui\ui.test.ts`, `src\style.css` | Semantic screens, HUD binding, focus, responsive CSS and accessibility |
@@ -176,19 +177,21 @@ and never shares a mutable scene between two active sessions.
 
 **Files:** Create root configuration, `src\main.ts`, `app.ts`, `contracts.ts`,
 `runtime-types.ts`, `messages.ts`, `clock.ts`, `clock.test.ts`, `style.css`,
-`src\ui\screens.ts`, `ui.test.ts`, and `tests\browser\shell.spec.ts`.
+`src\ui\screens.ts`, `hud.ts`, `ui.test.ts`, `src\render\fit.ts`, `fit.test.ts`,
+`preview.ts`, `preview.test.ts` (injected renderer/scheduler seams, no production globals) and `tests\browser\shell.spec.ts`.
 
 **Interfaces:**
 - Produces `createApp(root: HTMLElement): { dispose(): void }`.
 - Produces `mountScreen(root: HTMLElement, state: AppState, context: ScreenContext, onAction: (action: ScreenAction) => void): () => void`.
 - Defines `ScreenContext` with `progress: ProgressSaveV1`, `settings: SettingsSaveV1`, `selectedStageId: StageId` and `selectedVehicleId: VehicleId`; do not make Menu inspect storage or physics globals.
-- Defines `ScreenAction` with a `type` discriminant: `'start'` carries `stageId: StageId` and `vehicleId: VehicleId`; `'retry'`, `'menu'`, `'continue'`, `'resume'`, `'open-calibration'`, `'request-reset-progress'` and `'confirm-reset-progress'` have no payload. Add `'select-input'` carrying `source: InputSource` and `gamepadIndex: number | null`; add `'update-settings'` carrying a validated `SettingsSaveV1`.
+- Defines `PreviewPhase = 'closed' | 'running' | 'paused'` and `ShellView { readonly state: AppState; readonly preview: PreviewPhase }` in `runtime-types.ts`; the preview is a shell flag, never an `AppState`.
+- Defines `ScreenAction` with a `type` discriminant (Phase 2 adds payload-free `'open-preview'` and `'close-preview'`, and `'select-vehicle'` carrying `vehicleId: VehicleId`; `'start'` stays defined but is not emitted until Task 2): `'start'` carries `stageId: StageId` and `vehicleId: VehicleId`; `'retry'`, `'menu'`, `'continue'`, `'resume'`, `'open-calibration'`, `'request-reset-progress'` and `'confirm-reset-progress'` have no payload. Add `'select-input'` carrying `source: InputSource` and `gamepadIndex: number | null`; add `'update-settings'` carrying a validated `SettingsSaveV1`.
 - Defines `SettingsSaveV1` in `runtime-types.ts`: version 1, `volume: number`, `muted: boolean`, `driverFovDeg: number`, `cameraMode: CameraMode`, `overhead: boolean`, `trajectory: boolean`, `inputSource: InputSource`, `resolutionScale: 1 | 0.75 | 0.5`. Task 7 persists this existing type.
 - Produces `createClock(): Clock`; `Clock.advance(elapsedS: number, step: () => void): { alpha: number; droppedTimeS: number }`, `Clock.reset(): void`.
 - Produces all shared design/adapter types and `vi`/`MessageKey`.
 
-- [ ] **Step 1: Create tool configuration only.** Set up the packages/scripts above, strict TypeScript with DOM types and Vite module resolution, Vitest and Playwright projects. Ignore `node_modules`, `dist`, browser reports and `.superpowers` artifacts; integrate rather than replace any existing `.gitignore`.
-- [ ] **Step 2: Write failing clock and screen tests.** Pin the accumulator cap and a Vietnamese, keyboard-operable Menu with no automatic simulation startup.
+- [x] **Step 1: Create tool configuration only.** Set up the packages/scripts above, strict TypeScript with DOM types and Vite module resolution, Vitest and Playwright projects. Ignore `node_modules`, `dist`, browser reports and `.superpowers` artifacts; integrate rather than replace any existing `.gitignore`.
+- [x] **Step 2: Write failing clock and screen tests.** Pin the accumulator cap and a Vietnamese, keyboard-operable Menu with no automatic simulation startup.
 
 ```ts
 it('caps a slow frame at eight fixed updates', () => {
@@ -203,17 +206,19 @@ it('caps a slow frame at eight fixed updates', () => {
 
 Also test that `reset()` discards a half-step backlog and that a negative or
 non-finite frame delta is rejected explicitly. In the jsdom file, assert the
-Menu has “Bắt đầu”, a labeled vehicle selector and visible keyboard focus.
-- [ ] **Step 3: Run the tests red.** `npm test -- src\clock.test.ts src\ui\ui.test.ts`; expect missing implementation/export failures, not missing tooling.
-- [ ] **Step 4: Implement the shell and clock.** Copy exact design contracts, apply the visual token table and mount Menu. Add a capability error screen for unavailable WebGL2. Keep renderer startup and future session creation under the application owner; no fake “lesson complete” behavior.
-- [ ] **Step 5: Verify the slice.** Run the same unit tests, `npm run test:browser -- tests\browser\shell.spec.ts`, typecheck and build. Browser assertions: Vietnamese Menu appears, no unexpected console errors, unsupported-WebGL feedback is understandable, and 1280x720 has no horizontal page overflow.
-- [ ] **Step 6: Commit.** Message: `feat: add Vietnamese app shell and fixed-step clock`.
+Menu has the preview entry “Xem thử mô hình (không lái được)” (no “Bắt đầu”), a labeled vehicle selector and visible keyboard focus. Add tests for focus/visibility pause with explicit resume, context loss, idempotent disposal and the 2560x1440 drawing-buffer cap.
+- [x] **Step 3: Run the tests red.** `npm test -- src/clock.test.ts src/ui/ui.test.ts src/render/fit.test.ts src/render/preview.test.ts`; expect missing implementation/export failures, not missing tooling.
+- [x] **Step 4: Implement the shell and clock.** Copy exact design contracts, apply the visual token table and mount Menu. Add a capability error screen for unavailable WebGL2. Renderer startup happens only on the learner's preview click, under the application owner. The preview is a static, labeled, non-drivable inspection (no simulation, no `playing` state); `cannon-es` is not installed until Task 2. No fake “lesson complete” behavior.
+- [x] **Step 5: Verify the slice.** Run the same unit tests, `npm run test:browser -- tests/browser/shell.spec.ts`, typecheck and build. Browser assertions: Vietnamese Menu appears, no unexpected console errors, unsupported-WebGL feedback is understandable, and 1280x720 has no horizontal page overflow.
+- [x] **Step 6: Commit.** Message: `feat: add Vietnamese app shell and fixed-step clock`.
 
 ### Task 2: Real low-speed vehicle on a prototype test ground
 
+**Setup:** first run `npm install --save-exact cannon-es` (deferred from Task 1) and commit the updated `package.json` and `package-lock.json` with this task.
+
 **Files:** Create `src\vehicle\profiles.ts`, `geometry.ts`, `steering.ts`,
-`rig.ts`, `vehicle.test.ts`, `src\world\colliders.ts`; modify
-`src\app.ts`, `runtime-types.ts`, `messages.ts`.
+`rig.ts`, `vehicle.test.ts`, `src\world\colliders.ts`; modify `package.json`,
+`package-lock.json`, `src\app.ts`, `runtime-types.ts`, `messages.ts`.
 
 **Interfaces:**
 - Consumes the approved `VehicleProfile`, `InputFrame`, `InputAction` and `PhysicsSnapshot`.

@@ -57,3 +57,5 @@ When asked to implement a feature, follow this progression. The numbering differ
 3. **Phase 3:** Orthographic 360-camera & bumper raycast sensors.
 4. **Phase 4:** Asset loading (Sedan, CUV, Urban Roadside, Underground Garage).
 5. **Phase 5:** Linear 5-stage `localStorage` progression state machine.
+
+Mapping: the technical design's "Phase 2: Design & Scaffolding" corresponds to Phase 1 above, not to this list's Phase 2 (Cannon-es/Gamepad).

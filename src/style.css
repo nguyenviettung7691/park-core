@@ -1,0 +1,274 @@
+:root {
+  --color-bg: #151318;
+  --color-panel: #211d25;
+  --color-text: #f5f3f6;
+  --color-text-secondary: #d0c8d6;
+  --color-accent: #9b59b6;
+  --color-accent-light: #d5b1e3;
+  --color-border: #4a4252;
+  --color-sensor-green: #66cc88;
+  --color-sensor-yellow: #ffe066;
+  --color-sensor-red: #ff6b6b;
+  --radius: 8px;
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --control-min: 44px;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+#app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#simulation {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#hud {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'lesson lesson lesson'
+    '. front .'
+    '. status .'
+    '. rear .'
+    'telemetry view-controls overhead';
+  gap: var(--space-1);
+  padding: var(--space-1);
+  pointer-events: none;
+}
+
+#hud button,
+#hud input,
+#hud select {
+  pointer-events: auto;
+}
+
+#lesson-strip {
+  grid-area: lesson;
+}
+
+#proximity-front {
+  grid-area: front;
+}
+
+#proximity-rear {
+  grid-area: rear;
+}
+
+#status-message {
+  grid-area: status;
+  align-self: center;
+  justify-self: center;
+}
+
+#telemetry {
+  grid-area: telemetry;
+  align-self: end;
+}
+
+#view-controls {
+  grid-area: view-controls;
+  align-self: end;
+}
+
+#overhead-frame {
+  grid-area: overhead;
+  align-self: end;
+  justify-self: end;
+}
+
+#screen-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+  overflow-y: auto;
+}
+
+#screen-layer:empty {
+  pointer-events: none;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(100%, 40rem);
+  margin: auto;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: var(--space-3);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+h1,
+h2 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: clamp(1.25rem, 4vw, 2rem);
+}
+
+h2 {
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+}
+
+p {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+button,
+input,
+select {
+  min-height: var(--control-min);
+  min-width: var(--control-min);
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+button {
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+button:hover,
+input:hover,
+select:hover {
+  border-color: var(--color-accent);
+}
+
+button[aria-pressed='true'],
+button[aria-current='true'] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+button:disabled,
+input:disabled,
+select:disabled {
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+input,
+select {
+  padding: var(--space-1);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-accent-light);
+  outline-offset: 2px;
+}
+
+.preview-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.preview-shell {
+  width: min(100%, 32rem);
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+.preview-badge {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  z-index: 3;
+  max-width: calc(100% - 2 * var(--space-1));
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-panel);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius);
+  font-weight: 600;
+}
+
+#status-message:not(:empty) {
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+img,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+@media (max-width: 480px) {
+  :root {
+    --space-2: 12px;
+    --space-3: 16px;
+  }
+
+  .panel {
+    padding: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
