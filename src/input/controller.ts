@@ -126,6 +126,10 @@ export function createInputController(
   target.addEventListener('keyup', onKeyUp, { signal: abort.signal });
   target.ownerDocument.addEventListener('keyup', onKeyUp, { signal: abort.signal });
   target.addEventListener('blur', onBlur, { signal: abort.signal });
+  target.ownerDocument.defaultView?.addEventListener('focus', () => {
+    // Keyup may have gone to another app; repeats still cannot reactivate a held key.
+    suppressed.clear();
+  }, { signal: abort.signal });
 
   function enqueue(action: InputAction): void {
     if (disposed) return;

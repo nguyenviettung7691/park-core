@@ -280,6 +280,23 @@ describe('keyboard source', () => {
     expect(controller.poll().actions).toEqual([]);
   });
 
+  it('recovers a key released outside the window without replaying held-key repeats', () => {
+    const { target, controller } = setup();
+    key(target, 'keydown', 'KeyW');
+    target.dispatchEvent(new Event('blur'));
+    controller.clear();
+    window.dispatchEvent(new Event('blur'));
+    expect(controller.checkNeutral()).toBe('keysNotReleased');
+    window.dispatchEvent(new Event('focus'));
+    expect(controller.checkNeutral()).toBeNull();
+    key(target, 'keydown', 'KeyW', { repeat: true });
+    expect(controller.poll()).toEqual({
+      frame: { source: 'keyboard', throttle: 0, brake: 0, steering: 0 },
+      actions: [], issue: null });
+    key(target, 'keydown', 'KeyW');
+    expect(controller.poll().frame.throttle).toBe(1);
+  });
+
   it('does not clear suppression in clear() and drops the queue', () => {
     const { target, controller } = setup();
     key(target, 'keydown', 'KeyS');

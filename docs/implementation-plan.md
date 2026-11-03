@@ -10,7 +10,7 @@
 
 **Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative. Phase 2 refinements: [phase design](phase-2-detail-design.md) and [phase plan](phase-2-implementation-plan.md). Approved Phase 3 refinements for Tasks 2-3: [phase design](phase-3-detail-design.md) and [phase plan](phase-3-implementation-plan.md).
 
-**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are now implemented in the isolated phase branch: 165 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed; final independent review and integration remain pending. Tasks 4-8 remain unimplemented.
+**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are now implemented in the isolated phase branch: 167 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed. Final independent review and its verified correction are complete; integration awaits owner direction. Tasks 4-8 remain unimplemented.
 
 ## Global Constraints
 
@@ -214,7 +214,7 @@ Menu has the preview entry “Xem thử mô hình (không lái được)” (no 
 
 ### Task 2: Real low-speed vehicle on a prototype test ground
 
-> **Phase 3 mapping (implemented; software gates passed, final review pending):** delivered as Phase 3 Tasks 1 and 3 of the [phase plan](phase-3-implementation-plan.md) under the [approved phase design](phase-3-detail-design.md). Refinements: externally stepped rig, contact flags retained before wheel-transform refresh, typed `SimulationStateError`, authored yard/spawn, non-lesson contact stop, and an owner-approved version-specific braking correction. Actual measured gates are in [the evidence report](phase-3-measurements.md).
+> **Phase 3 mapping (implemented; software gates and final review complete):** delivered as Phase 3 Tasks 1 and 3 of the [phase plan](phase-3-implementation-plan.md) under the [approved phase design](phase-3-detail-design.md). Refinements: externally stepped rig, contact flags retained before wheel-transform refresh, typed `SimulationStateError`, authored yard/spawn, non-lesson contact stop, and an owner-approved version-specific braking correction. Actual measured gates are in [the evidence report](phase-3-measurements.md).
 
 **Setup:** first run `npm install --save-exact cannon-es@0.20.0` (deferred from Task 1) and commit the updated `package.json` and `package-lock.json` with this task.
 
@@ -231,7 +231,7 @@ Menu has the preview entry “Xem thử mô hình (không lái được)” (no 
 - Produces `createVehicleRig(world: CANNON.World, profile: VehicleProfile): VehicleRig`.
 - `VehicleRig` exposes `body: CANNON.Body`, `vehicle: CANNON.RaycastVehicle`, `settle(spawn: SpawnPose): void`, `applyInput(frame: InputFrame, actions: readonly InputAction[], h: number): readonly ControlNotice[]`, `snapshot(simulationTimeS: number): PhysicsSnapshot`, and `dispose(): void`.
 
-- [ ] **Step 1: Write failing geometry/steering/drive tests.** Assert full-lock left/right inner/outer relationships and mirror-aware COM-offset corners, not merely profile constants.
+- [x] **Step 1: Write failing geometry/steering/drive tests.** Assert full-lock left/right inner/outer relationships and mirror-aware COM-offset corners, not merely profile constants.
 
 ```ts
 it('uses the inside front wheel for a left turn', () => {
@@ -248,14 +248,14 @@ Use a real Cannon world for forward/reverse signs, stationary shift interlock,
 front-wheel propulsion, brake-over-throttle, P/parking-brake holds, finite
 settling and per-step brake-impulse conversion. Include eight-step slow frames
 against a 0.1 m thick solid box at the allowed training speed.
-- [ ] **Step 2: Run red.** `npm test -- src/vehicle/vehicle.test.ts`.
-- [ ] **Step 3: Implement the rig and prototype integration.** Copy all profile/world values from design Sections 4-5. Derive axle/mount/collider offsets; compute signed speed against -Z; apply Ackermann, resistance-compensated creep, force taper and fixed-step braking. Preserve suspension contact data before refreshing render wheel transforms. A non-finite snapshot throws a typed `SimulationStateError`; `app.ts` stops stepping and displays Error, not learner Fail. Display simple, explicitly labeled development geometry on a flat ground; it is not release art or a validated lesson.
-- [ ] **Step 4: Verify the slice.** Repeat the tests, typecheck and build. On real physics at 30/60/144 simulated render schedules, compare elapsed simulated seconds, creep within +/-0.1 m/s after 6 s, braking from 5 km/h within 0.5 m, and 60 s hold drift <=0.02 m. A failing target triggers tuning and remeasurement, not relaxed assertions.
-- [ ] **Step 5: Commit.** Message: `feat: add calibrated-profile vehicle physics foundation`.
+- [x] **Step 2: Run red.** `npm test -- src/vehicle/vehicle.test.ts`.
+- [x] **Step 3: Implement the rig and prototype integration.** Copy all profile/world values from design Sections 4-5. Derive axle/mount/collider offsets; compute signed speed against -Z; apply Ackermann, resistance-compensated creep, force taper and fixed-step braking. Preserve suspension contact data before refreshing render wheel transforms. A non-finite snapshot throws a typed `SimulationStateError`; `app.ts` stops stepping and displays Error, not learner Fail. Display simple, explicitly labeled development geometry on a flat ground; it is not release art or a validated lesson.
+- [x] **Step 4: Verify the slice.** Repeat the tests, typecheck and build. On real physics at 30/60/144 simulated render schedules, compare elapsed simulated seconds, creep within +/-0.1 m/s after 6 s, braking from 5 km/h within 0.5 m, and 60 s hold drift <=0.02 m. A failing target triggers tuning and remeasurement, not relaxed assertions.
+- [x] **Step 5: Commit.** Message: `feat: add calibrated-profile vehicle physics foundation`.
 
 ### Task 3: Keyboard, wheel calibration and safe input ownership
 
-> **Phase 3 mapping (implemented; software gates passed, final review pending):** delivered as Phase 3 Tasks 2-4. Refinements: `InputController.checkNeutral(): MessageKey | null`; boolean `Preview.resume()` gates running UI; invalid calibration produces visible feedback; device selection/verification stay in session memory; keyboard steering ramps at fixed-step time. Native session controls survive focus-loss redraws. Pointer-lock tests move to Task 4.
+> **Phase 3 mapping (implemented; software gates and final review complete):** delivered as Phase 3 Tasks 2-4. Refinements: `InputController.checkNeutral(): MessageKey | null`; boolean `Preview.resume()` gates running UI; invalid calibration produces visible feedback; device selection/verification stay in session memory; keyboard steering ramps at fixed-step time. Native session controls survive focus-loss redraws; window refocus recovers missed keyup events without replay or automatic resume. Pointer-lock tests move to Task 4.
 
 **Files:** Create `src\input\calibration.ts`, `controller.ts`, `input.test.ts`,
 `tests\browser\driving.spec.ts`; modify `src\app.ts`, `runtime-types.ts`,
@@ -270,12 +270,12 @@ against a 0.1 m thick solid box at the allowed training speed.
 - Controller calibration remains in session memory until Task 7 wires persistence.
 - Add `mountCalibration(root: HTMLElement, selectedIndex: number, getGamepads: () => readonly (Gamepad | null)[], onComplete: (value: ControllerCalibration) => void, onCancel: () => void): () => void` in `src\ui\screens.ts`. Calibration is a Menu/Paused dialog, not a second driving session; poll raw controls there only while normal driving polls are stopped.
 
-- [ ] **Step 1: Write failing input tests.** Parameterize button/axis and inverted pedals so released maps to 0 and fully pressed to 1. Reject equal endpoints, absent indices, NaN and infinity visibly. Test the 0.02 steering dead zone and both unequal calibration spans.
-- [ ] **Step 2: Add failing lifecycle/input ownership tests.** A held shoulder yields one R/D action; keyboard and gamepad never blend; typing in a DOM control never drives; blur, disconnect and source change clear throttle/steering/action queues and return a pause reason. Resume cannot succeed until explicitly requested with released pedals.
-- [ ] **Step 3: Run red.** `npm test -- src/input/input.test.ts src/ui/ui.test.ts`.
-- [ ] **Step 4: Implement polling and calibration UI.** Use the exact key/button mapping in design Section 6, including S as brake, Digit1-4 as P/R/N/D, Space parking brake and Q/E indicators. Explain nonstandard devices and expose steering/pedal endpoint capture. Poll once per animation frame; retain discrete actions until the next fixed step, consume once, and clear on pause/reset/source switch. Do not introduce force feedback or silently guess unknown wheel mappings.
-- [ ] **Step 5: Verify the slice.** Repeat unit tests and run `npm run test:browser -- tests/browser/driving.spec.ts`, typecheck and build. Browser tests operate keyboard controls on the real prototype, verify DOM focus pause behavior and check disconnect handling through an injected Gamepad provider (Phase 3 moves the pointer-lock-loss test to Task 4, where acquisition exists). This injection does not count as real wheel compatibility evidence.
-- [ ] **Step 6: Commit.** Message: `feat: add safe keyboard and calibrated wheel input`.
+- [x] **Step 1: Write failing input tests.** Parameterize button/axis and inverted pedals so released maps to 0 and fully pressed to 1. Reject equal endpoints, absent indices, NaN and infinity visibly. Test the 0.02 steering dead zone and both unequal calibration spans.
+- [x] **Step 2: Add failing lifecycle/input ownership tests.** A held shoulder yields one R/D action; keyboard and gamepad never blend; typing in a DOM control never drives; blur, disconnect and source change clear throttle/steering/action queues and return a pause reason. Resume cannot succeed until explicitly requested with released pedals.
+- [x] **Step 3: Run red.** `npm test -- src/input/input.test.ts src/ui/ui.test.ts`.
+- [x] **Step 4: Implement polling and calibration UI.** Use the exact key/button mapping in design Section 6, including S as brake, Digit1-4 as P/R/N/D, Space parking brake and Q/E indicators. Explain nonstandard devices and expose steering/pedal endpoint capture. Poll once per animation frame; retain discrete actions until the next fixed step, consume once, and clear on pause/reset/source switch. Do not introduce force feedback or silently guess unknown wheel mappings.
+- [x] **Step 5: Verify the slice.** Repeat unit tests and run `npm run test:browser -- tests/browser/driving.spec.ts`, typecheck and build. Browser tests operate keyboard controls on the real prototype, verify DOM focus pause behavior and check disconnect handling through an injected Gamepad provider (Phase 3 moves the pointer-lock-loss test to Task 4, where acquisition exists). This injection does not count as real wheel compatibility evidence.
+- [x] **Step 6: Commit.** Message: `feat: add safe keyboard and calibrated wheel input`.
 
 ### Task 4: Useful driving views, mirrors and geometric guidance
 

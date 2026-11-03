@@ -163,6 +163,24 @@ describe('preview lifecycle', () => {
     expect(f.world.bodies).toHaveLength(0);
   });
 
+  it('requires explicit resume after window refocus even when a keyup was lost', () => {
+    const f = fixture();
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
+    f.key('KeyS');
+    window.dispatchEvent(new Event('blur'));
+    expect(f.frames.size).toBe(0);
+    expect(p.resume()).toBe(false);
+    window.dispatchEvent(new Event('focus'));
+    expect(f.frames.size).toBe(0);
+    expect(p.resume()).toBe(true);
+    f.canvas.dispatchEvent(new KeyboardEvent('keydown', {
+      code: 'KeyS', repeat: true, bubbles: true,
+    }));
+    f.frame(60);
+    expect(f.events.onTelemetry.mock.lastCall?.[0].brake).toBe(0);
+    p.dispose();
+  });
+
   it('surfaces non-finite physics and disposes its world on close', () => {
     const f = fixture();
     const p = createPreview(f.canvas, f.container, f.events, f.deps);

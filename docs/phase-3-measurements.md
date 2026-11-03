@@ -81,7 +81,7 @@ equals the chassis coefficient 0.6.
 
 ## Software verification
 
-`npm test`: 165/165 unit, DOM and real-physics tests passed.
+`npm test`: 167/167 unit, DOM and real-physics tests passed.
 `npm run typecheck`, `npm run build` and `git diff --check` passed.
 `npm run test:browser`: 12/12 passed, six each in Chromium and Firefox,
 with Playwright 1.64.1 on Linux. Browser coverage includes actual rendered
@@ -97,7 +97,22 @@ also fail explicitly rather than silently normalizing to zero.
 
 The production bundle is approximately 660 kB minified; Vite's >500 kB
 warning is retained, not suppressed. This is no performance certification.
-Final independent branch review is pending.
+
+## Final branch review
+
+One fresh Premium whole-branch review of `473939a..5ca8069` found no Critical
+issues and one lost-keyup Resume problem. The reviewer labeled it Minor; the
+implementer regraded it Important because releasing a movement key in another
+application could leave Resume blocked with a misleading release instruction.
+Two regressions failed before the correction. Window refocus now clears stale
+suppression without automatic resume or held-key repeat replay. The full
+167-test suite, typecheck/build and all 12 Chromium/Firefox tests passed after
+the correction. No second reviewer was dispatched.
+
+Reviewed behaviors retained: a same-gear request still checks the shift
+interlock; keyboard HUD Pause can record focus rather than user as the reason;
+physical controller R/D mapping uses HUD buttons for P/N/parking brake.
+These do not bypass safety or claim additional hardware support.
 
 ## Pending (not established here)
 

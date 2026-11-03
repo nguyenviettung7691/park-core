@@ -2,7 +2,7 @@
 
 Date: 2026-11-03
 
-Status: Design, plan and targeted braking correction approved by the owner on 2026-11-03. Implemented software gates pass (165 unit/DOM/physics tests, typecheck/build, 12 Chromium/Firefox tests); final branch review pending.
+Status: Design, plan and targeted braking correction approved by the owner on 2026-11-03. Implemented software gates pass (167 unit/DOM/physics tests, typecheck/build, 12 Chromium/Firefox tests). Final branch review and its verified correction are complete; integration awaits owner direction.
 
 Sources: [technical roadmap](tech-design.md), [approved product design](detail-design.md),
 [original implementation plan, Tasks 2–3](implementation-plan.md), and the
@@ -203,6 +203,9 @@ Movement keys only act while the focusable canvas owns keyboard input. Ignore
 editable controls and modified browser/system shortcuts. Losing keyboard focus
 pauses and clears held inputs and queued actions. Suppress stale/repeated held
 keys across blur until release or a fresh press; no held-key replay on resume.
+When the window regains focus, clear stale suppression because a keyup may
+have gone to another application. This never resumes automatically or
+reactivates repeat keydowns; driving still requires a fresh non-repeat press.
 
 Poll one selected source once per running animation frame. Cache normalized
 continuous input for substeps; retain discrete actions until the first subsequent
