@@ -4,6 +4,8 @@ Date: 2026-11-03
 
 Status: Approved and implemented on 2026-11-03. Scaffold software checks passed; this is not a validated driving simulation or performance result.
 
+Supersession note: the [Phase 3 design](phase-3-detail-design.md) will replace the static preview with a drivable prototype and fix the deferred resume race through a boolean-returning `Preview.resume()`; that resolution is planned, not implemented. The 46-test/six-browser-test evidence below remains the historical Phase 2 result.
+
 Scope: Phase 2 "Design & Scaffolding" of [the technical design](tech-design.md). This is **not** the instruction file's "Phase 2" (Cannon-es/Gamepad physics). It refines [the approved detailed design](detail-design.md) and Task 1 of [the implementation plan](implementation-plan.md); where they differ, Section 9 lists the precise updates the implementing agent will apply after approval.
 
 Deliverable order requested by the owner: this design, then the Phase 2 implementation plan, then code. The implementing agent also updates original documents alongside the deliverable that changes a decision.

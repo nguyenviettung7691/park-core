@@ -2,7 +2,7 @@
 
 Date: 2026-11-03
 
-Status: Draft awaiting owner approval. No Phase 3 code or dependencies installed.
+Status: Approved by the project owner on 2026-11-03. No Phase 3 code or dependencies installed.
 
 Sources: [technical roadmap](tech-design.md), [approved product design](detail-design.md),
 [original implementation plan, Tasks 2–3](implementation-plan.md), and the
@@ -381,9 +381,9 @@ Vietnamese wording polish, bounded settling convergence thresholds, and
 measurement helpers. No new framework, premature camera/aids work, changed
 acceptance tolerances or claimed real-device validation without approval.
 
-The design requires a fresh builder check and owner approval before the
-implementation plan or product code. Engine behavior is source-verified,
-not experimentally verified yet.
+The fresh builder check and owner approval are complete. The next deliverable
+is the implementation plan. Engine behavior is source-verified, not
+experimentally verified yet.
 
 ### Builder check
 

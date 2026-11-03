@@ -40,7 +40,7 @@
   - `axes[0]` = steering wheel input.
   - `buttons[6]` (L2) = brake pedal.
   - `buttons[7]` (R2) = throttle pedal.
-  - `buttons[4]` / `buttons[5]` = gear shifting (D/R toggle).
+  - `buttons[4]` / `buttons[5]` = explicit gear requests (`buttons[4]` requests R, `buttons[5]` requests D).
 
 ## Design Language
 

@@ -12,6 +12,8 @@
 
 **Date / status:** Approved and implemented on 2026-11-03. All three task verification gates passed (46 unit/DOM tests, typecheck, production build, six Chromium/Firefox tests). The owner supplied Git author identity and approved committing and merging locally into `main`, without a push.
 
+> **Supersession note:** the [Phase 3 plan](phase-3-implementation-plan.md) (pending owner review) will replace the static preview and change `Preview.resume()` to return `boolean`, resolving the deferred resume race; not yet implemented. The evidence above stays historical.
+
 ## Global Constraints
 
 - Fixed step `h = 1/120 s`; at most 8 steps per frame; wall-clock delta clamp 0.1 s.

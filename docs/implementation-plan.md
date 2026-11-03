@@ -8,7 +8,7 @@
 
 **Tech Stack:** Strict TypeScript, Vite, Three.js, Cannon-es; Vitest for logic/physics tests, jsdom for DOM tests, Playwright for browser integration.
 
-**Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative. Phase 2 refinements: [phase design](phase-2-detail-design.md) and [phase plan](phase-2-implementation-plan.md).
+**Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative. Phase 2 refinements: [phase design](phase-2-detail-design.md) and [phase plan](phase-2-implementation-plan.md). Phase 3 refinements for Tasks 2-3: [phase design](phase-3-detail-design.md) (approved) and [phase plan](phase-3-implementation-plan.md) (pending owner review).
 
 **Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed. The owner supplied Git identity and approved committing and merging locally. Tasks 2-8 remain unimplemented and outside the current execution approval.
 
@@ -214,7 +214,9 @@ Menu has the preview entry “Xem thử mô hình (không lái được)” (no 
 
 ### Task 2: Real low-speed vehicle on a prototype test ground
 
-**Setup:** first run `npm install --save-exact cannon-es` (deferred from Task 1) and commit the updated `package.json` and `package-lock.json` with this task.
+> **Phase 3 mapping (planned, pending owner plan review; not implemented):** this task is delivered as Phase 3 Tasks 1 and 3 of the [phase plan](phase-3-implementation-plan.md) under the [approved phase design](phase-3-detail-design.md). Refinements: the rig is stepped externally, contact flags are captured before wheel-transform refresh, `SimulationStateError` is typed, the yard/spawn coordinates are designer choices, a chassis/mirror contact is a laboratory stop (not `AppState.fail`), and measured gates are recorded in `docs/phase-3-measurements.md`.
+
+**Setup:** first run `npm install --save-exact cannon-es@0.20.0` (deferred from Task 1) and commit the updated `package.json` and `package-lock.json` with this task.
 
 **Files:** Create `src\vehicle\profiles.ts`, `geometry.ts`, `steering.ts`,
 `rig.ts`, `vehicle.test.ts`, `src\world\colliders.ts`; modify `package.json`,
@@ -246,12 +248,14 @@ Use a real Cannon world for forward/reverse signs, stationary shift interlock,
 front-wheel propulsion, brake-over-throttle, P/parking-brake holds, finite
 settling and per-step brake-impulse conversion. Include eight-step slow frames
 against a 0.1 m thick solid box at the allowed training speed.
-- [ ] **Step 2: Run red.** `npm test -- src\vehicle\vehicle.test.ts`.
+- [ ] **Step 2: Run red.** `npm test -- src/vehicle/vehicle.test.ts`.
 - [ ] **Step 3: Implement the rig and prototype integration.** Copy all profile/world values from design Sections 4-5. Derive axle/mount/collider offsets; compute signed speed against -Z; apply Ackermann, resistance-compensated creep, force taper and fixed-step braking. Preserve suspension contact data before refreshing render wheel transforms. A non-finite snapshot throws a typed `SimulationStateError`; `app.ts` stops stepping and displays Error, not learner Fail. Display simple, explicitly labeled development geometry on a flat ground; it is not release art or a validated lesson.
 - [ ] **Step 4: Verify the slice.** Repeat the tests, typecheck and build. On real physics at 30/60/144 simulated render schedules, compare elapsed simulated seconds, creep within +/-0.1 m/s after 6 s, braking from 5 km/h within 0.5 m, and 60 s hold drift <=0.02 m. A failing target triggers tuning and remeasurement, not relaxed assertions.
 - [ ] **Step 5: Commit.** Message: `feat: add calibrated-profile vehicle physics foundation`.
 
 ### Task 3: Keyboard, wheel calibration and safe input ownership
+
+> **Phase 3 mapping (planned, pending owner plan review; not implemented):** delivered as Phase 3 Tasks 2-4. Refinements: `InputController` also exposes `checkNeutral(): MessageKey | null`; `Preview.resume()` returns `boolean` and the shell shows running only on `true`; `validateCalibration` returns `null` on failure (the caller shows the notice); calibration and the selected device stay in session memory (no Storage until Task 7); keyboard steering ramp runs in the rig at fixed-step time; pointer-lock tests move to Task 4.
 
 **Files:** Create `src\input\calibration.ts`, `controller.ts`, `input.test.ts`,
 `tests\browser\driving.spec.ts`; modify `src\app.ts`, `runtime-types.ts`,
@@ -268,9 +272,9 @@ against a 0.1 m thick solid box at the allowed training speed.
 
 - [ ] **Step 1: Write failing input tests.** Parameterize button/axis and inverted pedals so released maps to 0 and fully pressed to 1. Reject equal endpoints, absent indices, NaN and infinity visibly. Test the 0.02 steering dead zone and both unequal calibration spans.
 - [ ] **Step 2: Add failing lifecycle/input ownership tests.** A held shoulder yields one R/D action; keyboard and gamepad never blend; typing in a DOM control never drives; blur, disconnect and source change clear throttle/steering/action queues and return a pause reason. Resume cannot succeed until explicitly requested with released pedals.
-- [ ] **Step 3: Run red.** `npm test -- src\input\input.test.ts src\ui\ui.test.ts`.
-- [ ] **Step 4: Implement polling and calibration UI.** Use the exact key/button mapping in design Section 6, including S as brake, Digit1-4 as P/R/N/D, Space parking brake and Q/E indicators. Explain nonstandard devices and expose steering/pedal endpoint capture. Process discrete actions once per animation-frame poll even when multiple physics steps occur. Do not introduce force feedback or silently guess unknown wheel mappings.
-- [ ] **Step 5: Verify the slice.** Repeat unit tests and run `npm run test:browser -- tests\browser\driving.spec.ts`, typecheck and build. Browser tests operate keyboard controls on the real prototype, verify pointer-lock loss/DOM focus pause behavior and check disconnect handling through an injected Gamepad provider. This injection does not count as real wheel compatibility evidence.
+- [ ] **Step 3: Run red.** `npm test -- src/input/input.test.ts src/ui/ui.test.ts`.
+- [ ] **Step 4: Implement polling and calibration UI.** Use the exact key/button mapping in design Section 6, including S as brake, Digit1-4 as P/R/N/D, Space parking brake and Q/E indicators. Explain nonstandard devices and expose steering/pedal endpoint capture. Poll once per animation frame; retain discrete actions until the next fixed step, consume once, and clear on pause/reset/source switch. Do not introduce force feedback or silently guess unknown wheel mappings.
+- [ ] **Step 5: Verify the slice.** Repeat unit tests and run `npm run test:browser -- tests/browser/driving.spec.ts`, typecheck and build. Browser tests operate keyboard controls on the real prototype, verify DOM focus pause behavior and check disconnect handling through an injected Gamepad provider (Phase 3 moves the pointer-lock-loss test to Task 4, where acquisition exists). This injection does not count as real wheel compatibility evidence.
 - [ ] **Step 6: Commit.** Message: `feat: add safe keyboard and calibrated wheel input`.
 
 ### Task 4: Useful driving views, mirrors and geometric guidance
@@ -306,7 +310,7 @@ Do not cast a partial fake to an entire renderer.
 - [ ] **Step 2: Add failing timing/resize tests.** Mirrors never exceed 15 Hz and never catch up in bursts; overhead capture never exceeds 30 Hz but composites every rendered frame. CSS-to-buffer rectangles respect the 2560x1440 cap and WebGL bottom-left origin.
 - [ ] **Step 3: Run red.** `npm test -- src\views\views.test.ts`.
 - [ ] **Step 4: Implement the view system and HUD.** Use design Section 7 camera/FOV/texture sizes, one renderer, one overhead RenderTarget and one pass owner. Interpolate chassis/wheels together. Use prototype `SceneAssets` with deliberate driver/mirror anchors until Task 6. Exclude mirror surfaces/driver head from mirror cameras and ceiling visuals only from overhead. Keep all labels and controls Vietnamese.
-- [ ] **Step 5: Verify the slice.** Repeat unit tests, typecheck, build and the driving browser test. In a real WebGL view, verify labeled left/right landmarks, resize/aid toggles, visible mirrors, overhead forward-up orientation and no clipping through a garage test wall. Check 1280x720/2560x1440 HUD layout; a pass-state fake alone is insufficient.
+- [ ] **Step 5: Verify the slice.** Repeat unit tests, typecheck, build and the driving browser test. In a real WebGL view, verify labeled left/right landmarks, resize/aid toggles, visible mirrors, overhead forward-up orientation and no clipping through a garage test wall. Check 1280x720/2560x1440 HUD layout; a pass-state fake alone is insufficient. Pointer-lock acquisition, mouse look and the required-lock-loss pause test (moved from Task 3) are verified here in the real browser.
 - [ ] **Step 6: Commit.** Message: `feat: add driver views mirrors and parking aids`.
 
 ### Task 5: Bumper warnings and accessible audio

@@ -41,7 +41,7 @@ The simulator restricts the drivetrain to automatic transmissions (P, R, N, D), 
 * `axes[0]`: Steering wheel input.
 * `buttons[6]` (L2): Brake pedal.
 * `buttons[7]` (R2): Throttle pedal.
-* `buttons[4]/[5]`: Gear shifting (D/R toggle).
+* `buttons[4]` requests R and `buttons[5]` requests D (explicit edge-triggered requests, not a toggle).
 
 ## 5. Environments & Progression
 
@@ -93,6 +93,7 @@ Here is the detailed task breakdown mapped to the optimal AI model tiers.
 **Phase 3: Physics & Input Mechanics**
 
 * **Tasks:** Implement Cannon-es world, configure the `RaycastVehicle` (suspension, friction, Ackermann steering), and implement the Gamepad API polling loop.
+* **Phase 3 scope:** a drivable physics prototype only (real `RaycastVehicle` for both vehicles, keyboard and explicitly calibrated Gamepad input, external follow camera, truthful telemetry); no lessons, mirrors, sensors or assets. See [the phase design](phase-3-detail-design.md) (approved) and [the phase plan](phase-3-implementation-plan.md) (pending owner review).
 * **Model Routing:** Premium (Claude 3 Opus) for Cannon-es physics tuning to prevent mathematical hallucinations. Standard for input polling.
 
 **Phase 4: Vision & Support Systems**

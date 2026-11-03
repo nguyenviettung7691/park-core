@@ -333,6 +333,8 @@ dead zone and rescales the remainder. Store calibration locally by reported
 controller ID as a convenience, but ask the learner to verify it on reconnect;
 the browser ID is not a unique physical-device identity.
 
+> **Phase 3 clarification:** until persistence (Task 7), accepted calibration and the selected device live only in session memory; nothing is stored by controller ID yet.
+
 Select keyboard or a calibrated controller explicitly. Never combine throttle
 from one source and steering from another. Mouse and HUD actions remain usable
 with either source. Switching source pauses, clears held commands and requires
@@ -359,6 +361,8 @@ Restore arm length smoothly when clear, but retract immediately.
 
 Mirrors and target/aid placement must remain readable at the supported viewport.
 First-person camera position is part of each vehicle profile, not a global offset.
+
+> **Phase 3 clarification:** the physics prototype temporarily uses a fixed external follow camera and no mouse look or pointer-lock acquisition; the driver/chase views above arrive in Phase 4 and the final requirement is unchanged.
 
 ### Three mirrors
 
@@ -543,6 +547,8 @@ Leaving the scenario's allowed bounds, tipping more than 30 degrees, or
 exceeding 15 km/h for one simulation second also fails the attempt.
 The speed boundary is a training-scope constraint, not a Vietnamese legal limit.
 Non-finite physics state is an application error, not a learner collision.
+
+> **Phase 3 clarification:** the physics prototype has no attempt or lesson. A chassis/mirror/ground contact there is a non-lesson laboratory stop (only Reset/Menu continue), not `AppState.fail`, a recap or progression. The final curriculum failure rules above are unchanged.
 
 On failure: zero requested controls, stop stepping the attempt, stop audio,
 capture the first reason and relevant obstacle, then show Fail/recap. Retry
