@@ -2,7 +2,7 @@
 
 Date: 2026-11-03
 
-Status: Design, plan and targeted braking correction approved by the owner on 2026-11-03. Implemented software gates pass (167 unit/DOM/physics tests, typecheck/build, 12 Chromium/Firefox tests). Final branch review and its verified correction are complete; integration awaits owner direction.
+Status: Design, plan and targeted braking correction approved by the owner on 2026-11-03. Implemented software gates pass (167 unit/DOM/physics tests, typecheck/build, 12 Chromium/Firefox tests). Final branch review and its verified correction are complete. Merged into local `main` with owner approval; nothing pushed.
 
 Sources: [technical roadmap](tech-design.md), [approved product design](detail-design.md),
 [original implementation plan, Tasks 2–3](implementation-plan.md), and the

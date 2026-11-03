@@ -10,7 +10,7 @@
 
 **Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative. Phase 2 refinements: [phase design](phase-2-detail-design.md) and [phase plan](phase-2-implementation-plan.md). Approved Phase 3 refinements for Tasks 2-3: [phase design](phase-3-detail-design.md) and [phase plan](phase-3-implementation-plan.md).
 
-**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are now implemented in the isolated phase branch: 167 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed. Final independent review and its verified correction are complete; integration awaits owner direction. Tasks 4-8 remain unimplemented.
+**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are implemented and merged into local `main` with owner approval: 167 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed. Final independent review and its verified correction are complete; merged-tree tests, typecheck and build passed. Nothing pushed. Tasks 4-8 remain unimplemented.
 
 ## Global Constraints
 

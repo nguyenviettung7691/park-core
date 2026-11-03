@@ -114,6 +114,15 @@ interlock; keyboard HUD Pause can record focus rather than user as the reason;
 physical controller R/D mapping uses HUD buttons for P/N/parking brake.
 These do not bypass safety or claim additional hardware support.
 
+## Local integration
+
+The owner selected a local merge. `main` fast-forwarded from `473939a` to
+`32b9061`, byte-identical to the verified phase branch. After restoring locked
+dependencies with `npm ci`, the merged tree passed all 167 tests, typecheck,
+build and whitespace checks. Browser evidence above is from that same code
+tree before integration. Nothing was pushed. The sibling Phase 2 and Phase 3
+worktrees and the Phase 2 documentation backup stash remain preserved.
+
 ## Pending (not established here)
 
 Real hardware controllers, reference-PC and Windows performance, assets and
