@@ -21,6 +21,7 @@ export function mountScreen(
   const screen = document.createElement('main');
   const preview = view?.preview ?? 'closed';
   screen.className = preview === 'running' ? 'preview-shell panel' : 'screen panel';
+  if (preview === 'paused') screen.classList.add('preview-paused');
   const listeners = new AbortController();
 
   function text(tag: 'h1' | 'p', value: string) {

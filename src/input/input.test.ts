@@ -336,6 +336,19 @@ describe('gamepad source', () => {
     expect(poll.frame.brake).toBe(0.5);
   });
 
+  it('toggles the parking brake on a gamepad button press edge', () => {
+    const { controller, world } = gamepadController();
+    world.pads = [makePad()];
+    expect(controller.poll().actions).toEqual([]);
+    world.pads = [makePad({ buttons: [1, 0, 0, 0, 0, 0, 0, 0] })];
+    expect(controller.poll().actions).toEqual([{ type: 'toggle-parking-brake' }]);
+    expect(controller.poll().actions).toEqual([]);
+    world.pads = [makePad()];
+    controller.poll();
+    world.pads = [makePad({ buttons: [1, 0, 0, 0, 0, 0, 0, 0] })];
+    expect(controller.poll().actions).toEqual([{ type: 'toggle-parking-brake' }]);
+  });
+
   it('keeps gamepad state when the canvas blurs to a HUD control', () => {
     const { target, controller } = gamepadController();
     controller.enqueue({ type: 'toggle-parking-brake' });

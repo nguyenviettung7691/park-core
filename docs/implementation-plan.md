@@ -10,7 +10,7 @@
 
 **Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative. Phase 2 refinements: [phase design](phase-2-detail-design.md) and [phase plan](phase-2-implementation-plan.md). Approved Phase 3 refinements for Tasks 2-3: [phase design](phase-3-detail-design.md) and [phase plan](phase-3-implementation-plan.md).
 
-**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are implemented and merged into local `main` with owner approval: 167 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed. Final independent review and its verified correction are complete; merged-tree tests, typecheck and build passed. Nothing pushed. Tasks 4-8 remain unimplemented.
+**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are implemented and merged into local `main` with owner approval: 167 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed. Final independent review and its verified correction are complete; merged-tree tests, typecheck and build passed. Nothing pushed. Phase 4 prototype code and software gates (Tasks 4-5) are complete in the current branch: 221 unit/DOM tests, typecheck, build and 22 Chromium/Firefox browser tests passed. Runs used Node v24.13.1, below the declared v24.15.0 minimum; Firefox viewport bounds used fresh contexts because live `page.setViewportSize()` hangs. Labeled mirror landmarks, garage-wall occlusion, supported-Node, real wheel, asset, reference-hardware and performance validation remain pending; see [Phase 4 detail](phase-4-detail-design.md) and [Phase 4 plan](phase-4-implementation-plan.md). Tasks 6-8 remain unimplemented.
 
 ## Global Constraints
 
@@ -279,6 +279,12 @@ against a 0.1 m thick solid box at the allowed training speed.
 
 ### Task 4: Useful driving views, mirrors and geometric guidance
 
+**Phase 4 implementation status:** Prototype code and automated software gates
+are complete. Real-browser tests pass in Chromium and Firefox. The current
+prototype has no labeled left/right mirror landmarks or garage test wall, so
+those original visual acceptance checks remain pending; do not treat them or
+asset-backed sightline validation as passed.
+
 **Files:** Create `src\views\cameras.ts`, `auxiliary.ts`, `trajectory.ts`,
 `views.test.ts`, `src\ui\hud.ts`; modify `src\app.ts`, `messages.ts`,
 `src\style.css`, `tests\browser\driving.spec.ts`.
@@ -290,7 +296,7 @@ against a 0.1 m thick solid box at the allowed training speed.
 - Defines `TrajectorySample` with `rearAxleM: Vec3Data` and `envelope: readonly [Vec3Data, Vec3Data, Vec3Data, Vec3Data]`; stop at 3 m or first predicted envelope overlap.
 - Produces `mountHud(root: HTMLElement, onAction: (action: InputAction) => void): Hud`; `Hud.update(telemetry: VehicleTelemetry, sensors: SensorSnapshot | null, instruction: MessageKey | null): void`, `Hud.dispose(): void`.
 
-- [ ] **Step 1: Write failing geometry and render-pass tests.** Straight trajectory at zero steering; opposite D/R direction; front-overhang sweep remains inside the conservative envelope; chase retracts on a hit and clears again. Use a typed renderer-port fake for pass ownership only.
+- [x] **Step 1: Write failing geometry and render-pass tests.** Straight trajectory at zero steering; opposite D/R direction; front-overhang sweep remains inside the conservative envelope; chase retracts on a hit and clears again. Use a typed renderer-port fake for pass ownership only.
 
 ```ts
 it('restores renderer state after an auxiliary pass throws', () => {
@@ -307,13 +313,18 @@ internal export from `auxiliary.ts`; `RendererPort` is the minimum typed subset
 of renderer methods needed for target/viewport/scissor/clear state. Define
 `AuxiliaryPass` there as the camera, scene and target/viewport description.
 Do not cast a partial fake to an entire renderer.
-- [ ] **Step 2: Add failing timing/resize tests.** Mirrors never exceed 15 Hz and never catch up in bursts; overhead capture never exceeds 30 Hz but composites every rendered frame. CSS-to-buffer rectangles respect the 2560x1440 cap and WebGL bottom-left origin.
-- [ ] **Step 3: Run red.** `npm test -- src\views\views.test.ts`.
-- [ ] **Step 4: Implement the view system and HUD.** Use design Section 7 camera/FOV/texture sizes, one renderer, one overhead RenderTarget and one pass owner. Interpolate chassis/wheels together. Use prototype `SceneAssets` with deliberate driver/mirror anchors until Task 6. Exclude mirror surfaces/driver head from mirror cameras and ceiling visuals only from overhead. Keep all labels and controls Vietnamese.
-- [ ] **Step 5: Verify the slice.** Repeat unit tests, typecheck, build and the driving browser test. In a real WebGL view, verify labeled left/right landmarks, resize/aid toggles, visible mirrors, overhead forward-up orientation and no clipping through a garage test wall. Check 1280x720/2560x1440 HUD layout; a pass-state fake alone is insufficient. Pointer-lock acquisition, mouse look and the required-lock-loss pause test (moved from Task 3) are verified here in the real browser.
+- [x] **Step 2: Add failing timing/resize tests.** Mirrors never exceed 15 Hz and never catch up in bursts; overhead capture never exceeds 30 Hz but composites every rendered frame. CSS-to-buffer rectangles respect the 2560x1440 cap and WebGL bottom-left origin.
+- [x] **Step 3: Run red.** `npm test -- src\views\views.test.ts`.
+- [x] **Step 4: Implement the view system and HUD.** Use design Section 7 camera/FOV/texture sizes, one renderer, one overhead RenderTarget and one pass owner. Interpolate chassis/wheels together. Use prototype `SceneAssets` with deliberate driver/mirror anchors until Task 6. Exclude mirror surfaces/driver head from mirror cameras and ceiling visuals only from overhead. Keep all labels and controls Vietnamese.
+- [ ] **Step 5: Verify the slice.** Automated unit/typecheck/build and both-browser tests pass; live 1280x720 Chromium rendering/resize and Firefox viewport bounds pass. Labeled left/right landmarks, garage-wall occlusion and 2560x1440 HUD layout remain pending until an appropriate scene/asset fixture exists. Pointer-lock lifecycle, camera changes, look/recenter, aid toggles and actual WebGL rendering are covered.
 - [ ] **Step 6: Commit.** Message: `feat: add driver views mirrors and parking aids`.
 
 ### Task 5: Bumper warnings and accessible audio
+
+**Phase 4 implementation status:** Sensor/audio code and software verification
+are complete. Automated browser tests cover muted visual labels, audio
+unlock/pause, unavailable-audio fallback and repeated disposal; manual
+obstacle approaches in both gears remain unverified.
 
 **Files:** Create `src\sensors\proximity.ts`, `audio.ts`, `sensors.test.ts`;
 modify `src\app.ts`, `messages.ts`, `src\ui\hud.ts`, `src\style.css`,
@@ -325,7 +336,7 @@ modify `src\app.ts`, `messages.ts`, `src\ui\hud.ts`, `src\style.css`,
 - Produces `createAudio(): AudioOutput`; `AudioOutput.unlock(): Promise<'ready' | 'unavailable'>`, `update(sensors: SensorSnapshot, signedSpeedMps: number, simulationTimeS: number): void`, `setVolume(value: number): void`, `setMuted(value: boolean): void`, `suspend(): void`, `dispose(): void`.
 - Unavailable audio returns a user-visible notice through `app.ts`; unexpected errors are not silently swallowed.
 
-- [ ] **Step 1: Write failing threshold/coverage tests.**
+- [x] **Step 1: Write failing threshold/coverage tests.**
 
 ```ts
 it.each([
@@ -339,10 +350,10 @@ it.each([
 Add hysteresis tests: entering a closer band is immediate; leaving yellow for
 green requires distance >1.25 m. Use real physics rays for nearest hit, self
 exclusion, distributed bumper origins and a low obstacle missed by ray height.
-- [ ] **Step 2: Write failing audio tests.** One stream chooses nearest warning and travel-direction tie; interval 1.0/0.5/0.2 s or continuous tone; mute/pause disposes scheduled sound; an AudioContext refusal reports unavailable while visual warnings remain.
-- [ ] **Step 3: Run red.** `npm test -- src\sensors\sensors.test.ts`.
-- [ ] **Step 4: Implement sensors/audio.** Copy ray height/range/yaws and warning labels from design Section 8. Schedule 20 Hz samples in the simulation clock, not a second `setInterval` loop. Start/unlock audio only on a user gesture and retain front/rear text/distance warnings without audio.
-- [ ] **Step 5: Verify the slice.** Repeat tests, typecheck/build and the driving browser test. Approach known obstacles in D and R; confirm STOP remains visible when muted and pause produces no residual beep. Document that rays do not guarantee side/low-obstacle clearance.
+- [x] **Step 2: Write failing audio tests.** One stream chooses nearest warning and travel-direction tie; interval 1.0/0.5/0.2 s or continuous tone; mute/pause disposes scheduled sound; an AudioContext refusal reports unavailable while visual warnings remain.
+- [x] **Step 3: Run red.** `npm test -- src\sensors\sensors.test.ts`.
+- [x] **Step 4: Implement sensors/audio.** Copy ray height/range/yaws and warning labels from design Section 8. Schedule 20 Hz samples in the simulation clock, not a second `setInterval` loop. Start/unlock audio only on a user gesture and retain front/rear text/distance warnings without audio.
+- [ ] **Step 5: Verify the slice.** Automated Cannon-ray, classification/hysteresis, browser label, audio pause/fallback, typecheck and build checks pass. The planned manual D/R obstacle approaches and muted STOP visual verification remain pending. Rays do not guarantee side/low-obstacle clearance.
 - [ ] **Step 6: Commit.** Message: `feat: add bumper proximity warnings and audio`.
 
 ### Task 6: Two real environments and vehicle/cockpit asset pipeline

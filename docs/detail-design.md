@@ -369,6 +369,8 @@ First-person camera position is part of each vehicle profile, not a global offse
 
 > **Phase 3 clarification:** the physics prototype temporarily uses a fixed external follow camera and no mouse look or pointer-lock acquisition; the driver/chase views above arrive in Phase 4 and the final requirement is unchanged.
 
+> **Phase 4 clarification:** the current prototype's cockpit, driver/mirror anchors and mirror surfaces are temporary geometry, not asset-backed or training-validated visuals. Phase 5 replaces them through the asset pipeline without changing the camera and sensor safety boundaries.
+
 ### Three mirrors
 
 Use rearview and two side-mirror cameras, each rendered to a low-resolution

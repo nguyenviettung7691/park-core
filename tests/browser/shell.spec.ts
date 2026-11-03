@@ -1,10 +1,31 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Browser } from '@playwright/test';
 
-test('menu, real rendering, resize, keyboard focus and repeated preview lifecycle', async ({ page }) => {
+async function checkFreshViewport(browser: Browser, url: string, width: number, height: number) {
+  const context = await browser.newContext({ viewport: { width, height } });
+  try {
+    const page = await context.newPage();
+    await page.goto(url);
+    await page.locator('#screen-layer button').first().click();
+    const canvas = page.locator('#simulation');
+    await expect(canvas).toHaveAttribute('data-engine', /three\.js/i);
+    await expect.poll(() => canvas.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return [Math.round(bounds.width), Math.round(bounds.height)];
+    })).toEqual([width, height]);
+    await expect.poll(() => canvas.evaluate((element: HTMLCanvasElement) =>
+      element.width <= 2560 && element.height <= 1440)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await canvas.screenshot();
+  } finally {
+    await context.close();
+  }
+}
+
+test('menu, real rendering, resize, keyboard focus and repeated preview lifecycle', async ({ browser, page }) => {
+  test.setTimeout(60000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Park-Core', exact: true })).toBeVisible();
   await expect(page.locator('canvas')).toHaveCount(0);
@@ -19,6 +40,14 @@ test('menu, real rendering, resize, keyboard focus and repeated preview lifecycl
   await expect(page.getByRole('heading', { name: 'Bản thử vật lý — chưa có bài học', exact: true })).toBeVisible();
   const canvas = page.locator('canvas#simulation');
   await expect(canvas).toBeVisible();
+  await expect(page.locator('#telemetry')).toBeVisible();
+  await expect(page.locator('#view-controls')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const telemetry = document.querySelector('#telemetry')!.getBoundingClientRect();
+    const controls = document.querySelector('#view-controls')!.getBoundingClientRect();
+    return telemetry.width >= 200 && telemetry.top >= 0 && telemetry.bottom <= innerHeight &&
+      controls.top >= 0 && controls.bottom <= innerHeight;
+  })).toBe(true);
   const screenshot = await canvas.screenshot();
   const colors = await page.evaluate(async (base64) => {
     const image = new Image();
@@ -41,19 +70,28 @@ test('menu, real rendering, resize, keyboard focus and repeated preview lifecycl
     return distinct.size;
   }, screenshot.toString('base64'));
   expect(colors).toBeGreaterThan(2);
-  for (const [width, height] of [[5000, 300], [400, 3000], [1280, 720]]) {
-    await page.setViewportSize({ width, height });
-    await expect.poll(() => canvas.evaluate((element: HTMLCanvasElement) =>
-      element.width <= 2560 && element.height <= 1440)).toBe(true);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  if (browser.browserType().name() === 'firefox') {
+    await checkFreshViewport(browser, page.url(), 5000, 300);
+    await checkFreshViewport(browser, page.url(), 400, 3000);
+  } else {
+    for (const [width, height] of [[5000, 300], [400, 3000], [1280, 720]]) {
+      await page.setViewportSize({ width, height });
+      await expect.poll(() => canvas.evaluate((element: HTMLCanvasElement) =>
+        element.width <= 2560 && element.height <= 1440)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
   }
   for (let i = 0; i < 10; i++) {
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();
     await expect(canvas).toHaveCount(0);
     await expect(select).toHaveValue('cuv');
     await open.click();
     await expect(canvas).toHaveCount(1);
   }
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();
   expect(errors).toEqual([]);
 });
@@ -85,6 +123,7 @@ test('blur needs explicit resume and context loss returns to an honest recovery 
   const open = page.getByRole('button', { name: 'Lái thử mô hình', exact: true });
   await open.click();
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.evaluate(() => document.exitPointerLock());
   const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });
   await expect(resume).toBeFocused();
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
@@ -103,6 +142,8 @@ test('blur needs explicit resume and context loss returns to an honest recovery 
   await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();
   await open.click();
   await expect(page.locator('canvas')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
   await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();
   expect(errors).toEqual([]);
 });

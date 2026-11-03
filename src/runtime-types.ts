@@ -33,6 +33,9 @@ export interface ColliderBox {
   readonly yawRad: number;
 }
 
+export const MIRROR_EXCLUDED_LAYER = 1;
+export const OVERHEAD_EXCLUDED_LAYER = 2;
+
 export interface VehicleAnchors {
   readonly driverEyeLocalM: Vec3Data;
   readonly mirrors: Readonly<Record<'rear' | 'left' | 'right', BodyPose>>;
@@ -89,6 +92,7 @@ export type ScreenAction =
   | { readonly type: 'select-input'; readonly source: InputSource;
       readonly gamepadIndex: number | null }
   | { readonly type: 'update-settings'; readonly settings: SettingsSaveV1 }
+  | { readonly type: 'recenter-view' }
   | { readonly type: 'open-preview' }
   | { readonly type: 'close-preview' }
   | { readonly type: 'pause' }

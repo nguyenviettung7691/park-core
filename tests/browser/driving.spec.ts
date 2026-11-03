@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Browser, type Page } from '@playwright/test';
 
 interface TestPad {
   id: string; index: number; connected: boolean; mapping: string; timestamp: number;
@@ -6,12 +6,98 @@ interface TestPad {
   vibrationActuator: null;
   hapticActuators: never[];
 }
-declare global { interface Window { testPad: TestPad } }
+interface TestAudioStats {
+  contexts: number; resumes: number; suspends: number; closes: number; gainValues: number[];
+}
+declare global {
+  interface Window { testPad: TestPad; testAudioStats: TestAudioStats }
+}
 
 async function open(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
   await expect(page.locator('#simulation')).toBeFocused();
+}
+
+async function waitForPointerLock(page: Page) {
+  await expect.poll(() => page.evaluate(() =>
+    document.pointerLockElement === document.querySelector('#simulation'))).toBe(true);
+}
+
+async function installAudioMock(page: Page, unavailable = false) {
+  await page.addInitScript((isUnavailable) => {
+    const stats = { contexts: 0, resumes: 0, suspends: 0, closes: 0, gainValues: [] as number[] };
+    window.testAudioStats = stats;
+    class TestAudioContext {
+      state: AudioContextState = 'suspended';
+      currentTime = 0;
+      destination = {};
+      constructor() { stats.contexts++; }
+      createOscillator() {
+        return {
+          type: 'sine',
+          frequency: { setValueAtTime: () => undefined },
+          connect: () => undefined,
+          start: () => undefined,
+          stop: () => undefined,
+          disconnect: () => undefined,
+        };
+      }
+      createGain() {
+        const gain = {
+          value: 0,
+          cancelScheduledValues: () => undefined,
+          setValueAtTime(value: number) {
+            gain.value = value;
+            stats.gainValues.push(value);
+          },
+        };
+        return { gain, connect: () => undefined, disconnect: () => undefined };
+      }
+      resume() {
+        stats.resumes++;
+        if (isUnavailable) return Promise.reject(new DOMException('Denied', 'NotAllowedError'));
+        this.state = 'running';
+        return Promise.resolve();
+      }
+      suspend() {
+        stats.suspends++;
+        this.state = 'suspended';
+        return Promise.resolve();
+      }
+      close() {
+        stats.closes++;
+        this.state = 'closed';
+        return Promise.resolve();
+      }
+    }
+    Object.defineProperty(globalThis, 'AudioContext', {
+      configurable: true, value: TestAudioContext,
+    });
+  }, unavailable);
+}
+
+async function checkFreshViewport(browser: Browser, url: string, width: number, height: number) {
+  const context = await browser.newContext({ viewport: { width, height } });
+  try {
+    const page = await context.newPage();
+    await installAudioMock(page);
+    await page.goto(url);
+    await page.locator('#screen-layer button').first().click();
+    await waitForPointerLock(page);
+    const canvas = page.locator('#simulation');
+    await expect(canvas).toHaveAttribute('data-engine', /three\.js/i);
+    await expect.poll(() => canvas.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return [Math.round(bounds.width), Math.round(bounds.height)];
+    })).toEqual([width, height]);
+    await expect.poll(() => canvas.evaluate((element: HTMLCanvasElement) =>
+      element.width <= 2560 && element.height <= 1440)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await canvas.screenshot();
+  } finally {
+    await context.close();
+  }
 }
 
 async function keyboardDrive(page: Page) {
@@ -56,6 +142,8 @@ test('real keyboard drivetrain, brake, invalid shift, pause, stale key and reset
   await page.getByRole('button', { name: 'Đặt lại xe', exact: true }).click();
   await expect(page.locator('#telemetry')).toContainText('0 km/h · P');
   await expect(page.locator('#telemetry')).toContainText('Phanh tay: Bật');
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
   await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();
   await expect(canvas).toHaveCount(0);
   expect(errors).toEqual([]);
@@ -73,7 +161,7 @@ test('real contact stops the prototype until Reset or Menu', async ({ page }) =>
   await expect(page.locator('#telemetry')).toContainText('0 km/h · P');
 });
 
-test('explicit calibration, physical brake plus HUD gear, disconnect and same-ID reconnect', async ({ page }) => {
+test('explicit calibration, physical brake and gamepad gear, disconnect and same-ID reconnect', async ({ page }) => {
   await page.addInitScript(() => {
     window.testPad = {
       id: 'Injected calibration wheel', index: 0, connected: true, mapping: 'standard', timestamp: 0,
@@ -107,11 +195,11 @@ test('explicit calibration, physical brake plus HUD gear, disconnect and same-ID
   await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
   await setButton(page, 6, 1);
   await expect(page.locator('#telemetry')).toContainText('Phanh chân: 100%');
-  await page.locator('#driving-controls').getByRole('button', { name: 'D', exact: true }).click();
+  await setButton(page, 5, 1);
   await expect(page.locator('#telemetry')).toContainText('D');
-  await page.locator('#driving-controls').getByRole('button', { name: 'Phanh tay', exact: true }).click();
+  await setButton(page, 5, 0);
   await setButton(page, 6, 0);
-  await expect(page.locator('#telemetry')).toContainText('3 km/h', { timeout: 10000 });
+  await expect(page.locator('#telemetry')).toContainText('Phanh chân: 0%');
   await page.evaluate(() => { window.testPad.connected = false; });
   const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });
   await expect(resume).toBeDisabled();
@@ -127,4 +215,179 @@ test('explicit calibration, physical brake plus HUD gear, disconnect and same-ID
   await expect(resume).toBeEnabled();
   await resume.click();
   await expect(page.locator('#telemetry')).toContainText('Bàn phím');
+});
+
+test('unlocks audio on start, pauses silently, and requires explicit pointer-lock resume', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await installAudioMock(page);
+  await page.goto('/');
+  expect(await page.evaluate(() => window.testAudioStats.contexts)).toBe(0);
+  await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+  await waitForPointerLock(page);
+  await expect.poll(() => page.evaluate(() => window.testAudioStats.resumes)).toBe(1);
+  await keyboardDrive(page);
+  await page.keyboard.down('w');
+  const front = page.locator('#proximity-front');
+  await expect(front).toContainText(/\d,\d{2} m/, { timeout: 25000 });
+  await page.keyboard.up('w');
+  await expect.poll(() => page.evaluate(() =>
+    window.testAudioStats.gainValues.some((value) => value > 0))).toBe(true);
+
+  await page.keyboard.press('Escape');
+  const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });
+  await expect(resume).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.testAudioStats.suspends)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() =>
+    window.testAudioStats.gainValues.at(-1))).toBe(0);
+  await resume.click();
+  await waitForPointerLock(page);
+  await expect.poll(() => page.evaluate(() => window.testAudioStats.resumes)).toBeGreaterThan(1);
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
+  await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();
+  await expect(page.locator('#simulation')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('keeps front and rear distance labels visible while warnings are muted', async ({ page }) => {
+  test.setTimeout(45000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await installAudioMock(page);
+  await open(page);
+  await waitForPointerLock(page);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true })).toBeVisible();
+  await page.getByLabel('Tắt âm thanh cảnh báo', { exact: true }).check();
+  await expect(page.locator('#mute-audio')).toBeChecked();
+  await page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true }).click();
+  await waitForPointerLock(page);
+  await keyboardDrive(page);
+  await page.keyboard.down('w');
+  await expect(page.locator('#proximity-front')).toContainText(/\d,\d{2} m/, { timeout: 25000 });
+  await page.keyboard.up('w');
+  await expect(page.locator('#proximity-front')).toContainText('Trước:');
+  await expect(page.locator('#proximity-rear')).toContainText('Sau:');
+  await expect(page.locator('#proximity-rear')).toContainText('không có cảnh báo');
+  expect(await page.evaluate(() =>
+    window.testAudioStats.gainValues.some((value) => value > 0))).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('keeps visual proximity warnings when AudioContext is unavailable', async ({ page }) => {
+  test.setTimeout(45000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await installAudioMock(page, true);
+  await page.goto('/');
+  expect(await page.evaluate(() => window.testAudioStats.contexts)).toBe(0);
+  await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+  await waitForPointerLock(page);
+  await expect(page.locator('#status-message')).toContainText('Âm thanh cảnh báo không khả dụng');
+  await keyboardDrive(page);
+  await page.keyboard.down('w');
+  await expect(page.locator('#proximity-front')).toContainText(/\d,\d{2} m/, { timeout: 25000 });
+  await page.keyboard.up('w');
+  await expect(page.locator('#proximity-front')).toContainText('Trước:');
+  await expect(page.locator('#proximity-rear')).toContainText('Sau:');
+  expect(errors).toEqual([]);
+});
+
+test('renders camera modes, bounded look, resized overhead, trajectory and mirror updates', async ({ browser, page }) => {
+  test.setTimeout(60000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await installAudioMock(page);
+  await open(page);
+  await waitForPointerLock(page);
+  const canvas = page.locator('#simulation');
+  await expect(canvas).toHaveAttribute('data-engine', /three\.js/i);
+  const driverView = await canvas.screenshot();
+  await page.keyboard.down('s');
+  await page.keyboard.press('Digit4');
+  await expect(page.locator('#telemetry')).toContainText('D');
+  await page.keyboard.up('s');
+  const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });
+
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
+  await page.locator('#camera-mode').selectOption('chase');
+  await resume.click();
+  await waitForPointerLock(page);
+  const chaseView = await canvas.screenshot();
+  expect(chaseView.equals(driverView)).toBe(false);
+
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
+  await page.locator('#camera-mode').selectOption('driver');
+  await page.locator('#overhead-view').check();
+  await page.locator('#driver-fov').focus();
+  await page.keyboard.press('End');
+  await expect(page.locator('#driver-fov')).toHaveValue('80');
+  await resume.click();
+  await waitForPointerLock(page);
+  const overheadView = await canvas.screenshot();
+  expect(overheadView.equals(driverView)).toBe(false);
+
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
+  await page.locator('#trajectory-view').check();
+  await resume.click();
+  await waitForPointerLock(page);
+  const trajectoryView = await canvas.screenshot();
+  expect(trajectoryView.equals(overheadView)).toBe(false);
+
+  await page.mouse.move(0, 360);
+  await page.mouse.move(1279, 360);
+  const lookedView = await canvas.screenshot();
+  expect(lookedView.equals(trajectoryView)).toBe(false);
+
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
+  await page.locator('#recenter-view').click();
+  await resume.click();
+  await waitForPointerLock(page);
+  const centeredView = await canvas.screenshot();
+  expect(centeredView.equals(lookedView)).toBe(false);
+
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
+  await page.locator('#overhead-view').uncheck();
+  await page.locator('#trajectory-view').uncheck();
+  if (browser.browserType().name() === 'chromium') {
+    await page.setViewportSize({ width: 800, height: 600 });
+    await expect.poll(() => canvas.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return [Math.round(bounds.width), Math.round(bounds.height)];
+    })).toEqual([800, 600]);
+  } else {
+    await checkFreshViewport(browser, page.url(), 800, 600);
+  }
+  const beforeDrive = await canvas.screenshot();
+  await resume.click();
+  await waitForPointerLock(page);
+  await keyboardDrive(page);
+  await page.keyboard.down('w');
+  await expect(page.locator('#telemetry')).toContainText(/[1-9]\d* km\/h/, { timeout: 10000 });
+  await page.keyboard.up('w');
+  expect((await canvas.screenshot()).equals(beforeDrive)).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('repeatedly opens and closes the preview without uncaught errors', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await installAudioMock(page);
+  await page.goto('/');
+  for (let cycle = 0; cycle < 3; cycle++) {
+    await page.locator('#screen-layer button').first().click();
+    await waitForPointerLock(page);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();
+    await expect(page.locator('#simulation')).toHaveCount(0);
+  }
+  await expect.poll(() => page.evaluate(() => window.testAudioStats.closes)).toBe(3);
+  expect(errors).toEqual([]);
 });
