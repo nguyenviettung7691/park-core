@@ -221,6 +221,7 @@ test('explicit calibration, physical brake and gamepad gear, disconnect and same
 });
 
 test('unlocks audio on start, pauses silently, and requires explicit pointer-lock resume', async ({ page }) => {
+  test.setTimeout(60000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await installAudioMock(page);
@@ -230,10 +231,14 @@ test('unlocks audio on start, pauses silently, and requires explicit pointer-loc
   await waitForPointerLock(page);
   await expect.poll(() => page.evaluate(() => window.testAudioStats.resumes)).toBe(1);
   await keyboardDrive(page);
-  await page.keyboard.down('w');
   const front = page.locator('#proximity-front');
   await expect(front).toContainText(/\d,\d{2} m/, { timeout: 25000 });
-  await page.keyboard.up('w');
+  await page.keyboard.down('s');
+  await expect(page.locator('#telemetry')).toContainText('0 km/h');
+  await page.keyboard.press('Space');
+  await expect(page.locator('#telemetry')).toContainText('Phanh tay: Bật');
+  await page.keyboard.up('s');
+  await expect(page.locator('#status-message')).not.toContainText('Xe đã chạm');
   await expect.poll(() => page.evaluate(() =>
     window.testAudioStats.gainValues.some((value) => value > 0))).toBe(true);
 

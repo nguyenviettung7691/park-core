@@ -127,6 +127,14 @@
   under xvfb-run --auto-servernum for the probe and both suites; assertions,
   retries and deploy gates unchanged. Playwright documents Xvfb for headed Linux
   runs but does not guarantee WebGL.
+
+  Run 41837675459 (66caa71): Firefox WebGL2 true (llvmpipe) and Chromium
+  SwiftShader; headed Xvfb resolved the Firefox failures, leaving 27 passed / 1
+  failed. The remaining Chromium audio/pause test held full throttle until the
+  sensor label appeared and the car was already in contact-stop (front 0.02 m),
+  so no pause control existed: a test-sequencing flaw, not a product defect.
+  Fix: approach by idle creep, brake to 0 km/h, engage parking brake, assert no
+  contact before Escape; 60 s test timeout (about 20 s locally).
   Independent task review and scoped fix review are complete; the whole-branch
   review at `f97e646` found no Critical or Important issues and approved
   readiness for owner sign-off. Implementation commits: `6e952a7`, `f97e646`.
