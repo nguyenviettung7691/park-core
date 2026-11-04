@@ -329,11 +329,11 @@ reappear. This operation never touches Phase 5 localStorage.
 - Consumes: `ScenarioDefinition`, vehicle profile/telemetry, static collider IDs, and previous overspeed dwell.
 - Produces: `updateFailure(...)` returning the first typed failure and updated speed dwell.
 
-- [ ] **Step 1: Write failing failure tests.** Cover chassis/mirror contact ID mapping, chassis-to-ground failure while excluding normal wheel-ground support, wheel-side curb overlap; full-envelope bounds; >30-degree tip boundary; >15 km/h sustained for 1.0 simulation second with timer reset below threshold; and non-finite telemetry being surfaced as an application error rather than a `FailureReason`.
-- [ ] **Step 2: Run the tests red.** Run `npm test -- src/lessons/failure.test.ts`; confirm intended failures.
-- [ ] **Step 3: Implement pure per-step failure evaluation.** Classify curb IDs as `curb-contact`, other solid IDs as `collision`, and retain the first detected event. Keep non-finite checks on the existing `SimulationStateError` path.
-- [ ] **Step 4: Verify.** Run failure tests, `npm run typecheck`, and `npm run build`.
-- [ ] **Step 5: Commit.** `feat: evaluate lesson failure boundaries`.
+- [x] **Step 1: Write failing failure tests.** Cover chassis/mirror contact ID mapping, chassis-to-ground failure while excluding normal wheel-ground support, wheel-side curb overlap; full-envelope bounds; >30-degree tip boundary; >15 km/h sustained for 1.0 simulation second with timer reset below threshold; and non-finite telemetry being surfaced as an application error rather than a `FailureReason`.
+- [x] **Step 2: Run the tests red.** Run `npm test -- src/lessons/failure.test.ts`; confirm intended failures.
+- [x] **Step 3: Implement pure per-step failure evaluation.** Classify curb IDs as `curb-contact`, other solid IDs as `collision`, and retain the first detected event. Keep non-finite checks on the existing `SimulationStateError` path.
+- [x] **Step 4: Verify.** Run failure tests, `npm run typecheck`, and `npm run build`.
+- [x] **Step 5: Commit.** `feat: evaluate lesson failure boundaries`.
 
 ### Task 5: Track attempt metrics and create uniform recaps
 
