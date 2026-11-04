@@ -4,3 +4,8 @@ test-results
 playwright-report
 .superpowers
 .worktrees
+.env*
+!.env.example
+.vite
+coverage
+*.log
