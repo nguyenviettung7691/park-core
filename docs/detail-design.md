@@ -609,8 +609,14 @@ Allow session-memory play but suspend progress writes until the learner
 explicitly resets the unreadable save, so a later success cannot overwrite it.
 If storage is unavailable or quota is exceeded, continue with session-memory
 progress and clearly state it will not survive closing the tab. A failed save
-must not be shown as successful. Reset Progress requires confirmation and
-removes only Park-Core's progress key, not unrelated localStorage data.
+must not be shown as successful. Reset requires confirmation and removes only
+the selected Park-Core record key, not unrelated localStorage data.
+
+**Phase 5 implementation clarification:** progress, settings, and controller
+calibration use separate versioned keys and key-specific recovery/reset. The
+current application exposes only the typed confirmed-stage-success boundary;
+lesson evaluation is deferred, so preview use cannot award completion. See
+[Phase 5 detail design](phase-5-detail-design.md).
 
 ## 11. TypeScript boundary contracts
 
@@ -951,6 +957,12 @@ Only one active session owns its geometries, materials, textures, RenderTargets,
 listeners and audio. Dispose/reuse them deliberately on retry/menu/scene changes;
 do not accumulate new physics callbacks or WebGL contexts on each attempt.
 Pause on WebGL context loss and offer reload/recovery rather than running blind.
+
+**Phase 5 asset clarification:** the current four GLBs are deterministic
+low-poly prototypes using static vertex colors, not image-based baked textures
+or production vehicle art. Measured file sizes and triangle counts are in the
+[asset pipeline report](asset-pipeline.md); sightline, clearance and hardware
+validation remain pending.
 
 Phase 2 clarification: the drawing buffer is CSS size x `devicePixelRatio`,
 scaled uniformly by `min(1, 2560/w, 1440/h)`, each side rounded and at least 1

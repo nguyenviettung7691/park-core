@@ -10,7 +10,7 @@
 
 **Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative. Phase 2 refinements: [phase design](phase-2-detail-design.md) and [phase plan](phase-2-implementation-plan.md). Approved Phase 3 refinements for Tasks 2-3: [phase design](phase-3-detail-design.md) and [phase plan](phase-3-implementation-plan.md).
 
-**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are implemented and merged into local `main` with owner approval: 167 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed. Final independent review and its verified correction are complete; merged-tree tests, typecheck and build passed. Nothing pushed. Phase 4 prototype code and software gates (Tasks 4-5) are complete in the current branch: 221 unit/DOM tests, typecheck, build and 22 Chromium/Firefox browser tests passed. Runs used Node v24.13.1, below the declared v24.15.0 minimum; Firefox viewport bounds used fresh contexts because live `page.setViewportSize()` hangs. Labeled mirror landmarks, garage-wall occlusion, supported-Node, real wheel, asset, reference-hardware and performance validation remain pending; see [Phase 4 detail](phase-4-detail-design.md) and [Phase 4 plan](phase-4-implementation-plan.md). Tasks 6-8 remain unimplemented.
+**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are implemented and merged into local `main` with owner approval: 167 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed. Final independent review and its verified correction are complete; merged-tree tests, typecheck and build passed. Nothing pushed. Phase 4 prototype code and software gates (Tasks 4-5) are complete in the current branch: 221 unit/DOM tests, typecheck, build and 22 Chromium/Firefox browser tests passed. Phase 5 assets and progression foundation are implemented on the isolated `phase-5-assets-progression` branch; see [Phase 5 detail](phase-5-detail-design.md), [Phase 5 plan](phase-5-implementation-plan.md), and [asset measurements](asset-pipeline.md). Its final gates and pending limits are recorded there. Runs to date used Node v24.13.1, below the declared v24.15.0 minimum; Firefox viewport bounds used fresh contexts because live `page.setViewportSize()` hangs. Labeled mirror landmarks, garage-wall occlusion, supported-Node, real wheel, reference-hardware, route and instructor validation remain pending. The broader lesson/evaluation tasks below are not delivered by the Phase 5 foundation.
 
 ## Global Constraints
 
@@ -358,6 +358,14 @@ exclusion, distributed bumper origins and a low obstacle missed by ray height.
 
 ### Task 6: Two real environments and vehicle/cockpit asset pipeline
 
+> **Phase 5 delivery note:** the isolated Phase 5 branch delivers original,
+> deterministic prototype GLBs, explicit colliders, a validated cancellable
+> loader, and measured geometry/transfer budgets. It does not deliver
+> production art, image-based bakes, validated sightlines, or a lesson-ready
+> route. See [Phase 5 detail](phase-5-detail-design.md) and
+> [asset pipeline](asset-pipeline.md). The broader release-asset validation
+> below remains pending.
+
 **Files:** Create `src\world\metadata.ts`, `assets.ts`, `assets.test.ts`,
 the four GLB files in the ownership map and `docs\asset-pipeline.md`; modify
 `src\app.ts`, `src\views\cameras.ts`, `src\vehicle\profiles.ts` only for
@@ -397,6 +405,12 @@ verified anchor fit, `src\world\colliders.ts`, `messages.ts`.
 | Rights | Original work or a documented license permitting repository distribution and the intended use; never assume a downloaded model is redistributable |
 
 ### Task 7: Five playable lessons, durable recaps and honest saves
+
+> **Phase 5 delivery note:** versioned progress/settings/calibration records,
+> contiguous unlock derivation, key-specific recovery, Stage 1 sandbox entry,
+> and a typed confirmed-success boundary are implemented. The five lesson
+> runtimes, evaluation, outcomes, recaps, and routes below remain deferred;
+> see [Phase 5 plan](phase-5-implementation-plan.md).
 
 **Files:** Create `src\lessons\scenarios.ts`, `checkpoints.ts`, `parking.ts`,
 `attempt.ts`, `lessons.test.ts`, `src\storage\persistence.ts`,

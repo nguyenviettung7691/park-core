@@ -106,6 +106,8 @@ describe('versioned persistence', () => {
       JSON.stringify({ ...initial, version: 2 })],
     ['unknown and duplicate stage IDs', 'progress', keys.progress,
       JSON.stringify({ ...initial, completedStages: [1, 1, 6] })],
+    ['non-contiguous completed stages', 'progress', keys.progress,
+      JSON.stringify({ ...initial, completedStages: [1, 3] })],
     ['invalid vehicle ID', 'progress', keys.progress,
       JSON.stringify({ ...initial, lastVehicle: 'truck' })],
     ['unsupported settings version', 'settings', keys.settings,

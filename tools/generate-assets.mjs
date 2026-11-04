@@ -229,27 +229,27 @@ function createGltf(assetId, dimensionsM, origin) {
     const bodyCenterY = (data.clearanceM + height) / 2 - data.comHeightM;
     const body = box('Body', root, [0, bodyCenterY, 0],
       [width, height - data.clearanceM, length], palette.body);
-    box('Hood', body, [0, bodyCenterY + 0.04, -length * 0.31],
+    box('Hood', body, [0, 0.04, -length * 0.31],
       [width * 0.93, 0.22, length * 0.3], palette.body);
-    box('Cabin', body, [0, bodyCenterY + height * 0.43, -0.02],
-      [width * 0.78, height * 0.52, length * 0.43], palette.trim);
-    box('Windshield', body, [0, bodyCenterY + height * 0.51, -0.68],
+    box('Cabin', body, [0, height * 0.17, -0.02],
+      [width * 0.78, height * 0.44, length * 0.43], palette.trim);
+    box('Windshield', body, [0, height * 0.36, -0.68],
       [width * 0.7, 0.045, 0.64], palette.glass);
-    box('RearWindow', body, [0, bodyCenterY + height * 0.5, 0.88],
+    box('RearWindow', body, [0, height * 0.36, 0.88],
       [width * 0.68, 0.04, 0.48], palette.glass);
-    box('Dashboard', body, [-0.08, bodyCenterY + 0.27, -0.62],
+    box('Dashboard', body, [-0.08, 0.27, -0.62],
       [1.1, 0.16, 0.38], palette.trim);
-    box('DriverSeat', body, [-0.36, bodyCenterY + 0.05, 0.12],
+    box('DriverSeat', body, [-0.36, 0.05, 0.12],
       [0.5, 0.62, 0.58], palette.trim);
     addMesh('SteeringWheel', body, torusGeometry(0.17, 0.025, palette.metal), palette.metal,
-      [-0.36, bodyCenterY + 0.46, -0.68]);
-    box('FrontBumper', body, [0, bodyCenterY - 0.06, -length * 0.49],
+      [-0.36, 0.46, -0.68]);
+    box('FrontBumper', body, [0, -0.06, -length * 0.49],
       [width * 0.97, 0.16, 0.12], palette.trim);
-    box('RearBumper', body, [0, bodyCenterY - 0.06, length * 0.49],
+    box('RearBumper', body, [0, -0.06, length * 0.49],
       [width * 0.97, 0.16, 0.12], palette.trim);
     for (const side of [-1, 1]) {
       box(`Headlight${side < 0 ? 'Left' : 'Right'}`, body,
-        [side * width * 0.34, bodyCenterY + 0.03, -length * 0.47],
+        [side * width * 0.34, 0.03, -length * 0.47],
         [0.22, 0.11, 0.06], palette.light);
     }
 

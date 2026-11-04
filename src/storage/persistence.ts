@@ -59,6 +59,7 @@ function validateProgress(value: unknown): ProgressSaveV1 | null {
   if (!isObject(value) || value.version !== 1 || !Array.isArray(value.completedStages) ||
       !value.completedStages.every(isStageId) || !isVehicleId(value.lastVehicle)) return null;
   if (new Set(value.completedStages).size !== value.completedStages.length) return null;
+  if (value.completedStages.some((stageId, index) => stageId !== index + 1)) return null;
   return {
     version: 1,
     completedStages: [...value.completedStages],

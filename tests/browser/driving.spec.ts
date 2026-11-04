@@ -17,6 +17,7 @@ async function open(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
   await expect(page.locator('#simulation')).toBeFocused();
+  await expect(page.locator('#telemetry')).toBeVisible();
 }
 
 async function waitForPointerLock(page: Page) {
@@ -83,7 +84,7 @@ async function checkFreshViewport(browser: Browser, url: string, width: number, 
     const page = await context.newPage();
     await installAudioMock(page);
     await page.goto(url);
-    await page.locator('#screen-layer button').first().click();
+    await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
     await waitForPointerLock(page);
     const canvas = page.locator('#simulation');
     await expect(canvas).toHaveAttribute('data-engine', /three\.js/i);
@@ -193,6 +194,7 @@ test('explicit calibration, physical brake and gamepad gear, disconnect and same
   await page.evaluate(() => { window.testPad.axes[0] = 0; });
   await page.getByRole('button', { name: 'Lưu hiệu chuẩn', exact: true }).click();
   await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+  await expect(page.locator('#telemetry')).toBeVisible();
   await setButton(page, 6, 1);
   await expect(page.locator('#telemetry')).toContainText('Phanh chân: 100%');
   await setButton(page, 5, 1);
@@ -214,6 +216,7 @@ test('explicit calibration, physical brake and gamepad gear, disconnect and same
   await page.getByLabel('Nguồn điều khiển', { exact: true }).selectOption('keyboard');
   await expect(resume).toBeEnabled();
   await resume.click();
+  await waitForPointerLock(page);
   await expect(page.locator('#telemetry')).toContainText('Bàn phím');
 });
 
@@ -381,8 +384,9 @@ test('repeatedly opens and closes the preview without uncaught errors', async ({
   await installAudioMock(page);
   await page.goto('/');
   for (let cycle = 0; cycle < 3; cycle++) {
-    await page.locator('#screen-layer button').first().click();
+    await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
     await waitForPointerLock(page);
+    await expect(page.locator('#telemetry')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();

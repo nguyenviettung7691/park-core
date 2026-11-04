@@ -56,6 +56,7 @@ When asked to implement a feature, follow this progression. The numbering differ
 2. **Phase 2:** Cannon-es `RaycastVehicle` & Gamepad API loop.
 3. **Phase 3:** Orthographic 360-camera & bumper raycast sensors.
 4. **Phase 4:** Asset loading (Sedan, CUV, Urban Roadside, Underground Garage).
-5. **Phase 5:** Linear 5-stage `localStorage` progression state machine.
+5. **Phase 5:** Versioned local progress/settings/calibration, five-stage selection and contiguous unlock foundation; lesson outcomes remain deferred.
 
 Mapping: the technical design's "Phase 2: Design & Scaffolding" corresponds to Phase 1 above, not to this list's Phase 2 (Cannon-es/Gamepad).
+The technical design's Phase 5 asset/progression foundation is implemented with prototype GLBs and Stage 1 sandbox entry; its Phase 6 lessons and parking evaluation are not yet implemented. See the [Phase 5 plan](../docs/phase-5-implementation-plan.md).

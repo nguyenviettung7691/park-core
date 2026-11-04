@@ -1,4 +1,6 @@
-import { BufferGeometry, Group, Material, Texture, type Object3D } from 'three';
+import {
+  Box3, BufferGeometry, Group, Material, Mesh, Quaternion, Texture, Vector3, type Object3D,
+} from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type {
   BodyPose,
@@ -31,8 +33,14 @@ interface GlbDocument {
     readonly children?: readonly number[];
     readonly translation?: readonly number[];
     readonly rotation?: readonly number[];
+    readonly scale?: readonly number[];
+    readonly mesh?: number;
     readonly extras?: { readonly dimensionsM?: unknown; readonly origin?: unknown };
   }[];
+  readonly meshes?: readonly {
+    readonly primitives?: readonly { readonly attributes?: { readonly POSITION?: number } }[];
+  }[];
+  readonly accessors?: readonly { readonly min?: readonly number[]; readonly max?: readonly number[] }[];
 }
 
 const environmentDimensions: Readonly<Record<EnvironmentId, Vec3Data>> = {
@@ -109,10 +117,14 @@ function rootDocument(document: GlbDocument, resource: AssetResource) {
   return document.nodes[roots[0]]!;
 }
 
-function closeVector(actual: unknown, expected: Vec3Data): actual is readonly number[] {
+function closeVector(
+  actual: unknown,
+  expected: Vec3Data,
+  tolerance = 0.02,
+): actual is readonly number[] {
   return Array.isArray(actual) && actual.length === 3 &&
     actual.every((value, index) => typeof value === 'number' &&
-      Number.isFinite(value) && Math.abs(value - expected[index]!) <= 0.02);
+      Number.isFinite(value) && Math.abs(value - expected[index]!) <= tolerance);
 }
 
 function nodeMap(document: GlbDocument, resource: AssetResource): Map<string, number[]> {
@@ -132,6 +144,17 @@ function validateDimensions(
   resource: AssetResource,
 ) {
   if (!closeVector(root.extras?.dimensionsM, expected)) {
+    throw failure(resource, 'invalid-contract');
+  }
+}
+
+function validateRootTransform(
+  root: NonNullable<GlbDocument['nodes']>[number],
+  resource: AssetResource,
+) {
+  if (!closeVector(root.translation ?? [0, 0, 0], [0, 0, 0], 1e-6) ||
+      !closeVector(root.scale ?? [1, 1, 1], [1, 1, 1], 1e-6) ||
+      !nodeRotationMatches(root.rotation, 0)) {
     throw failure(resource, 'invalid-contract');
   }
 }
@@ -164,12 +187,52 @@ function validateVehicle(
   if (root.extras?.origin !== 'center-of-mass') {
     throw failure('vehicle', 'invalid-contract');
   }
+}
 
+function vectorTuple(vector: Vector3): Vec3Data {
+  return [vector.x, vector.y, vector.z];
+}
+
+function quaternionTuple(quaternion: Quaternion): QuatData {
+  return [quaternion.x, quaternion.y, quaternion.z, quaternion.w];
+}
+
+function hasUnitWorldScale(object: Object3D): boolean {
+  return closeVector(vectorTuple(object.getWorldScale(new Vector3())), [1, 1, 1], 1e-5);
+}
+
+function meshWorldBounds(mesh: Object3D, resource: AssetResource): Box3 {
+  if (!(mesh instanceof Mesh)) throw failure(resource, 'invalid-contract');
+  mesh.geometry.computeBoundingBox();
+  const bounds = mesh.geometry.boundingBox?.clone().applyMatrix4(mesh.matrixWorld);
+  if (!bounds) throw failure(resource, 'invalid-contract');
+  return bounds;
+}
+
+function validateMeshBounds(
+  mesh: Object3D,
+  expectedCenter: Vec3Data,
+  expectedSize: Vec3Data,
+  resource: AssetResource,
+): Box3 {
+  const bounds = meshWorldBounds(mesh, resource);
+  const center = bounds.getCenter(new Vector3());
+  const size = bounds.getSize(new Vector3());
+  if (!closeVector(vectorTuple(center), expectedCenter) ||
+      !closeVector(vectorTuple(size), expectedSize)) {
+    throw failure(resource, 'invalid-contract');
+  }
+  return bounds;
+}
+
+function validateVehicleScene(root: Group, vehicle: VehicleId) {
   const profile = profiles[vehicle];
   const geometry = deriveGeometry(profile);
-  const eye = names.get('DriverEye')!;
-  const eyeNode = document.nodes![eye[0]!]!;
-  if (!closeVector(eyeNode.translation, profile.driverEyeLocalM)) {
+  root.updateMatrixWorld(true);
+  const eye = requiredObject(root, 'DriverEye', 'vehicle');
+  if (!hasUnitWorldScale(eye) ||
+      !closeVector(vectorTuple(eye.getWorldPosition(new Vector3())), profile.driverEyeLocalM) ||
+      !nodeRotationMatches(quaternionTuple(eye.getWorldQuaternion(new Quaternion())), 0)) {
     throw failure('vehicle', 'invalid-contract');
   }
   const expectedMirrors: readonly [string, Vec3Data, number][] = [
@@ -179,8 +242,28 @@ function validateVehicle(
     ['MirrorRight', geometry.mirrors[1].centerLocalM, -105 * Math.PI / 180],
   ];
   for (const [name, position, yaw] of expectedMirrors) {
-    const node = document.nodes![names.get(name)![0]!]!;
-    if (!closeVector(node.translation, position) || !nodeRotationMatches(node.rotation, yaw)) {
+    const node = requiredObject(root, name, 'vehicle');
+    if (!hasUnitWorldScale(node) ||
+        !closeVector(vectorTuple(node.getWorldPosition(new Vector3())), position) ||
+        !nodeRotationMatches(quaternionTuple(node.getWorldQuaternion(new Quaternion())), yaw)) {
+      throw failure('vehicle', 'invalid-contract');
+    }
+  }
+  const bodyCenterY = (profile.groundClearanceM + profile.bodySizeM[1]) / 2 -
+    profile.centerOfMassHeightM;
+  const body = requiredObject(root, 'Body', 'vehicle');
+  if (!hasUnitWorldScale(body)) throw failure('vehicle', 'invalid-contract');
+  const bodyBounds = validateMeshBounds(body, [0, bodyCenterY, 0],
+    [profile.bodySizeM[0], profile.bodySizeM[1] - profile.groundClearanceM,
+      profile.bodySizeM[2]], 'vehicle');
+  if (!nodeRotationMatches(quaternionTuple(body.getWorldQuaternion(new Quaternion())), 0)) {
+    throw failure('vehicle', 'invalid-contract');
+  }
+  for (const name of ['Cabin', 'Windshield', 'RearWindow']) {
+    const bounds = meshWorldBounds(requiredObject(root, name, 'vehicle'), 'vehicle');
+    if (bounds.min.x < bodyBounds.min.x - 0.02 || bounds.max.x > bodyBounds.max.x + 0.02 ||
+        bounds.min.y < bodyBounds.min.y - 0.02 || bounds.max.y > bodyBounds.max.y + 0.02 ||
+        bounds.min.z < bodyBounds.min.z - 0.02 || bounds.max.z > bodyBounds.max.z + 0.02) {
       throw failure('vehicle', 'invalid-contract');
     }
   }
@@ -204,6 +287,19 @@ function validateEnvironment(
     }
   }
   validateDimensions(root, environmentDimensions[environment], 'environment');
+}
+
+function validateEnvironmentScene(root: Group, environment: EnvironmentId) {
+  root.updateMatrixWorld(true);
+  const dimensions = environmentDimensions[environment];
+  const ground = requiredObject(root, 'Ground', 'environment');
+  validateMeshBounds(ground, [0, -0.12, 0],
+    [dimensions[0], 0.24, dimensions[2]], 'environment');
+  if (!closeVector(vectorTuple(ground.getWorldPosition(new Vector3())), [0, -0.12, 0], 1e-4) ||
+      !nodeRotationMatches(quaternionTuple(ground.getWorldQuaternion(new Quaternion())), 0) ||
+      !hasUnitWorldScale(ground)) {
+    throw failure('environment', 'invalid-contract');
+  }
 }
 
 function parseScene(bytes: ArrayBuffer, resource: AssetResource): Promise<Group> {
@@ -248,14 +344,17 @@ function requiredObject(root: Group, name: string, resource: AssetResource): Obj
   return object;
 }
 
-function tuple3(object: Object3D): Vec3Data {
-  return [object.position.x, object.position.y, object.position.z];
+function tuple3(object: Object3D, root: Group): Vec3Data {
+  const position = root.worldToLocal(object.getWorldPosition(new Vector3()));
+  return [position.x, position.y, position.z];
 }
 
-function pose(object: Object3D): BodyPose {
+function pose(object: Object3D, root: Group): BodyPose {
+  const rootRotation = root.getWorldQuaternion(new Quaternion()).invert();
+  const rotation = rootRotation.multiply(object.getWorldQuaternion(new Quaternion()));
   return {
-    positionM: tuple3(object),
-    rotation: [object.quaternion.x, object.quaternion.y, object.quaternion.z, object.quaternion.w],
+    positionM: tuple3(object, root),
+    rotation: quaternionTuple(rotation),
   };
 }
 
@@ -293,6 +392,7 @@ async function loadAsset(
   const document = parseGlbDocument(bytes, resource);
   const rootSpec = rootDocument(document, resource);
   if (rootSpec.name !== `${id} asset`) throw failure(resource, 'invalid-contract');
+  validateRootTransform(rootSpec, resource);
   if (resource === 'vehicle') {
     if (id !== 'sedan' && id !== 'cuv') throw failure(resource, 'invalid-contract');
     validateVehicle(document, id, rootSpec);
@@ -310,6 +410,8 @@ async function loadAsset(
   try {
     root.removeFromParent();
     if (resource === 'vehicle') {
+      if (id !== 'sedan' && id !== 'cuv') throw failure(resource, 'invalid-contract');
+      validateVehicleScene(root, id);
       for (const name of ['WheelFL', 'WheelFR', 'WheelRL', 'WheelRR',
         'DriverEye', 'MirrorRear', 'MirrorLeft', 'MirrorRight',
         'MirrorSurfaceRear', 'MirrorSurfaceLeft', 'MirrorSurfaceRight']) {
@@ -322,6 +424,8 @@ async function loadAsset(
         names.add(wheel.name);
       }
     } else {
+      if (id !== 'garage' && id !== 'roadside') throw failure(resource, 'invalid-contract');
+      validateEnvironmentScene(root, id);
       requiredObject(root, 'Ground', resource);
       requiredObject(root, 'ParkingMarkings', resource);
       requiredObject(root, 'WallsAndCurbs', resource);
@@ -364,12 +468,13 @@ export async function loadSceneAssets(
     throw new Error('Scene asset loader completed without both selected resources');
   }
   const eye = requiredObject(vehicleRoot, 'DriverEye', 'vehicle');
+  vehicleRoot.updateMatrixWorld(true);
   const anchors: VehicleAnchors = {
-    driverEyeLocalM: tuple3(eye),
+    driverEyeLocalM: tuple3(eye, vehicleRoot),
     mirrors: {
-      rear: pose(requiredObject(vehicleRoot, 'MirrorRear', 'vehicle')),
-      left: pose(requiredObject(vehicleRoot, 'MirrorLeft', 'vehicle')),
-      right: pose(requiredObject(vehicleRoot, 'MirrorRight', 'vehicle')),
+      rear: pose(requiredObject(vehicleRoot, 'MirrorRear', 'vehicle'), vehicleRoot),
+      left: pose(requiredObject(vehicleRoot, 'MirrorLeft', 'vehicle'), vehicleRoot),
+      right: pose(requiredObject(vehicleRoot, 'MirrorRight', 'vehicle'), vehicleRoot),
     },
   };
   const wheelNodes = [

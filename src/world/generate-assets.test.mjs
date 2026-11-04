@@ -94,6 +94,57 @@ describe('phase 5 original GLB generator', () => {
     expect(names).toContain('SteeringWheel');
   });
 
+  it.each(['sedan', 'cuv'])('keeps the hood below the driver eye for %s', (assetId) => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-cockpit-'));
+    temporaryRoots.push(root);
+    generate(root);
+    const json = readGlb(assetPath(root, assetId));
+    const parents = new Map();
+    json.nodes.forEach((node, parentIndex) =>
+      node.children?.forEach((childIndex) => parents.set(childIndex, parentIndex)));
+    const worldY = (nodeIndex) => {
+      let y = 0;
+      for (let index = nodeIndex; index !== undefined; index = parents.get(index)) {
+        y += json.nodes[index].translation?.[1] ?? 0;
+      }
+      return y;
+    };
+    const hoodIndex = json.nodes.findIndex((node) => node.name === 'Hood');
+    const hood = json.nodes[hoodIndex];
+    const primitive = json.meshes[hood.mesh].primitives[0];
+    const bounds = json.accessors[primitive.attributes.POSITION];
+    const hoodTop = worldY(hoodIndex) + bounds.max[1];
+    const eye = json.nodes.find((node) => node.name === 'DriverEye');
+
+    expect(hoodTop).toBeLessThan(eye.translation[1]);
+  });
+
+  it.each(['sedan', 'cuv'])('keeps cockpit shell geometry inside the body bounds for %s', (assetId) => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-cockpit-bounds-'));
+    temporaryRoots.push(root);
+    generate(root);
+    const json = readGlb(assetPath(root, assetId));
+    const parents = new Map();
+    json.nodes.forEach((node, parentIndex) =>
+      node.children?.forEach((childIndex) => parents.set(childIndex, parentIndex)));
+    const worldY = (nodeIndex) => {
+      let y = 0;
+      for (let index = nodeIndex; index !== undefined; index = parents.get(index)) {
+        y += json.nodes[index].translation?.[1] ?? 0;
+      }
+      return y;
+    };
+    const meshTop = (name) => {
+      const nodeIndex = json.nodes.findIndex((node) => node.name === name);
+      const primitive = json.meshes[json.nodes[nodeIndex].mesh].primitives[0];
+      return worldY(nodeIndex) + json.accessors[primitive.attributes.POSITION].max[1];
+    };
+
+    expect(meshTop('Cabin')).toBeLessThanOrEqual(meshTop('Body'));
+    expect(meshTop('Windshield')).toBeLessThanOrEqual(meshTop('Body'));
+    expect(meshTop('RearWindow')).toBeLessThanOrEqual(meshTop('Body'));
+  });
+
   it.each(['roadside', 'garage'])('includes authored environment geometry for %s', (assetId) => {
     const root = mkdtempSync(join(tmpdir(), 'park-core-environment-'));
     temporaryRoots.push(root);

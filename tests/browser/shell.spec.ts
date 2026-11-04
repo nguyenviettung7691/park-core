@@ -5,7 +5,7 @@ async function checkFreshViewport(browser: Browser, url: string, width: number, 
   try {
     const page = await context.newPage();
     await page.goto(url);
-    await page.locator('#screen-layer button').first().click();
+    await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
     const canvas = page.locator('#simulation');
     await expect(canvas).toHaveAttribute('data-engine', /three\.js/i);
     await expect.poll(() => canvas.evaluate((element) => {
@@ -89,6 +89,7 @@ test('menu, real rendering, resize, keyboard focus and repeated preview lifecycl
     await expect(select).toHaveValue('cuv');
     await open.click();
     await expect(canvas).toHaveCount(1);
+    await expect(page.locator('#telemetry')).toBeVisible();
   }
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true })).toBeVisible();
@@ -122,6 +123,8 @@ test('blur needs explicit resume and context loss returns to an honest recovery 
   await page.goto('/');
   const open = page.getByRole('button', { name: 'Lái thử mô hình', exact: true });
   await open.click();
+  await expect(page.locator('#telemetry')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Tạm dừng', exact: true })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await page.evaluate(() => document.exitPointerLock());
   const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });

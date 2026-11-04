@@ -45,7 +45,7 @@ The simulator restricts the drivetrain to automatic transmissions (P, R, N, D), 
 
 ## 5. Environments & Progression
 
-To prevent token exhaustion from generating complex branching logic and dynamic lighting, the game utilizes static baked lighting and a linear 5-stage sequential progression system tracked via `localStorage`.
+The product target uses static lighting and five sequential parking lessons. The current Phase 5 delivery is only the asset-loading and progression foundation: four original prototype GLBs, validated asynchronous loading, versioned local records, and a stage selector. Stage 1 opens the Garage sandbox; Stages 2-5 remain locked until a future lesson runtime can report confirmed success. These prototype assets do not claim production art, baked textures, a feasible lesson route, or validated training readiness.
 
 * **Environment 1: Urban Roadside.** Static daylight. Focuses on parallel parking between low-poly vehicles and navigating standard curbs.
 * **Environment 2: Underground Garage.** Baked ambient occlusion and point lights. Focuses on reverse-perpendicular parking, tight concrete pillars, and spatial alignment using the 360-degree camera.
@@ -104,12 +104,13 @@ Here is the detailed task breakdown mapped to the optimal AI model tiers.
 * **Model Routing:** Premium for camera/projection and trajectory geometry; Standard for preview lifecycle, sensor/audio behavior and cross-system verification; Lightweight only for repetitive CSS/DOM scaffolding after interfaces and behavior are fixed.
 * **Validation status:** Prototype software gates pass; labeled mirror-landmark, garage-wall, supported-Node, asset, wheel and reference-hardware validation remain pending. See the [phase detail design](phase-4-detail-design.md) and [phase plan](phase-4-implementation-plan.md) for evidence and limits.
 
-**Phase 5: Environments & Assets**
+**Phase 5: Assets & Progression Foundation — Implemented**
 
-* **Tasks:** Write GLTF loaders for the Sedan, CUV, Urban Roadside, and Underground Garage models. Apply pre-baked texture maps.
-* **Model Routing:** Lightweight for repetitive asset loading scripts.
+* **Delivered:** Original deterministic Sedan, CUV, Roadside and Garage GLBs; named anchor/dimension validation; explicit collider metadata; cancellable selected-pair loading and disposal; versioned progress/settings/calibration storage; contiguous stage locks; Stage 1 Garage sandbox.
+* **Asset fidelity:** These are small low-poly vertex-color prototypes, not production vehicles or image-based light bakes. See [the Phase 5 detail design](phase-5-detail-design.md), [implementation plan](phase-5-implementation-plan.md), and [asset pipeline measurements](asset-pipeline.md).
+* **Validation status:** Software checks are recorded in the Phase 5 implementation plan. Mirror sightlines, environment clearance, route feasibility, real-wheel behavior, supported-Node execution, reference-PC performance, production art and instructor review remain pending.
 
-**Phase 6: Game Loop & Progression**
+**Phase 6: Lessons & Parking Evaluation — Deferred**
 
-* **Tasks:** Implement the State Machine (`MainMenu`, `Playing`, `Success`, `Fail`), create trigger zones for parking target detection, and implement `localStorage` sequential unlocking.
-* **Model Routing:** Standard for state machine logic. Lightweight for local storage management.
+* **Remaining tasks:** Implement the five authored lesson briefings/checkpoints, parking envelope evaluation, collision/failure outcomes, durable recaps and retries, and feasible routes. Connect only confirmed lesson success to the typed Phase 5 progression boundary.
+* **Explicit boundary:** Stage selection and persistence are not a lesson state machine. Preview use cannot unlock stages; no success/fail or training-readiness claim is currently supported.

@@ -129,6 +129,54 @@ describe('phase 5 scene asset loading', () => {
       .rejects.toMatchObject({ resource: 'vehicle', reason: 'invalid-contract' });
   });
 
+  it('rejects a translated vehicle body that would disagree with its collider profile', async () => {
+    const records = {
+      ...assetBytes,
+      '/assets/vehicles/sedan.glb': rewriteJson(assetBytes['/assets/vehicles/sedan.glb'], (json) => {
+        json.nodes.find((node) => node.name === 'Body').translation[2] += 0.03;
+      }),
+    };
+    mockedFetch(records);
+    await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
+      .rejects.toMatchObject({ resource: 'vehicle', reason: 'invalid-contract' });
+  });
+
+  it('rejects cabin geometry extending beyond the vehicle body bounds', async () => {
+    const records = {
+      ...assetBytes,
+      '/assets/vehicles/sedan.glb': rewriteJson(assetBytes['/assets/vehicles/sedan.glb'], (json) => {
+        json.nodes.find((node) => node.name === 'Cabin').translation[1] += 0.2;
+      }),
+    };
+    mockedFetch(records);
+    await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
+      .rejects.toMatchObject({ resource: 'vehicle', reason: 'invalid-contract' });
+  });
+
+  it('rejects a scaled asset root despite matching declared dimensions', async () => {
+    const records = {
+      ...assetBytes,
+      '/assets/vehicles/sedan.glb': rewriteJson(assetBytes['/assets/vehicles/sedan.glb'], (json) => {
+        json.nodes[0].scale = [1.1, 1, 1];
+      }),
+    };
+    mockedFetch(records);
+    await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
+      .rejects.toMatchObject({ resource: 'vehicle', reason: 'invalid-contract' });
+  });
+
+  it('rejects a scaled driver-eye anchor despite matching local position', async () => {
+    const records = {
+      ...assetBytes,
+      '/assets/vehicles/sedan.glb': rewriteJson(assetBytes['/assets/vehicles/sedan.glb'], (json) => {
+        json.nodes.find((node) => node.name === 'DriverEye').scale = [1.1, 1, 1];
+      }),
+    };
+    mockedFetch(records);
+    await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
+      .rejects.toMatchObject({ resource: 'vehicle', reason: 'invalid-contract' });
+  });
+
   it('rejects a mismatched driver-eye anchor transform', async () => {
     const records = {
       ...assetBytes,
@@ -139,6 +187,37 @@ describe('phase 5 scene asset loading', () => {
     mockedFetch(records);
     await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
       .rejects.toMatchObject({ resource: 'vehicle', reason: 'invalid-contract' });
+  });
+
+  it('returns driver-eye coordinates relative to the vehicle root', async () => {
+    const records = {
+      ...assetBytes,
+      '/assets/vehicles/sedan.glb': rewriteJson(assetBytes['/assets/vehicles/sedan.glb'], (json) => {
+        const eyeIndex = json.nodes.findIndex((node) => node.name === 'DriverEye');
+        const eye = json.nodes[eyeIndex];
+        eye.translation[0] -= 0.03;
+        json.nodes[0].children = json.nodes[0].children.filter((index) => index !== eyeIndex);
+        json.nodes.push({ name: 'TranslatedAnchorParent', translation: [0.03, 0, 0], children: [eyeIndex] });
+        json.nodes[0].children.push(json.nodes.length - 1);
+      }),
+    };
+    mockedFetch(records);
+    const assets = await loadSceneAssets('garage', 'sedan', new AbortController().signal);
+    assets.anchors.driverEyeLocalM.forEach((value, index) =>
+      expect(value).toBeCloseTo([-0.36, 0.6, -0.965][index], 6));
+    assets.dispose();
+  });
+
+  it('rejects a translated environment floor that would disagree with its collider', async () => {
+    const records = {
+      ...assetBytes,
+      '/assets/environments/garage.glb': rewriteJson(assetBytes['/assets/environments/garage.glb'], (json) => {
+        json.nodes.find((node) => node.name === 'Ground').translation[0] += 0.03;
+      }),
+    };
+    mockedFetch(records);
+    await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
+      .rejects.toMatchObject({ resource: 'environment', reason: 'invalid-contract' });
   });
 
   it('disposes the loaded vehicle when the selected environment is malformed', async () => {
