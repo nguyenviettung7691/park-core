@@ -28,8 +28,38 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npx playwright install --with-deps chromium firefox
-      - run: npm run test:browser
-      - run: npm run test:production
+      - name: Probe WebGL2 support
+        run: |
+          node --input-type=module <<'EOF'
+          import { chromium, firefox } from '@playwright/test';
+          for (const type of [chromium, firefox]) {
+            const browser = await type.launch();
+            try {
+              const page = await browser.newPage();
+              const result = await page.evaluate(() => {
+                const gl = document.createElement('canvas').getContext('webgl2');
+                if (!gl) return { webgl2: false };
+                const info = gl.getExtension('WEBGL_debug_renderer_info');
+                return {
+                  webgl2: true,
+                  vendor: info ? gl.getParameter(info.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
+                  renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+                };
+              });
+              console.log(type.name(), browser.version(), JSON.stringify(result));
+            } finally {
+              await browser.close();
+            }
+          }
+          EOF
+      - run: npm run test:browser -- --output=test-results/browser
+      - run: npm run test:production -- --output=test-results/production
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: playwright-test-results
+          path: test-results
+          if-no-files-found: ignore
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:

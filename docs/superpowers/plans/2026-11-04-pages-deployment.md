@@ -110,7 +110,15 @@
   `git diff --check` clean; actionlint v1.7.12 reports no findings on
   `pages.yml`. Review fixes: validation concurrency scoped to the validate job,
   `configure-pages` moved to the deploy job, `persist-credentials: false`.
-  Workflow not yet run on GitHub.
+  Workflow not yet run on GitHub at that point.
+
+  Post-push evidence (2026-11-04): after owner approval, `d751da9` was merged
+  and pushed to `main`. Run 41833951982 passed 356 unit tests, typecheck and
+  build on supported Node 24.15, but the browser suite failed (17 failed, 11
+  passed) on the Linux runner; production smoke, upload and deploy were skipped.
+  A diagnostic-only workflow change (WebGL2 probe, per-suite output directories,
+  failure artifact upload) collects runner evidence; it is not a fix. The owner
+  manages Pages setup, and Finding 1 remains open.
   Independent task review and scoped fix review are complete; the whole-branch
   review at `f97e646` found no Critical or Important issues and approved
   readiness for owner sign-off. Implementation commits: `6e952a7`, `f97e646`.
