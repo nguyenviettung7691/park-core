@@ -10,7 +10,7 @@
 
 **Spec:** [Approved detailed design](detail-design.md), dated 2026-11-02. Read it alongside this plan; its parameter tables and contracts are authoritative. Phase 2 refinements: [phase design](phase-2-detail-design.md) and [phase plan](phase-2-implementation-plan.md). Approved Phase 3 refinements for Tasks 2-3: [phase design](phase-3-detail-design.md) and [phase plan](phase-3-implementation-plan.md).
 
-**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are implemented and merged into local `main` with owner approval: 167 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed. Final independent review and its verified correction are complete; merged-tree tests, typecheck and build passed. Nothing pushed. Phase 4 prototype code and software gates (Tasks 4-5) are complete in the current branch: 221 unit/DOM tests, typecheck, build and 22 Chromium/Firefox browser tests passed. Phase 5 assets and progression foundation are implemented on the isolated `phase-5-assets-progression` branch; see [Phase 5 detail](phase-5-detail-design.md), [Phase 5 plan](phase-5-implementation-plan.md), and [asset measurements](asset-pipeline.md). Phase 6 lesson/evaluation implementation is on its separate `phase-6-lessons-parking-evaluation` branch; see [Phase 6 detail](phase-6-detail-design.md) and [Phase 6 plan](phase-6-implementation-plan.md). Phase 6 software gates are recorded in its plan; owner sign-off remains pending. Runs to date used Node v24.13.1, below the declared v24.15.0 minimum; Firefox viewport bounds used fresh contexts because live `page.setViewportSize()` hangs. Labeled mirror landmarks, garage-wall occlusion, supported-Node, real wheel, reference-hardware, route and instructor validation remain pending.
+**Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are implemented and merged into local `main` with owner approval: 167 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed. Final independent review and its verified correction are complete; merged-tree tests, typecheck and build passed. Nothing pushed. Phase 4 prototype code and software gates (Tasks 4-5) are complete in the current branch: 221 unit/DOM tests, typecheck, build and 22 Chromium/Firefox browser tests passed. Phase 5 assets and progression foundation are implemented on the isolated `phase-5-assets-progression` branch; see [Phase 5 detail](phase-5-detail-design.md), [Phase 5 plan](phase-5-implementation-plan.md), and [asset measurements](asset-pipeline.md). Phase 6 implementation and software gates are merged into local `main` as `1f372bd` after owner approval; no push occurred. See [Phase 6 detail](phase-6-detail-design.md) and [Phase 6 plan](phase-6-implementation-plan.md). Runs to date used Node v24.13.1, below the declared v24.15.0 minimum; Firefox viewport bounds used fresh contexts because live `page.setViewportSize()` hangs. Labeled mirror landmarks, garage-wall occlusion, supported-Node, real wheel, reference-hardware, route and instructor validation remain pending.
 
 ## Global Constraints
 
@@ -409,10 +409,11 @@ verified anchor fit, `src\world\colliders.ts`, `messages.ts`.
 > **Phase 5/6 delivery note:** Phase 5 provides versioned
 > progress/settings/calibration records, contiguous unlock derivation,
 > key-specific recovery, and a typed confirmed-success boundary. Phase 6
-> implements the five lesson runtimes, evaluation, outcomes, recaps, history,
-> and authored scenario witnesses on its isolated branch; see the [Phase 6
-> plan](phase-6-implementation-plan.md). Final gates and owner sign-off remain
-> pending; do not merge or push before approval.
+> implemented the five lesson runtimes, evaluation, outcomes, recaps, history,
+> and authored scenario witnesses and was merged into local `main` as
+> `1f372bd` after owner approval. Verification and remaining limitations are
+> recorded in the [Phase 6 plan](phase-6-implementation-plan.md). Nothing was
+> pushed.
 
 **Files:** Create `src\lessons\scenarios.ts`, `checkpoints.ts`, `parking.ts`,
 `attempt.ts`, `lessons.test.ts`, `src\storage\persistence.ts`,

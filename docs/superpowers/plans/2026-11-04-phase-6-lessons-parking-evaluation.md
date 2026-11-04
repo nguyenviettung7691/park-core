@@ -434,7 +434,7 @@ reappear. This operation never touches Phase 5 localStorage.
 - [x] **Step 5: Run all final checks.** Run `npm test`, `npm run typecheck`, `npm run build`, `npm run test:browser -- --reporter=line`, and `git diff --check`. Record actual Node version and any Vite chunk warning.
 - [x] **Step 6: Review the full branch diff and commit docs/status.** Confirm no recap history is synced remotely, no free-drive path awards completion, and no active attempt is persisted. Commit `330b6ef` with the required co-author trailer.
 - [x] **Step 7: Review the final branch diff directly.** The current task's delegation rules require direct review for this bounded diff. No correctness findings; full verification was rerun.
-- [ ] **Step 8: Present sign-off evidence.** Do not merge to `main` or push until explicit owner approval.
+- [x] **Step 8: Present sign-off evidence.** Owner approved local merge on 2026-11-04; merged as `1f372bd` and verified with `npm test` (356 tests). Nothing was pushed.
 
 ## Phase Dependencies
 

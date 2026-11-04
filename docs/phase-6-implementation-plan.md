@@ -1,8 +1,9 @@
 # Phase 6 Implementation Plan: Lessons and Parking Evaluation
 
-**Status:** Implementation and software acceptance are complete on the
-isolated `phase-6-lessons-parking-evaluation` branch. Owner sign-off is pending.
-Do not merge to `main` or push before explicit approval.
+**Status:** Implementation and software acceptance were completed on the
+isolated `phase-6-lessons-parking-evaluation` branch and merged into local
+`main` as `1f372bd` after owner approval on 2026-11-04. Nothing was pushed.
+External validation remains pending.
 
 **Approved design:** [Phase 6 design](superpowers/specs/2026-11-04-phase-6-lessons-parking-evaluation-design.md).
 **Detailed behavior:** [Phase 6 detail design](phase-6-detail-design.md), following
@@ -69,4 +70,5 @@ assets and sightline validation remain pending unless later recorded as
 completed. Passing software checks does not establish driver competence or
 training readiness.
 
-No merge or push is authorized until explicit Phase 6 owner sign-off.
+The local merge was explicitly approved. Do not push without separate owner
+approval.
