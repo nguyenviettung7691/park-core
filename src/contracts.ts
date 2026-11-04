@@ -183,6 +183,7 @@ export interface AttemptSummary {
 export interface LessonRuntime {
   readonly stageId: StageId;
   readonly stepIndex: number;
+  readonly stepDwellS: number;
   readonly parkingDwellS: number;
   readonly acknowledgedStepIds: readonly string[];
 }

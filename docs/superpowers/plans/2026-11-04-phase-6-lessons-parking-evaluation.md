@@ -293,11 +293,11 @@ reappear. This operation never touches Phase 5 localStorage.
 - Produces: `advanceLesson(...)` as defined in Shared Interfaces and
   `LessonRuntime.stepDwellS`, initialized/reset to zero with each attempt.
 
-- [ ] **Step 1: Write failing progression tests.** Cover required-checkpoint AND semantics, only one step advance per update, stopped acknowledgement latching only on the current step, `stepDwellS` accumulation/reset, and alternative-region advancement of an advisory step without requiring prior acknowledgements.
-- [ ] **Step 2: Run the tests red.** Run `npm test -- src/lessons/checkpoints.test.ts`; confirm missing implementation or expected assertion failures.
-- [ ] **Step 3: Implement the pure evaluator.** Treat an acknowledgement as stopped only below 0.1 m/s; do not use DOM state or mutate the supplied scenario/runtime.
-- [ ] **Step 4: Verify.** Run focused tests, `npm run typecheck`, and `npm run build`.
-- [ ] **Step 5: Commit.** `feat: add typed lesson checkpoint progression`.
+- [x] **Step 1: Write failing progression tests.** Cover required-checkpoint AND semantics, only one step advance per update, stopped acknowledgement latching only on the current step, `stepDwellS` accumulation/reset, and alternative-region advancement of an advisory step without requiring prior acknowledgements.
+- [x] **Step 2: Run the tests red.** Run `npm test -- src/lessons/checkpoints.test.ts`; confirm missing implementation or expected assertion failures.
+- [x] **Step 3: Implement the pure evaluator.** Treat an acknowledgement as stopped only below 0.1 m/s; do not use DOM state or mutate the supplied scenario/runtime.
+- [x] **Step 4: Verify.** Run focused tests, `npm run typecheck`, and `npm run build`.
+- [x] **Step 5: Commit.** `feat: add typed lesson checkpoint progression`.
 
 ### Task 3: Implement parking envelope and dwell evaluation
 
