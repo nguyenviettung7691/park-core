@@ -370,13 +370,13 @@ reappear. This operation never touches Phase 5 localStorage.
   `createLessonScene(scenario)` with `group`, `update(runtime)`, and idempotent
   `dispose()`.
 
-- [ ] **Step 1: Write failing preview tests.** Assert sandbox contact still pauses without producing a lesson outcome; lesson mode processes collision/failure before checkpoint and parking evaluation; failure takes precedence over same-step success; pause, focus loss and controller loss freeze dwell and neutralize controls; target/highlight update without a second renderer/RAF loop; and disposal releases visuals/colliders once.
-- [ ] **Step 2: Run the tests red.** Run `npm test -- src/render/preview.test.ts src/render/lesson-scene.test.ts`; confirm missing session mode/events and visuals fail as expected.
-- [ ] **Step 3: Expose collider IDs at the rig boundary.** Let static contact callbacks identify the other body and have the collider set map bodies to authored IDs; preserve existing cleanup behavior at all current call sites.
-- [ ] **Step 4: Integrate one fixed-step lesson update.** Within the existing `world.step(1/120)` cycle, update failure, then checkpoint, then parking/dwell; update metrics with the same step's telemetry, sensor sample, actions, and aids before building any terminal summary. Stop stepping immediately on a terminal result; do not unlock progression in the renderer.
-- [ ] **Step 5: Add target/setup visuals.** Render scenario geometry from typed scenario data and provide current-step highlight; keep visual meshes separate from collider authority and dispose them idempotently.
-- [ ] **Step 6: Verify.** Run focused preview/lesson-scene tests, relevant vehicle/sensor tests, `npm run typecheck`, and `npm run build`.
-- [ ] **Step 7: Commit.** `feat: integrate lesson evaluation in preview`.
+- [x] **Step 1: Write failing preview tests.** Assert sandbox contact still pauses without producing a lesson outcome; lesson mode processes collision/failure before checkpoint and parking evaluation; failure takes precedence over same-step success; pause, focus loss and controller loss freeze dwell and neutralize controls; target/highlight update without a second renderer/RAF loop; and disposal releases visuals/colliders once.
+- [x] **Step 2: Run the tests red.** Run `npm test -- src/render/preview.test.ts src/render/lesson-scene.test.ts`; confirm missing session mode/events and visuals fail as expected.
+- [x] **Step 3: Expose collider IDs at the rig boundary.** Let static contact callbacks identify the other body and have the collider set map bodies to authored IDs; preserve existing cleanup behavior at all current call sites.
+- [x] **Step 4: Integrate one fixed-step lesson update.** Within the existing `world.step(1/120)` cycle, update failure, then checkpoint, then parking/dwell; update metrics with the same step's telemetry, sensor sample, actions, and aids before building any terminal summary. Stop stepping immediately on a terminal result; do not unlock progression in the renderer.
+- [x] **Step 5: Add target/setup visuals.** Render scenario geometry from typed scenario data and provide current-step highlight; keep visual meshes separate from collider authority and dispose them idempotently.
+- [x] **Step 6: Verify.** Run focused preview/lesson-scene tests, relevant vehicle/sensor tests, `npm run typecheck`, and `npm run build`.
+- [x] **Step 7: Commit.** `feat: integrate lesson evaluation in preview`.
 
 ### Task 7: Add IndexedDB completed-attempt history
 

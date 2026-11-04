@@ -1,21 +1,32 @@
 import { WebGLRenderer } from 'three';
 import type { World } from 'cannon-es';
 import type {
-  ControllerCalibration, EnvironmentId, InputAction, InputSource, MessageKey, SensorSnapshot,
-  VehicleId, VehicleTelemetry,
+  AttemptSummary, ControllerCalibration, EnvironmentId, InputAction, InputSource, LessonRuntime,
+  MessageKey, ScenarioDefinition, SensorSnapshot, VehicleId, VehicleTelemetry,
 } from '../contracts';
 import type { PreviewPauseReason, SceneAssets, SettingsSaveV1 } from '../runtime-types';
 import { createClock } from '../clock';
 import { createInputController } from '../input/controller';
+import { advanceLesson } from '../lessons/checkpoints';
+import { createAttemptTracker, finishAttempt, updateAttemptTracker } from '../lessons/attempt';
+import { updateFailure } from '../lessons/failure';
+import { updateParking } from '../lessons/parking';
 import { createAudio, type AudioOutput } from '../sensors/audio';
 import { createSensors } from '../sensors/proximity';
 import { profiles } from '../vehicle/profiles';
 import { createVehicleRig, SimulationStateError } from '../vehicle/rig';
-import { addColliderBoxes, collidersForEnvironment, createWorld, prototypeSpawn } from '../world/colliders';
+import {
+  addColliderBoxes,
+  collidersForEnvironment,
+  collidersForScenario,
+  createWorld,
+  prototypeSpawn,
+} from '../world/colliders';
 import { createViews, type ViewSystem } from '../views/cameras';
 import type { RendererPort } from '../views/auxiliary';
 import { createAssetScene, type AssetScene } from './asset-scene';
 import { fitDrawingBuffer } from './fit';
+import { createLessonScene, type LessonScene } from './lesson-scene';
 
 export type PreviewRenderer = RendererPort &
   Pick<WebGLRenderer, 'setSize' | 'dispose' | 'forceContextLoss'>;
@@ -49,6 +60,16 @@ export interface PreviewEvents {
   onTelemetry(telemetry: VehicleTelemetry): void;
   onSensors(sensors: SensorSnapshot): void;
   onNotice(messageKey: MessageKey): void;
+  onLessonUpdate?(runtime: LessonRuntime): void;
+  onAttemptOutcome?(summary: AttemptSummary): void;
+}
+export type PreviewSessionMode =
+  | { readonly kind: 'sandbox' }
+  | { readonly kind: 'lesson'; readonly scenario: ScenarioDefinition };
+
+interface LessonEvents {
+  onLessonUpdate(runtime: LessonRuntime): void;
+  onAttemptOutcome(summary: AttemptSummary): void;
 }
 export interface Preview {
   unlockAudio(): void;
@@ -78,10 +99,30 @@ function expectedPointerLockDenial(error: unknown): boolean {
     error.name === 'NotSupportedError';
 }
 
+function activeAids(settings: SettingsSaveV1): AttemptSummary['usedAids'] {
+  const aids: AttemptSummary['usedAids'][number][] = [];
+  if (settings.cameraMode === 'chase') aids.push('chase');
+  if (settings.overhead) aids.push('360');
+  if (settings.trajectory) aids.push('trajectory');
+  return aids;
+}
+
+function requireLessonEvents(events: PreviewEvents): LessonEvents {
+  if (!events.onLessonUpdate || !events.onAttemptOutcome) {
+    throw new Error('Lesson preview requires lesson event handlers');
+  }
+  return {
+    onLessonUpdate: events.onLessonUpdate,
+    onAttemptOutcome: events.onAttemptOutcome,
+  };
+}
+
 export function createPreview(
   canvas: HTMLCanvasElement, container: HTMLElement, events: PreviewEvents,
   prototype: PrototypeOptions, overrides: Partial<PreviewDeps> = {},
+  mode: PreviewSessionMode = { kind: 'sandbox' },
 ): Preview {
+  const lessonEvents = mode.kind === 'lesson' ? requireLessonEvents(events) : null;
   const deps: PreviewDeps = {
     now: () => performance.now(),
     requestFrame: (cb) => requestAnimationFrame(cb),
@@ -147,10 +188,13 @@ export function createPreview(
   }
   try {
     const world = deps.createWorld();
-    const boxes = collidersForEnvironment(prototype.environmentId);
-    cleanups.push(addColliderBoxes(world, boxes));
+    const boxes = mode.kind === 'lesson'
+      ? collidersForScenario(mode.scenario)
+      : collidersForEnvironment(prototype.environmentId);
+    const colliderCleanup = addColliderBoxes(world, boxes);
+    cleanups.push(colliderCleanup);
     const profile = profiles[prototype.vehicleId];
-    const rig = createVehicleRig(world, profile);
+    const rig = createVehicleRig(world, profile, colliderCleanup.idForBody);
     const sensors = createSensors(world, rig.body, profile);
     cleanups.push(() => rig.dispose());
     rig.settle(prototypeSpawn(profile));
@@ -159,6 +203,29 @@ export function createPreview(
     let simulationTime = 0;
     const sceneContent = createAssetScene(prototype.sceneAssets);
     content = sceneContent;
+    ownsAssets = true;
+    const lessonScene: LessonScene | null = mode.kind === 'lesson'
+      ? createLessonScene(mode.scenario)
+      : null;
+    let lessonRuntime: LessonRuntime | null = mode.kind === 'lesson'
+      ? {
+        stageId: mode.scenario.stageId,
+        stepIndex: 0,
+        stepDwellS: 0,
+        parkingDwellS: 0,
+        acknowledgedStepIds: [],
+      }
+      : null;
+    let attemptTracker = mode.kind === 'lesson'
+      ? createAttemptTracker(mode.scenario.stageId, prototype.vehicleId)
+      : null;
+    let speedEnvelopeDwellS = 0;
+    let pendingContactId: string | null = null;
+    if (lessonScene && lessonRuntime) {
+      sceneContent.scene.add(lessonScene.group);
+      lessonScene.update(lessonRuntime);
+      cleanups.push(() => lessonScene.dispose());
+    }
     const views: ViewSystem = createViews(
       renderer, sceneContent.scene, prototype.sceneAssets, profile, boxes,
     );
@@ -179,6 +246,16 @@ export function createPreview(
     let lastTelemetry = -Infinity;
     let latestSensors: SensorSnapshot | null = null;
     let audio: AudioOutput | null = null;
+
+    function completeAttempt(summary: AttemptSummary) {
+      if (!lessonEvents) return;
+      contactStopped = true;
+      stop();
+      input.clear();
+      audio?.suspend();
+      releasePointerLock();
+      lessonEvents.onAttemptOutcome(summary);
+    }
 
     function pause(reason: PreviewPauseReason) {
       if (!running || disposed || faulted) return;
@@ -242,6 +319,7 @@ export function createPreview(
           for (const notice of rig.applyInput(poll.frame, actions, 1 / 120)) {
             events.onNotice(notice.messageKey);
           }
+          pendingContactId = null;
           world.step(1 / 120);
           if (disposed || faulted) return;
           simulationTime += 1 / 120;
@@ -257,9 +335,83 @@ export function createPreview(
               simulationTimeS: simulationTime,
             });
           }
+          if (mode.kind === 'lesson' && lessonRuntime && attemptTracker) {
+            const failure = updateFailure(
+              mode.scenario,
+              profile,
+              current.telemetry,
+              boxes,
+              pendingContactId,
+              speedEnvelopeDwellS,
+              1 / 120,
+            );
+            speedEnvelopeDwellS = failure.speedEnvelopeDwellS;
+            if (failure.event) {
+              attemptTracker = updateAttemptTracker(
+                attemptTracker,
+                current.telemetry,
+                sample,
+                actions,
+                activeAids(currentSettings),
+                lessonRuntime,
+                1 / 120,
+              );
+              completeAttempt(finishAttempt(attemptTracker, {
+                outcome: 'fail',
+                failure: failure.event,
+              }));
+              return;
+            }
+
+            const previousRuntime = lessonRuntime;
+            const nextRuntime = advanceLesson(
+              mode.scenario,
+              previousRuntime,
+              current.telemetry,
+              actions,
+              1 / 120,
+            );
+            const visibleChanged = nextRuntime.stepIndex !== previousRuntime.stepIndex
+              || nextRuntime.acknowledgedStepIds.length
+                !== previousRuntime.acknowledgedStepIds.length
+              || nextRuntime.acknowledgedStepIds.some(
+                (id, index) => id !== previousRuntime.acknowledgedStepIds[index],
+              );
+            lessonRuntime = nextRuntime;
+            if (visibleChanged) {
+              lessonScene?.update(lessonRuntime);
+              lessonEvents?.onLessonUpdate(lessonRuntime);
+            }
+
+            const curb = mode.scenario.target.curbId === null
+              ? null
+              : boxes.find(({ id }) => id === mode.scenario.target.curbId) ?? null;
+            const parking = updateParking(
+              current.telemetry,
+              profile,
+              mode.scenario.target,
+              curb,
+              lessonRuntime.parkingDwellS,
+              1 / 120,
+            );
+            lessonRuntime = { ...lessonRuntime, parkingDwellS: parking.dwellS };
+            attemptTracker = updateAttemptTracker(
+              attemptTracker,
+              current.telemetry,
+              sample,
+              actions,
+              activeAids(currentSettings),
+              lessonRuntime,
+              1 / 120,
+            );
+            if (parking.complete) {
+              completeAttempt(finishAttempt(attemptTracker, { outcome: 'success' }));
+              return;
+            }
+          }
         });
         const audioUpdate = audioUpdates.at(-1);
-        if (audioUpdate) {
+        if (audioUpdate && running) {
           audio?.update(audioUpdate.sensors, audioUpdate.speedMps, audioUpdate.simulationTimeS);
         }
         lastTime = time;
@@ -337,8 +489,12 @@ export function createPreview(
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onResize);
     cleanups.push(() => observer?.disconnect());
     observer?.observe(container);
-    cleanups.push(rig.onContact(() => {
+    cleanups.push(rig.onContact((colliderId) => {
       if (!running || disposed || faulted) return;
+      if (mode.kind === 'lesson') {
+        if (pendingContactId === null) pendingContactId = colliderId;
+        return;
+      }
       contactStopped = true;
       pause('contact');
       events.onNotice('contactStop');
@@ -346,7 +502,6 @@ export function createPreview(
     resize();
     sceneContent.apply({ previous, current, alpha: 0 });
     views.render({ previous, current, alpha: 0 }, lastTime);
-    ownsAssets = true;
     return {
       unlockAudio() {
         if (disposed || faulted || !audio) return;

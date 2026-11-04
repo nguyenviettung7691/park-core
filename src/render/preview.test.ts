@@ -8,7 +8,13 @@ import { profiles } from '../vehicle/profiles';
 import { buildPrototypeScene } from './prototype';
 import { testGamepad } from '../test/gamepad';
 import type { SensorReading } from '../contracts';
-import { createPreview as startPreview, PreviewStartError, type PreviewDeps, type PreviewRenderer } from './preview';
+import { scenarios } from '../lessons/scenarios';
+import {
+  createPreview as startPreview,
+  PreviewStartError,
+  type PreviewDeps,
+  type PreviewRenderer,
+} from './preview';
 
 const pointerLockDescriptor = Object.getOwnPropertyDescriptor(document, 'pointerLockElement');
 afterEach(() => {
@@ -107,7 +113,7 @@ function fixture() {
   };
   const events = {
     onPaused: vi.fn(), onFault: vi.fn(), onTelemetry: vi.fn(), onNotice: vi.fn(),
-    onSensors: vi.fn(),
+    onSensors: vi.fn(), onLessonUpdate: vi.fn(), onAttemptOutcome: vi.fn(),
   };
   vi.spyOn(container, 'getBoundingClientRect').mockImplementation(() =>
     new DOMRect(0, 0, width, height));
@@ -391,10 +397,222 @@ describe('preview lifecycle', () => {
     f.frame(100);
     expect(f.events.onPaused).toHaveBeenCalledExactlyOnceWith('contact');
     expect(f.events.onNotice).toHaveBeenCalledWith('contactStop');
+    expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
     expect(f.frames.size).toBe(0);
     expect(p.resume()).toBe(false);
     p.dispose();
     expect(f.world.bodies).toHaveLength(0);
+  });
+
+  it('fails a lesson on mapped chassis contact before advancing its checkpoint', () => {
+    const f = fixture();
+    const scenario = scenarios[1]!;
+    const p = startPreview(
+      f.canvas, f.container, f.events, { ...options(), environmentId: scenario.environmentId },
+      f.deps, { kind: 'lesson', scenario },
+    );
+    f.canvas.focus();
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    const body = f.world.bodies.find((candidate) => candidate.mass > 0)!;
+    body.position.set(-3.4, body.position.y, -5);
+    body.velocity.setZero();
+
+    f.frame(100);
+
+    expect(f.events.onAttemptOutcome).toHaveBeenCalledOnce();
+    expect(f.events.onAttemptOutcome.mock.lastCall?.[0]).toMatchObject({
+      stageId: 1,
+      outcome: 'fail',
+      failureReason: 'collision',
+      obstacleId: 'stage1-parked-left',
+    });
+    expect(f.events.onLessonUpdate).not.toHaveBeenCalled();
+    expect(f.frames.size).toBe(0);
+    p.dispose();
+    expect(f.world.bodies).toHaveLength(0);
+  });
+
+  it('gives a same-step collision precedence over completed parking dwell', () => {
+    const f = fixture();
+    const base = scenarios[1]!;
+    const scenario = {
+      ...base,
+      obstacles: [
+        ...base.obstacles,
+        {
+          id: 'target-contact',
+          kind: 'obstacle' as const,
+          centerM: [0, 3.5, -5] as const,
+          halfExtentsM: [1, 0.3, 2] as const,
+          yawRad: 0,
+        },
+      ],
+    };
+    const p = startPreview(
+      f.canvas, f.container, f.events, { ...options(), environmentId: scenario.environmentId },
+      f.deps, { kind: 'lesson', scenario },
+    );
+    f.canvas.focus();
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    const vehicle = f.world.bodies.find((candidate) => candidate.mass > 0)!;
+    vehicle.position.set(0, vehicle.position.y, -5);
+    vehicle.velocity.setZero();
+    vehicle.angularVelocity.setZero();
+    for (let step = 1; step <= 239; step++) {
+      f.frame(step * 1000 / 120);
+    }
+    expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
+
+    const obstacle = f.world.bodies.find((candidate) =>
+      candidate.type === CANNON.Body.STATIC
+      && candidate.position.x === 0
+      && candidate.position.y === 3.5
+      && candidate.position.z === -5);
+    expect(obstacle).toBeDefined();
+    if (!obstacle) {
+      p.dispose();
+      return;
+    }
+    obstacle.position.y = 0.8;
+    obstacle.aabbNeedsUpdate = true;
+    f.frame(2000);
+
+    expect(f.events.onAttemptOutcome).toHaveBeenCalledOnce();
+    expect(f.events.onAttemptOutcome.mock.lastCall?.[0]).toMatchObject({
+      outcome: 'fail',
+      failureReason: 'collision',
+      obstacleId: 'target-contact',
+    });
+    expect(f.frames.size).toBe(0);
+    p.dispose();
+  });
+
+  it('updates lesson visuals in the shared renderer loop only when the visible step changes', () => {
+    const f = fixture();
+    const base = scenarios[1]!;
+    const scenario = {
+      ...base,
+      steps: [{
+        ...base.steps[0]!,
+        id: 'confirm-stop',
+        required: [{ kind: 'acknowledgement' as const }],
+        alternativeRegionId: null,
+      }],
+    };
+    const p = startPreview(
+      f.canvas, f.container, f.events, { ...options(), environmentId: scenario.environmentId },
+      f.deps, { kind: 'lesson', scenario },
+    );
+    f.canvas.focus();
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    p.enqueue({ type: 'acknowledge-step' });
+
+    f.frame(20);
+    f.frame(40);
+
+    expect(f.events.onLessonUpdate).toHaveBeenCalledOnce();
+    expect(f.events.onLessonUpdate.mock.lastCall?.[0]).toMatchObject({
+      stageId: 1,
+      stepIndex: 1,
+      acknowledgedStepIds: ['confirm-stop'],
+    });
+    expect(f.deps.createRenderer).toHaveBeenCalledOnce();
+    expect(f.frames.size).toBe(1);
+    const scene = f.renderer.render.mock.calls[0]![0];
+    expect(f.renderer.render.mock.calls.every(([rendered]) => rendered === scene)).toBe(true);
+    p.dispose();
+  });
+
+  it('does not count focus-loss wall time toward lesson parking dwell', () => {
+    const f = fixture();
+    const scenario = { ...scenarios[1]!, steps: [] };
+    const p = startPreview(
+      f.canvas, f.container, f.events, { ...options(), environmentId: scenario.environmentId },
+      f.deps, { kind: 'lesson', scenario },
+    );
+    f.canvas.focus();
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    const vehicle = f.world.bodies.find((candidate) => candidate.mass > 0)!;
+    vehicle.position.set(0, vehicle.position.y, -5);
+    vehicle.velocity.setZero();
+    vehicle.angularVelocity.setZero();
+    for (let step = 1; step <= 120; step++) f.frame(step * 1000 / 120);
+    expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
+
+    f.key('KeyS');
+    f.frame(1010);
+    window.dispatchEvent(new Event('blur'));
+    expect(f.events.onPaused).toHaveBeenLastCalledWith('focus');
+    f.setTime(60_000);
+    window.dispatchEvent(new Event('focus'));
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    f.canvas.dispatchEvent(new KeyboardEvent('keydown', {
+      code: 'KeyS', repeat: true, bubbles: true,
+    }));
+    f.frame(60_010);
+
+    expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
+    expect(f.events.onTelemetry.mock.lastCall?.[0].brake).toBe(0);
+    expect(f.frames.size).toBe(1);
+    for (let step = 1; step <= 120 && !f.events.onAttemptOutcome.mock.calls.length; step++) {
+      f.frame(60_010 + step * 1000 / 120);
+    }
+    expect(f.events.onAttemptOutcome.mock.lastCall?.[0]).toMatchObject({
+      outcome: 'success',
+      failureReason: null,
+    });
+    p.dispose();
+  });
+
+  it('freezes lesson parking dwell while a gamepad controller is disconnected', () => {
+    const f = fixture();
+    const gamepad = gamepadOptions();
+    const scenario = { ...scenarios[1]!, steps: [] };
+    const p = startPreview(
+      f.canvas, f.container, f.events,
+      { ...gamepad.options, environmentId: scenario.environmentId },
+      f.deps, { kind: 'lesson', scenario },
+    );
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    const vehicle = f.world.bodies.find((candidate) => candidate.mass > 0)!;
+    vehicle.position.set(0, vehicle.position.y, -5);
+    vehicle.velocity.setZero();
+    vehicle.angularVelocity.setZero();
+    for (let step = 1; step <= 60; step++) f.frame(step * 1000 / 120);
+
+    gamepad.pad.buttons[7]!.value = 1;
+    gamepad.pad.connected = false;
+    f.frame(510);
+    expect(f.events.onPaused).toHaveBeenLastCalledWith('controller');
+    expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
+
+    f.setTime(60_000);
+    gamepad.pad.connected = true;
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(false);
+    expect(f.events.onNotice).toHaveBeenLastCalledWith('pedalsNotReleased');
+    gamepad.pad.buttons[7]!.value = 0;
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    for (let step = 1; step <= 120; step++) {
+      f.frame(60_000 + step * 1000 / 120);
+    }
+    expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
+    for (let step = 121; step <= 180; step++) {
+      f.frame(60_000 + step * 1000 / 120);
+    }
+
+    expect(f.events.onAttemptOutcome.mock.lastCall?.[0]).toMatchObject({
+      outcome: 'success',
+      failureReason: null,
+    });
+    p.dispose();
   });
 
   it('requires explicit resume after window refocus even when a keyup was lost', () => {

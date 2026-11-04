@@ -47,7 +47,7 @@ export interface VehicleRig {
   applyInput(frame: InputFrame, actions: readonly InputAction[], h: number): readonly ControlNotice[];
   snapshot(simulationTimeS: number): PhysicsSnapshot;
   supports(): readonly [boolean, boolean, boolean, boolean];
-  onContact(listener: () => void): () => void;
+  onContact(listener: (colliderId: string | null) => void): () => void;
   dispose(): void;
 }
 
@@ -194,7 +194,11 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
   }
 }
 
-export function createVehicleRig(world: CANNON.World, profile: VehicleProfile): VehicleRig {
+export function createVehicleRig(
+  world: CANNON.World,
+  profile: VehicleProfile,
+  colliderIdForBody: (body: CANNON.Body) => string | null = () => null,
+): VehicleRig {
   const g = deriveGeometry(profile);
   const mass = profile.massKg;
   const body = new CANNON.Body({
@@ -238,14 +242,15 @@ export function createVehicleRig(world: CANNON.World, profile: VehicleProfile): 
   let support: Flags = NO_SUPPORT;
   let armed = false;
   let disposed = false;
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(colliderId: string | null) => void>();
   const forward = new CANNON.Vec3();
 
   const onBeginContact = (event: { bodyA: CANNON.Body | null; bodyB: CANNON.Body | null }) => {
     if (!armed || disposed) return;
     const other = event.bodyA === body ? event.bodyB : event.bodyB === body ? event.bodyA : null;
     if (!other || other.type !== CANNON.Body.STATIC) return;
-    for (const listener of [...listeners]) listener();
+    const colliderId = colliderIdForBody(other);
+    for (const listener of [...listeners]) listener(colliderId);
   };
   world.addEventListener('beginContact', onBeginContact);
 
@@ -422,9 +427,8 @@ export function createVehicleRig(world: CANNON.World, profile: VehicleProfile): 
     supports: () => support,
 
     onContact(listener) {
-      const entry = () => listener();
-      listeners.add(entry);
-      return () => { listeners.delete(entry); };
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
     },
 
     dispose() {

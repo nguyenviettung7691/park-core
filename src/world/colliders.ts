@@ -81,21 +81,33 @@ export function collidersForScenario(scenario: ScenarioDefinition): readonly Col
 export const prototypeSpawn = (profile: VehicleProfile): SpawnPose =>
   ({ positionM: [0, profile.centerOfMassHeightM, 4], yawRad: 0 });
 
-export function addColliderBoxes(world: CANNON.World, boxes: readonly ColliderBox[]): () => void {
+export interface ColliderCleanup {
+  (): void;
+  idForBody(body: CANNON.Body): string | null;
+}
+
+export function addColliderBoxes(
+  world: CANNON.World,
+  boxes: readonly ColliderBox[],
+): ColliderCleanup {
   // Friction 1 so the pair product equals the chassis material's coefficient.
   const material = new CANNON.Material({ friction: 1, restitution: 0 });
+  const colliderIds = new WeakMap<CANNON.Body, string>();
   const bodies = boxes.map((box) => {
     const body = new CANNON.Body({ type: CANNON.Body.STATIC, mass: 0, material });
     body.addShape(new CANNON.Box(new CANNON.Vec3(...box.halfExtentsM)));
     body.position.set(...box.centerM);
     body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), box.yawRad);
     world.addBody(body);
+    colliderIds.set(body, box.id);
     return body;
   });
   let removed = false;
-  return () => {
+  return Object.assign(() => {
     if (removed) return;
     removed = true;
     for (const body of bodies) world.removeBody(body);
-  };
+  }, {
+    idForBody: (body: CANNON.Body) => colliderIds.get(body) ?? null,
+  });
 }
