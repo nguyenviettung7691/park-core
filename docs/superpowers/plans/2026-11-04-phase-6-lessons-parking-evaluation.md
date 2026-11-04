@@ -432,7 +432,7 @@ reappear. This operation never touches Phase 5 localStorage.
 - [x] **Step 3: Implement only acceptance gaps.** Fix lifecycle/readiness/ownership behavior exposed by the tests; do not weaken parking, failure, or browser assertions to make a route pass.
 - [x] **Step 4: Write Phase 6 deliverables from actual implementation.** Record interfaces, five scenario definitions, success/failure thresholds, IndexedDB schema/recovery, recap behavior, tier routing and measured outputs in the Phase 6 docs. Update master status from deferred to implemented only for verified deliverables; retain unsupported hardware, learner, instructor and reference-PC claims as pending.
 - [x] **Step 5: Run all final checks.** Run `npm test`, `npm run typecheck`, `npm run build`, `npm run test:browser -- --reporter=line`, and `git diff --check`. Record actual Node version and any Vite chunk warning.
-- [ ] **Step 6: Review the full branch diff and commit docs/status.** Confirm no recap history is synced remotely, no free-drive path awards completion, and no active attempt is persisted. Commit with the required co-author trailer.
+- [x] **Step 6: Review the full branch diff and commit docs/status.** Confirm no recap history is synced remotely, no free-drive path awards completion, and no active attempt is persisted. Commit `330b6ef` with the required co-author trailer.
 - [x] **Step 7: Review the final branch diff directly.** The current task's delegation rules require direct review for this bounded diff. No correctness findings; full verification was rerun.
 - [ ] **Step 8: Present sign-off evidence.** Do not merge to `main` or push until explicit owner approval.
 

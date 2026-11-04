@@ -20,7 +20,7 @@ Do not merge to `main` or push before explicit approval.
 | 6. Integrate lesson preview | `e430d48` | Fixed-step evaluation order, lesson-specific spawn, retry isolation, and unchanged sandbox mode |
 | 7. Persist completed history | `10f1de2` | Validated IndexedDB append/list/reset with explicit session-only and reset-required states |
 | 8. Add lesson/history/free-drive UI | `24c707d` | Briefings, outcomes, success-only progression, history navigation/reset, and separate free drive |
-| 9. Browser acceptance and documentation | Final delivery commit | Chromium/Firefox acceptance, lesson-spawn regression, roadmap reconciliation, and final review |
+| 9. Browser acceptance and documentation | `330b6ef` | Chromium/Firefox acceptance, lesson-spawn regression, roadmap reconciliation, and final review |
 
 ## Acceptance criteria
 
