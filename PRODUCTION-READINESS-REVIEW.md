@@ -12,6 +12,8 @@
 
 ## Verdict: NO-GO for the requested public deployment
 
+> **Latest remediation evidence, 2026-11-04:** [run 41841460826](https://github.com/nguyenviettung7691/park-core/actions/runs/41841460826) at `4ae956e` passed all software gates on supported Node 24.15.0: 356 unit tests, typecheck/build, 28 browser tests and four production smoke tests. Artifact upload and Pages deployment succeeded. Headed Xvfb restored Firefox WebGL2; two browser tests were corrected to stop before checking audio pause and release pointer lock before clicking Reset. Runtime simulator code is unchanged. Finding 1 is **not closed**: Pages reports `build_type: workflow`, `cname: null` and the repository-subpath URL; the intended custom hostname still returns HTTPS 404. The owner retained Pages/domain setup. Set the Pages custom domain to `park-core.nguyenviettung.id.vn`, then verify live app, JS/CSS and GLBs; the root-path build is not intended for `/park-core/`. The verdict and findings below remain the original audit, not a new whole-product review.
+
 The app builds and renders locally, but this repository has no GitHub Actions workflow to publish it to Pages. Consequently, the deployment path requested for the MVP is not configured or verified. Do not treat successful local tests as a release sign-off.
 
 This verdict is specific to public deployment. The local prototype passes the current software gates below. It is not evidence of actual custom-domain reachability, upper-mid-PC performance, or dynamic playability of every lesson.

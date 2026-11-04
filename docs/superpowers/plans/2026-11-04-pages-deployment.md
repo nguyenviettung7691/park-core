@@ -167,6 +167,13 @@ merged/pushed `main`, observed workflow result, and truthful closure status.
   Check the app, JS/CSS and four GLBs; exercise a deployed Stage 1 launch.
   If Pages activation/settings changes need authorization or DNS/TLS is
   unavailable, report the exact blocker rather than claiming closure.
+  Run [41841460826](https://github.com/nguyenviettung7691/park-core/actions/runs/41841460826)
+  at `4ae956e` passed 356 unit tests, typecheck/build, 28 browser tests and
+  four production smoke tests on Node 24.15.0; artifact upload and deployment
+  succeeded. Pages now reports `build_type: workflow`, `cname: null` and
+  `https_enforced: true`. The intended hostname still returns HTTPS 404.
+  Owner-managed custom-domain setup and live app/asset checks remain blocked;
+  no Pages settings or DNS were changed by the implementation.
 - [ ] **Step 4: Persist final evidence.**
   Record run URL, deployed revision, live results, and remaining gaps in the
   remediation note and plan; commit/push this evidence only within the
