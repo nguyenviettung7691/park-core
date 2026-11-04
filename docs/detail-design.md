@@ -614,9 +614,13 @@ the selected Park-Core record key, not unrelated localStorage data.
 
 **Phase 5 implementation clarification:** progress, settings, and controller
 calibration use separate versioned keys and key-specific recovery/reset. The
-current application exposes only the typed confirmed-stage-success boundary;
-lesson evaluation is deferred, so preview use cannot award completion. See
-[Phase 5 detail design](phase-5-detail-design.md).
+typed confirmed-stage-success boundary is called only after measured lesson
+success. The Phase 6 implementation adds five lessons, parking evaluation,
+completed-attempt history and retries; free drive cannot award completion.
+See the [Phase 5 detail design](phase-5-detail-design.md), [Phase 6 detail
+design](phase-6-detail-design.md) and [Phase 6 implementation plan](phase-6-implementation-plan.md).
+Software acceptance does not establish training readiness or pending release
+validation.
 
 ## 11. TypeScript boundary contracts
 

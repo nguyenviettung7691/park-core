@@ -15,7 +15,7 @@ declare global {
 
 async function open(page: Page) {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+  await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await expect(page.locator('#simulation')).toBeFocused();
   await expect(page.locator('#telemetry')).toBeVisible();
 }
@@ -84,7 +84,7 @@ async function checkFreshViewport(browser: Browser, url: string, width: number, 
     const page = await context.newPage();
     await installAudioMock(page);
     await page.goto(url);
-    await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+    await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
     await waitForPointerLock(page);
     const canvas = page.locator('#simulation');
     await expect(canvas).toHaveAttribute('data-engine', /three\.js/i);
@@ -174,7 +174,7 @@ test('explicit calibration, physical brake and gamepad gear, disconnect and same
   await page.goto('/');
   await page.getByLabel('Nguồn điều khiển', { exact: true }).selectOption('gamepad');
   await page.getByLabel('Thiết bị', { exact: true }).selectOption('0');
-  await expect(page.getByRole('button', { name: 'Lái thử mô hình', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Lái tự do', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Hiệu chuẩn thiết bị', exact: true }).click();
   for (const [value, label] of [[-1, 'Ghi hết lái trái'], [0, 'Ghi chính giữa'], [1, 'Ghi hết lái phải']] as const) {
     await page.evaluate((value) => { window.testPad.axes[0] = value; }, value);
@@ -193,7 +193,7 @@ test('explicit calibration, physical brake and gamepad gear, disconnect and same
   for (const index of [4, 5, 6, 7]) await setButton(page, index, 0);
   await page.evaluate(() => { window.testPad.axes[0] = 0; });
   await page.getByRole('button', { name: 'Lưu hiệu chuẩn', exact: true }).click();
-  await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+  await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await expect(page.locator('#telemetry')).toBeVisible();
   await setButton(page, 6, 1);
   await expect(page.locator('#telemetry')).toContainText('Phanh chân: 100%');
@@ -226,7 +226,7 @@ test('unlocks audio on start, pauses silently, and requires explicit pointer-loc
   await installAudioMock(page);
   await page.goto('/');
   expect(await page.evaluate(() => window.testAudioStats.contexts)).toBe(0);
-  await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+  await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await waitForPointerLock(page);
   await expect.poll(() => page.evaluate(() => window.testAudioStats.resumes)).toBe(1);
   await keyboardDrive(page);
@@ -285,7 +285,7 @@ test('keeps visual proximity warnings when AudioContext is unavailable', async (
   await installAudioMock(page, true);
   await page.goto('/');
   expect(await page.evaluate(() => window.testAudioStats.contexts)).toBe(0);
-  await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+  await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await waitForPointerLock(page);
   await expect(page.locator('#status-message')).toContainText('Âm thanh cảnh báo không khả dụng');
   await keyboardDrive(page);
@@ -384,7 +384,7 @@ test('repeatedly opens and closes the preview without uncaught errors', async ({
   await installAudioMock(page);
   await page.goto('/');
   for (let cycle = 0; cycle < 3; cycle++) {
-    await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+    await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
     await waitForPointerLock(page);
     await expect(page.locator('#telemetry')).toBeVisible();
     await page.keyboard.press('Escape');

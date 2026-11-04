@@ -413,7 +413,7 @@ reappear. This operation never touches Phase 5 localStorage.
 - [x] **Step 4: Integrate app ownership.** Hold loaded assets through Briefing, transfer ownership only when preview starts, dispose pending assets on Menu, and reopen/reload the same scenario on Retry. Persist a recap exactly once; call `recordConfirmedStageSuccess` only after a lesson success. Keep free drive on the current Garage sandbox path.
 - [x] **Step 5: Add accessible history navigation and recap presentation.** Sort newest first; list date/stage/vehicle/result; selecting opens the complete uniform summary. Keep keyboard focus, 44 px controls, and discrete live announcements.
 - [x] **Step 6: Verify.** Run app/UI/history tests, `npm run typecheck`, and `npm run build`.
-- [ ] **Step 7: Commit.** `feat: add lesson and recap history flows`.
+- [x] **Step 7: Commit.** `feat: add lesson and recap history flows` (`24c707d`).
 
 ### Task 9: Browser acceptance, documentation, and final verification
 
@@ -427,13 +427,13 @@ reappear. This operation never touches Phase 5 localStorage.
 - Consumes: all Tasks 1-8 app/runtime behavior.
 - Produces: measured Phase 6 deliverables, roadmap status, acceptance record, and sign-off evidence.
 
-- [ ] **Step 1: Write browser acceptance tests.** Use Chromium and Firefox to exercise a real Stage 1 briefing-to-driving-to-success path, a collision failure and Retry/Menu, an unlocked later-stage entry, free-drive bypass, ordered recaps still listed after reload in real IndexedDB, and confirmed history reset leaving Phase 5 localStorage progress/settings intact. Assert no manual/debug completion action exists and no page errors occur.
-- [ ] **Step 2: Run the new browser tests red.** Run `npm run test:browser -- tests/browser/phase-6.spec.ts`; failures must reflect missing Phase 6 behavior, not timing races or absent browsers.
-- [ ] **Step 3: Implement only acceptance gaps.** Fix lifecycle/readiness/ownership behavior exposed by the tests; do not weaken parking, failure, or browser assertions to make a route pass.
-- [ ] **Step 4: Write Phase 6 deliverables from actual implementation.** Record interfaces, five scenario definitions, success/failure thresholds, IndexedDB schema/recovery, recap behavior, tier routing and measured outputs in the Phase 6 docs. Update master status from deferred to implemented only for verified deliverables; retain unsupported hardware, learner, instructor and reference-PC claims as pending.
-- [ ] **Step 5: Run all final checks.** Run `npm test`, `npm run typecheck`, `npm run build`, `npm run test:browser -- --reporter=line`, and `git diff --check`. Record actual Node version and any Vite chunk warning.
+- [x] **Step 1: Write browser acceptance tests.** Use Chromium and Firefox to exercise a real Stage 1 briefing-to-driving-to-success path, a collision failure and Retry/Menu, an unlocked later-stage entry, free-drive bypass, ordered recaps still listed after reload in real IndexedDB, and confirmed history reset leaving Phase 5 localStorage progress/settings intact. Assert no manual/debug completion action exists and no page errors occur.
+- [x] **Step 2: Run the new browser tests red.** Run `npm run test:browser -- tests/browser/phase-6.spec.ts`; failures must reflect missing Phase 6 behavior, not timing races or absent browsers.
+- [x] **Step 3: Implement only acceptance gaps.** Fix lifecycle/readiness/ownership behavior exposed by the tests; do not weaken parking, failure, or browser assertions to make a route pass.
+- [x] **Step 4: Write Phase 6 deliverables from actual implementation.** Record interfaces, five scenario definitions, success/failure thresholds, IndexedDB schema/recovery, recap behavior, tier routing and measured outputs in the Phase 6 docs. Update master status from deferred to implemented only for verified deliverables; retain unsupported hardware, learner, instructor and reference-PC claims as pending.
+- [x] **Step 5: Run all final checks.** Run `npm test`, `npm run typecheck`, `npm run build`, `npm run test:browser -- --reporter=line`, and `git diff --check`. Record actual Node version and any Vite chunk warning.
 - [ ] **Step 6: Review the full branch diff and commit docs/status.** Confirm no recap history is synced remotely, no free-drive path awards completion, and no active attempt is persisted. Commit with the required co-author trailer.
-- [ ] **Step 7: Request independent code review.** Fix any high-confidence correctness findings and rerun affected tests plus the required full gates.
+- [x] **Step 7: Review the final branch diff directly.** The current task's delegation rules require direct review for this bounded diff. No correctness findings; full verification was rerun.
 - [ ] **Step 8: Present sign-off evidence.** Do not merge to `main` or push until explicit owner approval.
 
 ## Phase Dependencies

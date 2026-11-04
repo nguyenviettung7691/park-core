@@ -197,7 +197,9 @@ export function createPreview(
     const rig = createVehicleRig(world, profile, colliderCleanup.idForBody);
     const sensors = createSensors(world, rig.body, profile);
     cleanups.push(() => rig.dispose());
-    rig.settle(prototypeSpawn(profile));
+    rig.settle(mode.kind === 'lesson'
+      ? mode.scenario.spawnByVehicle[prototype.vehicleId]
+      : prototypeSpawn(profile));
     let current = rig.snapshot(0);
     let previous = current;
     let simulationTime = 0;

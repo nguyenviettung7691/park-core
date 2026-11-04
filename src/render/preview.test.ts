@@ -404,6 +404,21 @@ describe('preview lifecycle', () => {
     expect(f.world.bodies).toHaveLength(0);
   });
 
+  it('starts each lesson at its authored vehicle spawn', () => {
+    const f = fixture();
+    const scenario = scenarios[1]!;
+    const p = startPreview(
+      f.canvas, f.container, f.events, { ...options(), environmentId: scenario.environmentId },
+      f.deps, { kind: 'lesson', scenario },
+    );
+    const body = f.world.bodies.find((candidate) => candidate.mass > 0)!;
+
+    expect(body.position.x).toBeCloseTo(scenario.spawnByVehicle.sedan.positionM[0], 5);
+    expect(body.position.z).toBeCloseTo(scenario.spawnByVehicle.sedan.positionM[2], 5);
+
+    p.dispose();
+  });
+
   it('fails a lesson on mapped chassis contact before advancing its checkpoint', () => {
     const f = fixture();
     const scenario = scenarios[1]!;

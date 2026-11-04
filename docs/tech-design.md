@@ -45,11 +45,11 @@ The simulator restricts the drivetrain to automatic transmissions (P, R, N, D), 
 
 ## 5. Environments & Progression
 
-The product target uses static lighting and five sequential parking lessons. The current Phase 5 delivery is only the asset-loading and progression foundation: four original prototype GLBs, validated asynchronous loading, versioned local records, and a stage selector. Stage 1 opens the Garage sandbox; Stages 2-5 remain locked until a future lesson runtime can report confirmed success. These prototype assets do not claim production art, baked textures, a feasible lesson route, or validated training readiness.
+The product target uses static lighting and five sequential parking lessons. Phase 5 delivered the asset-loading and progression foundation: four original prototype GLBs, validated asynchronous loading, versioned local records, and a stage selector. Phase 6 adds the five lesson runtimes and measured outcomes: Stage 1 is the Garage forward-bay lesson, and only confirmed success unlocks the next stage. `Lái tự do` retains the separate Garage sandbox without lesson completion. These prototype assets do not claim production art, image-based light bakes, dynamically driveable routes, or validated training readiness.
 
 * **Environment 1: Urban Roadside.** Static daylight. Focuses on parallel parking between low-poly vehicles and navigating standard curbs.
 * **Environment 2: Underground Garage.** Baked ambient occlusion and point lights. Focuses on reverse-perpendicular parking, tight concrete pillars, and spatial alignment using the 360-degree camera.
-* **Failure State:** Bounding box collisions trigger an immediate scenario fail and reset.
+* **Failure State:** In lessons, collision and other failure boundaries stop the attempt and show its recap; Retry starts a fresh attempt. Sandbox contact stops driving until Reset or Menu.
 
 ## 6. AI Implementation Plan & Model Routing
 
@@ -110,7 +110,8 @@ Here is the detailed task breakdown mapped to the optimal AI model tiers.
 * **Asset fidelity:** These are small low-poly vertex-color prototypes, not production vehicles or image-based light bakes. See [the Phase 5 detail design](phase-5-detail-design.md), [implementation plan](phase-5-implementation-plan.md), and [asset pipeline measurements](asset-pipeline.md).
 * **Validation status:** Software checks are recorded in the Phase 5 implementation plan. Mirror sightlines, environment clearance, route feasibility, real-wheel behavior, supported-Node execution, reference-PC performance, production art and instructor review remain pending.
 
-**Phase 6: Lessons & Parking Evaluation — Deferred**
+**Phase 6: Lessons & Parking Evaluation — Implemented; Owner Sign-off Pending**
 
-* **Remaining tasks:** Implement the five authored lesson briefings/checkpoints, parking envelope evaluation, collision/failure outcomes, durable recaps and retries, and feasible routes. Connect only confirmed lesson success to the typed Phase 5 progression boundary.
-* **Explicit boundary:** Stage selection and persistence are not a lesson state machine. Preview use cannot unlock stages; no success/fail or training-readiness claim is currently supported.
+* **Delivered:** Five authored lesson scenarios, advisory checkpoints, full-envelope parking evaluation, collision/failure outcomes, uniform durable recaps, IndexedDB history, retry, and success-only contiguous progression. `Lái tự do` remains a separate Garage sandbox that cannot unlock stages.
+* **Explicit boundary:** Geometric route witnesses and browser/software acceptance do not establish dynamic route drivability, instructor approval, vehicle or wheel support, reference-PC performance, production-art quality, learner competence, or training readiness.
+* **Status and evidence:** Implemented on the isolated `phase-6-lessons-parking-evaluation` branch. See the [Phase 6 detail design](phase-6-detail-design.md), [implementation plan](phase-6-implementation-plan.md), and [approved design](superpowers/specs/2026-11-04-phase-6-lessons-parking-evaluation-design.md). Do not merge to `main` or push before explicit owner sign-off.

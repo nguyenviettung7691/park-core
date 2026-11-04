@@ -5,7 +5,7 @@ async function checkFreshViewport(browser: Browser, url: string, width: number, 
   try {
     const page = await context.newPage();
     await page.goto(url);
-    await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+    await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
     const canvas = page.locator('#simulation');
     await expect(canvas).toHaveAttribute('data-engine', /three\.js/i);
     await expect.poll(() => canvas.evaluate((element) => {
@@ -33,7 +33,9 @@ test('menu, real rendering, resize, keyboard focus and repeated preview lifecycl
   await select.selectOption('cuv');
   await page.getByLabel('Nguồn điều khiển', { exact: true }).focus();
   await page.keyboard.press('Tab');
-  const open = page.getByRole('button', { name: 'Lái thử mô hình', exact: true });
+  await expect(page.locator('#start-stage')).toBeFocused();
+  await page.keyboard.press('Tab');
+  const open = page.getByRole('button', { name: 'Lái tự do', exact: true });
   await expect(open).toBeFocused();
   expect(await open.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
   await page.keyboard.press('Enter');
@@ -110,7 +112,7 @@ test('missing WebGL2 shows honest feedback with no retry or training controls', 
     });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+  await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('không hỗ trợ WebGL2');
   await expect(page.getByRole('button')).toHaveText('Quay lại menu');
   await expect(page.locator('canvas')).toHaveCount(0);
@@ -121,7 +123,7 @@ test('blur needs explicit resume and context loss returns to an honest recovery 
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  const open = page.getByRole('button', { name: 'Lái thử mô hình', exact: true });
+  const open = page.getByRole('button', { name: 'Lái tự do', exact: true });
   await open.click();
   await expect(page.locator('#telemetry')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Tạm dừng', exact: true })).toBeVisible();

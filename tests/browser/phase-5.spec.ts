@@ -53,7 +53,7 @@ test('Stage 1 loads selected assets, cancels stale loading, retries and closes r
   await expect(page.getByRole('button', { name: /ghi nhận thành công/i })).toHaveCount(0);
 
   await page.getByLabel('Chọn xe').selectOption('cuv');
-  await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+  await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await expect(page.locator('#screen-layer [role="status"]')).toContainText('Đang chuẩn bị');
   await expect.poll(() => requests).toContain('/assets/vehicles/cuv.glb');
   await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();
@@ -62,7 +62,7 @@ test('Stage 1 loads selected assets, cancels stale loading, retries and closes r
   await expect(page.getByRole('heading', { name: 'Park-Core', exact: true })).toBeVisible();
 
   await page.getByLabel('Chọn xe').selectOption('sedan');
-  await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+  await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Không thể tải mẫu xe');
   await page.getByRole('button', { name: 'Thử lại', exact: true }).click();
   await expect(page.locator('#simulation')).toBeVisible();
@@ -76,7 +76,7 @@ test('Stage 1 loads selected assets, cancels stale loading, retries and closes r
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();
     await expect(page.locator('#simulation')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Lái thử mô hình', exact: true }).click();
+    await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
     await expect(page.locator('#simulation')).toBeVisible();
     await expect(page.locator('#telemetry')).toBeVisible();
   }
