@@ -3,6 +3,7 @@ import type {
   AppState,
   BodyPose,
   CameraMode,
+  ControllerCalibration,
   InputAction,
   InputFrame,
   InputSource,
@@ -77,6 +78,21 @@ export interface SettingsSaveV1 {
   readonly trajectory: boolean;
   readonly inputSource: InputSource;
   readonly resolutionScale: 1 | 0.75 | 0.5;
+}
+
+export type PersistenceRecord = 'progress' | 'settings' | 'calibration';
+export type RecordStatus = 'persistent' | 'session-only' | 'reset-required';
+
+export interface PersistenceSnapshot {
+  readonly progress: ProgressSaveV1;
+  readonly settings: SettingsSaveV1;
+  readonly calibrations: readonly ControllerCalibration[];
+  readonly recordStatus: Readonly<Record<PersistenceRecord, RecordStatus>>;
+}
+
+export interface PersistenceResult {
+  readonly record: PersistenceRecord;
+  readonly status: RecordStatus;
 }
 
 export interface ScreenContext {
