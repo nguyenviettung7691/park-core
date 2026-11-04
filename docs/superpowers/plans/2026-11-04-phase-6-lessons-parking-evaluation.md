@@ -311,11 +311,11 @@ reappear. This operation never touches Phase 5 localStorage.
 - Consumes: `VehicleTelemetry`, `VehicleProfile`, `ParkingTarget`, and the named roadside curb collider.
 - Produces: `updateParking(...)` returning eligibility and continuous dwell.
 
-- [ ] **Step 1: Write failing geometry/boundary tests.** Cover each mirror-aware footprint corner in an oriented target inset by 0.05 m; target rotation; heading error wrap at +/-pi and the 5-degree boundary; linear/angular speed, P, parking brake; roadside body-to-curb gap endpoints 0.15/0.30 m; exactly 2.0 s success; and dwell reset when any requirement becomes false.
-- [ ] **Step 2: Run the tests red.** Run `npm test -- src/lessons/parking.test.ts`; confirm the missing evaluator fails as expected.
-- [ ] **Step 3: Implement oriented containment and gap checks.** Transform envelope corners into target-local X/Z; use body width for curb gap, not mirror width. Keep calculation pure and use explicit collider metadata.
-- [ ] **Step 4: Verify.** Run parking tests, `npm run typecheck`, and `npm run build`.
-- [ ] **Step 5: Commit.** `feat: evaluate measured parking completion`.
+- [x] **Step 1: Write failing geometry/boundary tests.** Cover each mirror-aware footprint corner in an oriented target inset by 0.05 m; target rotation; heading error wrap at +/-pi and the 5-degree boundary; linear/angular speed, P, parking brake; roadside body-to-curb gap endpoints 0.15/0.30 m; exactly 2.0 s success; and dwell reset when any requirement becomes false.
+- [x] **Step 2: Run the tests red.** Run `npm test -- src/lessons/parking.test.ts`; confirm the missing evaluator fails as expected.
+- [x] **Step 3: Implement oriented containment and gap checks.** Transform envelope corners into target-local X/Z; use body width for curb gap, not mirror width. Keep calculation pure and use explicit collider metadata.
+- [x] **Step 4: Verify.** Run parking tests, `npm run typecheck`, and `npm run build`.
+- [x] **Step 5: Commit.** `feat: evaluate measured parking completion`.
 
 ### Task 4: Implement attempt failure predicates
 
