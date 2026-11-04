@@ -142,6 +142,14 @@ export interface ParkingTarget {
   readonly curbGapRangeM: readonly [number, number] | null;
 }
 
+export interface ScenarioCollider {
+  readonly id: string;
+  readonly kind: 'obstacle' | 'curb';
+  readonly centerM: Vec3Data;
+  readonly halfExtentsM: Vec3Data;
+  readonly yawRad: number;
+}
+
 export interface ScenarioDefinition {
   readonly stageId: StageId;
   readonly environmentId: EnvironmentId;
@@ -152,6 +160,7 @@ export interface ScenarioDefinition {
   readonly target: ParkingTarget;
   readonly steps: readonly LessonStep[];
   readonly guidance: 'full' | 'reduced' | 'on-request';
+  readonly obstacles: readonly ScenarioCollider[];
 }
 
 export type FailureReason = 'collision' | 'curb-contact' | 'out-of-bounds'

@@ -1,5 +1,10 @@
 import * as CANNON from 'cannon-es';
-import type { EnvironmentId, SpawnPose, VehicleProfile } from '../contracts';
+import type {
+  EnvironmentId,
+  ScenarioDefinition,
+  SpawnPose,
+  VehicleProfile,
+} from '../contracts';
 import type { ColliderBox } from '../runtime-types';
 
 export function createWorld(): CANNON.World {
@@ -61,6 +66,16 @@ const environmentColliders: Readonly<Record<EnvironmentId, readonly ColliderBox[
 
 export function collidersForEnvironment(id: EnvironmentId): readonly ColliderBox[] {
   return environmentColliders[id];
+}
+
+export function collidersForScenario(scenario: ScenarioDefinition): readonly ColliderBox[] {
+  const boxes = [...collidersForEnvironment(scenario.environmentId), ...scenario.obstacles];
+  const ids = new Set<string>();
+  for (const box of boxes) {
+    if (ids.has(box.id)) throw new Error(`Duplicate collider ID: ${box.id}`);
+    ids.add(box.id);
+  }
+  return boxes;
 }
 
 export const prototypeSpawn = (profile: VehicleProfile): SpawnPose =>
