@@ -28,12 +28,13 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npx playwright install --with-deps chromium firefox
-      - name: Probe WebGL2 support
+      - name: Probe WebGL2 support (headed, Xvfb)
+        shell: bash
         run: |
-          node --input-type=module <<'EOF'
+          xvfb-run --auto-servernum -- node --input-type=module <<'EOF'
           import { chromium, firefox } from '@playwright/test';
           for (const type of [chromium, firefox]) {
-            const browser = await type.launch();
+            const browser = await type.launch({ headless: false });
             try {
               const page = await browser.newPage();
               const result = await page.evaluate(() => {
@@ -52,8 +53,8 @@ jobs:
             }
           }
           EOF
-      - run: npm run test:browser -- --output=test-results/browser
-      - run: npm run test:production -- --output=test-results/production
+      - run: xvfb-run --auto-servernum -- npm run test:browser -- --headed --output=test-results/browser
+      - run: xvfb-run --auto-servernum -- npm run test:production -- --headed --output=test-results/production
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:

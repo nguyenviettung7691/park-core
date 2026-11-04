@@ -119,6 +119,14 @@
   A diagnostic-only workflow change (WebGL2 probe, per-suite output directories,
   failure artifact upload) collects runner evidence; it is not a fix. The owner
   manages Pages setup, and Finding 1 remains open.
+
+  Run 41835725600 (e0cc61a) reproduced 17 failed / 11 passed and retained
+  artifacts: the probe showed Firefox webgl2:false and Chromium software
+  WebGL2, with very slow Chromium actions that are not a complete root cause.
+  Owner-selected experiment, unverified until run on CI: headed Chromium/Firefox
+  under xvfb-run --auto-servernum for the probe and both suites; assertions,
+  retries and deploy gates unchanged. Playwright documents Xvfb for headed Linux
+  runs but does not guarantee WebGL.
   Independent task review and scoped fix review are complete; the whole-branch
   review at `f97e646` found no Critical or Important issues and approved
   readiness for owner sign-off. Implementation commits: `6e952a7`, `f97e646`.
