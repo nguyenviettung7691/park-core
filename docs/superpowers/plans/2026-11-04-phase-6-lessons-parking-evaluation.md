@@ -349,11 +349,11 @@ reappear. This operation never touches Phase 5 localStorage.
   `finishAttempt` as defined in Shared Interfaces. Feed current requested aid
   use through `activeAids`; do not infer actual observation from sensor use.
 
-- [ ] **Step 1: Write failing measurement tests.** Assert simulation elapsed time, peak absolute speed, closest non-null sampled clearance, acknowledged step IDs, requested aids, and direction changes only after signed motion exceeds 0.2 m/s.
-- [ ] **Step 2: Run the tests red.** Run `npm test -- src/lessons/attempt.test.ts`; confirm expected missing-function failures.
-- [ ] **Step 3: Implement a pure tracker.** Record completed attempts only; use the same summary fields for success/failure and `null` for unavailable failure/obstacle/clearance values as specified by `AttemptSummary`.
-- [ ] **Step 4: Verify.** Run attempt tests, `npm run typecheck`, and `npm run build`.
-- [ ] **Step 5: Commit.** `feat: summarize completed lesson attempts`.
+- [x] **Step 1: Write failing measurement tests.** Assert simulation elapsed time, peak absolute speed, closest non-null sampled clearance, acknowledged step IDs, requested aids, and direction changes only after signed motion exceeds 0.2 m/s.
+- [x] **Step 2: Run the tests red.** Run `npm test -- src/lessons/attempt.test.ts`; confirm expected missing-function failures.
+- [x] **Step 3: Implement a pure tracker.** Record completed attempts only; use the same summary fields for success/failure and `null` for unavailable failure/obstacle/clearance values as specified by `AttemptSummary`.
+- [x] **Step 4: Verify.** Run attempt tests, `npm run typecheck`, and `npm run build`.
+- [x] **Step 5: Commit.** `feat: summarize completed lesson attempts`.
 
 ### Task 6: Integrate lessons into the existing preview loop
 
