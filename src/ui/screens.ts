@@ -1,6 +1,8 @@
 import type { AppState, InputSource } from '../contracts';
 import { vi } from '../messages';
-import type { ScreenAction, ScreenContext, ShellView } from '../runtime-types';
+import type {
+  PersistenceRecord, ScreenAction, ScreenContext, ShellView,
+} from '../runtime-types';
 export { mountCalibration } from './calibration';
 
 export interface InputSetup {
@@ -8,6 +10,7 @@ export interface InputSetup {
   readonly index: number | null;
   readonly devices: readonly { readonly index: number; readonly id: string }[];
   readonly ready: boolean;
+  readonly savedCalibrationAvailable: boolean;
 }
 
 export function mountScreen(
@@ -38,6 +41,33 @@ export function mountScreen(
     element.addEventListener('click', handler, { signal: listeners.signal });
     screen.append(element);
     return element;
+  }
+
+  function persistenceNotices() {
+    const records: readonly PersistenceRecord[] = ['progress', 'settings', 'calibration'];
+    for (const record of records) {
+      const label = record === 'progress' ? vi.progressRecord
+        : record === 'settings' ? vi.settingsRecord : vi.calibrationRecord;
+      if (context.recordStatus[record] === 'session-only') {
+        const notice = text('p', `${label}: ${vi.sessionOnlyRecord}`);
+        notice.className = 'storage-notice';
+        notice.setAttribute('role', 'status');
+      } else if (context.recordStatus[record] === 'reset-required') {
+        const notice = text('p', `${label}: ${vi.unreadableRecord}`);
+        notice.className = 'storage-notice';
+        notice.setAttribute('role', 'alert');
+        if (context.resetRequested === record) {
+          const confirm = button(vi.confirmResetRecord, () =>
+            onAction({ type: 'confirm-reset', record }));
+          confirm.dataset.confirmReset = record;
+          button(vi.cancelReset, () => onAction({ type: 'cancel-reset' }));
+        } else {
+          const request = button(vi.requestResetRecord, () =>
+            onAction({ type: 'request-reset', record }));
+          request.dataset.resetRecord = record;
+        }
+      }
+    }
   }
 
   function inputControls() {
@@ -76,6 +106,12 @@ export function mountScreen(
       button(vi.discoverDevices, () => onAction({
         type: 'select-input', source: 'gamepad', gamepadIndex: input.index,
       }));
+      if (input.savedCalibrationAvailable) {
+        text('p', vi.savedCalibrationHelp);
+        const verify = button(vi.verifySavedCalibration, () =>
+          onAction({ type: 'verify-saved-calibration' }));
+        verify.id = 'verify-saved-calibration';
+      }
       if (!input.ready) text('p', vi.controllerNeedsSetup);
       const setup = button(vi.calibrate, () => onAction({ type: 'open-calibration' }));
       setup.id = 'calibrate-device';
@@ -129,6 +165,8 @@ export function mountScreen(
     }
     screen.append(controls);
   } else {
+    let selectedStageId = context.selectedStageId;
+    let selectedVehicleId = context.selectedVehicleId;
     text('h1', vi.appTitle);
     text('p', vi.menuTitle);
     text('p', vi.menuNotice);
@@ -148,15 +186,53 @@ export function mountScreen(
       if (select.value !== 'sedan' && select.value !== 'cuv') {
         throw new RangeError('Invalid vehicle selection');
       }
+      selectedVehicleId = select.value;
       onAction({ type: 'select-vehicle', vehicleId: select.value });
     }, { signal: listeners.signal });
     screen.append(label, select);
+    const stages = document.createElement('div');
+    stages.className = 'stage-list';
+    stages.setAttribute('role', 'group');
+    stages.setAttribute('aria-label', vi.stageListLabel);
+    for (const stageId of [1, 2, 3, 4, 5] as const) {
+      const choice = document.createElement('button');
+      choice.type = 'button';
+      choice.dataset.stageId = String(stageId);
+      choice.setAttribute('aria-pressed', String(context.selectedStageId === stageId));
+      const unlocked = context.unlockedStageIds.includes(stageId);
+      choice.disabled = !unlocked;
+      const progressLabel = context.progress.completedStages.includes(stageId)
+        ? vi.completedStage : unlocked ? '' : vi.lockedStage;
+      choice.textContent = `${vi[`stage${stageId}`]}${progressLabel ? ` — ${progressLabel}` : ''}`;
+      choice.addEventListener('click', () => {
+        selectedStageId = stageId;
+        for (const stage of stages.querySelectorAll<HTMLButtonElement>('[data-stage-id]')) {
+          stage.setAttribute('aria-pressed', String(Number(stage.dataset.stageId) === stageId));
+        }
+        onAction({ type: 'select-stage', stageId });
+      }, { signal: listeners.signal });
+      stages.append(choice);
+    }
+    screen.append(stages);
+    persistenceNotices();
     inputControls();
     text('p', vi.controlsHelp);
-    button(vi.openPreview, () => onAction({ type: 'open-preview' })).disabled = input ? !input.ready : false;
+    const start = button(vi.startStage, () => onAction({
+      type: 'start', stageId: selectedStageId, vehicleId: selectedVehicleId,
+    }));
+    start.id = 'start-stage';
+    start.disabled = !context.unlockedStageIds.includes(selectedStageId) ||
+      (input ? !input.ready : false);
   }
   root.append(screen);
-  if (preview !== 'running') screen.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+  if (preview !== 'running') {
+    const target = context.resetRequested
+      ? screen.querySelector<HTMLButtonElement>(`[data-confirm-reset="${context.resetRequested}"]`)
+      : screen.querySelector<HTMLButtonElement>(
+        `[data-stage-id="${context.selectedStageId}"]:not(:disabled)`,
+      );
+    (target ?? screen.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();
+  }
   return () => {
     listeners.abort();
     screen.remove();

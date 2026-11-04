@@ -1,40 +1,56 @@
 import { vi } from './messages';
-import type { ControllerCalibration, EnvironmentId, MessageKey, VehicleId } from './contracts';
+import type {
+  ControllerCalibration, EnvironmentId, MessageKey, StageId, VehicleId,
+} from './contracts';
 import type { ScreenAction, ScreenContext, ShellView } from './runtime-types';
+import type { PersistenceRecord, PersistenceResult } from './runtime-types';
 import { createPreview, PreviewStartError, type Preview } from './render/preview';
 import { AssetLoadError, loadSceneAssets } from './world/assets';
 import type { AssetLoadProgress, SceneAssets } from './runtime-types';
 import { mountHud } from './ui/hud';
 import { mountCalibration, mountScreen, type InputSetup } from './ui/screens';
+import { createPersistence, unlockedStages, type PersistenceStore } from './storage/persistence';
 
 export interface AppDeps {
   createPreview: typeof createPreview;
   loadSceneAssets: typeof loadSceneAssets;
+  createPersistence: () => PersistenceStore;
   getGamepads: () => readonly (Gamepad | null)[];
 }
 
-export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): { dispose(): void } {
+export interface AppHandle {
+  dispose(): void;
+  recordConfirmedStageSuccess(stageId: StageId): PersistenceResult;
+}
+
+export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): AppHandle {
   const deps: AppDeps = {
     createPreview,
     loadSceneAssets,
+    createPersistence: () => createPersistence(() =>
+      typeof localStorage === 'undefined' ? null : localStorage),
     getGamepads: () => typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [],
     ...overrides,
   };
+  const persistence = deps.createPersistence();
+  const initial = persistence.snapshot();
   let context: ScreenContext = {
-    progress: { version: 1, completedStages: [], lastVehicle: 'sedan' },
-    settings: {
-      version: 1, volume: 0.5, muted: false, driverFovDeg: 60,
-      cameraMode: 'driver', overhead: false, trajectory: false,
-      inputSource: 'keyboard', resolutionScale: 1,
-    },
-    selectedStageId: 1, selectedVehicleId: 'sedan',
+    progress: initial.progress,
+    settings: initial.settings,
+    selectedStageId: 1,
+    selectedVehicleId: initial.progress.lastVehicle,
+    unlockedStageIds: unlockedStages(initial.progress),
+    recordStatus: initial.recordStatus,
+    resetRequested: null,
   };
   let view: ShellView = { state: { kind: 'menu' }, preview: 'closed' };
   let preview: Preview | null = null;
   let canvas: HTMLCanvasElement | null = null;
   let gamepadIndex: number | null = null;
   let devices: readonly Gamepad[] = [];
-  const calibrations = new Map<string, ControllerCalibration>();
+  const calibrations = new Map<string, ControllerCalibration>(
+    initial.calibrations.map((value) => [value.deviceId, value]),
+  );
   const verified = new Map<number, string>();
   const listeners = new AbortController();
   let generation = 0;
@@ -57,6 +73,34 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   function clearStatus() {
     status.textContent = audioUnavailable ? vi.audioUnavailable : '';
   }
+  function recordLabel(record: PersistenceRecord) {
+    return record === 'progress' ? vi.progressRecord
+      : record === 'settings' ? vi.settingsRecord : vi.calibrationRecord;
+  }
+  function reportPersistence(result: PersistenceResult) {
+    if (result.status === 'persistent') return;
+    status.textContent = `${recordLabel(result.record)}: ${
+      result.status === 'session-only' ? vi.sessionOnlyNotice : vi.resetRequiredNotice
+    }`;
+  }
+  function refreshPersistence() {
+    const saved = persistence.snapshot();
+    const unlockedStageIds = unlockedStages(saved.progress);
+    const selectedStageId = unlockedStageIds.includes(context.selectedStageId) ? context.selectedStageId : 1;
+    context = {
+      ...context,
+      progress: saved.progress,
+      settings: saved.settings,
+      selectedStageId,
+      selectedVehicleId: saved.progress.lastVehicle,
+      unlockedStageIds,
+      recordStatus: saved.recordStatus,
+    };
+    calibrations.clear();
+    for (const calibration of saved.calibrations) {
+      calibrations.set(calibration.deviceId, calibration);
+    }
+  }
   function readDevices() {
     try {
       devices = deps.getGamepads().filter((pad): pad is Gamepad => pad !== null && pad.connected);
@@ -73,10 +117,13 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   }
   function inputSetup(): InputSetup {
     const pad = devices.find((candidate) => candidate.index === gamepadIndex);
+    const calibration = pad ? calibrations.get(pad.id) : undefined;
+    const verifiedCalibration = pad !== undefined && verified.get(pad.index) === pad.id;
     return {
       source: context.settings.inputSource, index: gamepadIndex, devices,
       ready: context.settings.inputSource === 'keyboard' ||
-        (pad !== undefined && verified.get(pad.index) === pad.id && calibrations.has(pad.id)),
+        (pad !== undefined && verifiedCalibration && calibration !== undefined),
+      savedCalibrationAvailable: calibration !== undefined && !verifiedCalibration,
     };
   }
   function drawScreen() {
@@ -87,7 +134,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       unmountScreen = mountCalibration(layer, index, deps.getGamepads, (value) => {
         calibrations.set(value.deviceId, value);
         verified.set(index, value.deviceId);
-        status.textContent = '';
+        const result = persistence.saveCalibrations([...calibrations.values()]);
+        refreshPersistence();
+        reportPersistence(result);
         readDevices();
         preview?.setCalibration(value);
         preview?.selectSource('gamepad', index);
@@ -284,7 +333,65 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     if (disposed) return;
     switch (action.type) {
       case 'select-vehicle':
-        context = { ...context, selectedVehicleId: action.vehicleId };
+        context = {
+          ...context,
+          selectedVehicleId: action.vehicleId,
+          progress: { ...context.progress, lastVehicle: action.vehicleId },
+        };
+        reportPersistence(persistence.saveProgress(context.progress));
+        refreshPersistence();
+        break;
+      case 'select-stage':
+        if (!context.unlockedStageIds.includes(action.stageId)) return;
+        context = { ...context, selectedStageId: action.stageId };
+        drawScreen();
+        break;
+      case 'verify-saved-calibration': {
+        if (view.preview === 'running' || view.calibrating || gamepadIndex === null) return;
+        const pad = devices.find((candidate) => candidate.index === gamepadIndex);
+        const calibration = pad ? calibrations.get(pad.id) : undefined;
+        if (!pad || !calibration) return;
+        verified.set(pad.index, pad.id);
+        preview?.selectSource('gamepad', pad.index);
+        preview?.setCalibration(calibration);
+        status.textContent = vi.savedCalibrationHelp;
+        drawScreen();
+        break;
+      }
+      case 'start':
+        if (!context.unlockedStageIds.includes(action.stageId)) return;
+        if (action.stageId !== 1) {
+          notice('lessonUnavailable');
+          return;
+        }
+        context = {
+          ...context, selectedStageId: action.stageId, selectedVehicleId: action.vehicleId,
+        };
+        openPreview();
+        break;
+      case 'request-reset':
+        if (context.recordStatus[action.record] !== 'reset-required') return;
+        context = { ...context, resetRequested: action.record };
+        drawScreen();
+        break;
+      case 'cancel-reset':
+        context = { ...context, resetRequested: null };
+        drawScreen();
+        break;
+      case 'confirm-reset':
+        if (context.resetRequested !== action.record ||
+            context.recordStatus[action.record] !== 'reset-required') return;
+        context = { ...context, resetRequested: null };
+        verified.clear();
+        const reset = persistence.resetRecord(action.record);
+        refreshPersistence();
+        if (action.record === 'settings') {
+          gamepadIndex = null;
+          preview?.selectSource('keyboard');
+          hud.updateSettings(context.settings);
+        }
+        reportPersistence(reset);
+        drawScreen();
         break;
       case 'open-preview':
       case 'reset-preview':
@@ -310,7 +417,11 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       case 'select-input':
         if (view.preview === 'running' || view.calibrating) return;
         gamepadIndex = action.gamepadIndex;
-        context = { ...context, settings: { ...context.settings, inputSource: action.source } };
+        if (context.settings.inputSource !== action.source) {
+          context = { ...context, settings: { ...context.settings, inputSource: action.source } };
+          reportPersistence(persistence.saveSettings(context.settings));
+          refreshPersistence();
+        }
         hud.updateSettings(context.settings);
         if (action.source === 'gamepad') readDevices();
         preview?.selectSource(action.source, gamepadIndex ?? undefined);
@@ -323,8 +434,10 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         break;
       case 'update-settings':
         context = { ...context, settings: action.settings };
-        preview?.updateSettings(action.settings);
-        hud.updateSettings(action.settings);
+        reportPersistence(persistence.saveSettings(action.settings));
+        refreshPersistence();
+        preview?.updateSettings(context.settings);
+        hud.updateSettings(context.settings);
         break;
       case 'recenter-view':
         preview?.recenterView();
@@ -350,6 +463,14 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   window.addEventListener('gamepadconnected', onConnection, { signal: listeners.signal });
   drawScreen();
   return {
+    recordConfirmedStageSuccess(stageId) {
+      if (disposed) throw new Error('Cannot record stage success after app disposal');
+      const result = persistence.recordConfirmedStageSuccess(stageId);
+      refreshPersistence();
+      reportPersistence(result);
+      if (view.state.kind === 'menu' && view.preview === 'closed') drawScreen();
+      return result;
+    },
     dispose() {
       if (disposed) return;
       disposed = true;

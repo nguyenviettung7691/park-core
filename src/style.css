@@ -254,6 +254,21 @@ body {
   margin: auto;
 }
 
+.stage-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--space-1);
+}
+
+.stage-list button {
+  text-align: left;
+}
+
+.storage-notice {
+  padding: var(--space-1) var(--space-2);
+  border-left: 3px solid var(--color-accent);
+}
+
 #screen-layer .preview-paused {
   align-self: flex-start;
   margin: var(--space-3) 0 auto;

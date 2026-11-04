@@ -100,17 +100,23 @@ export interface ScreenContext {
   readonly settings: SettingsSaveV1;
   readonly selectedStageId: StageId;
   readonly selectedVehicleId: VehicleId;
+  readonly unlockedStageIds: readonly StageId[];
+  readonly recordStatus: Readonly<Record<PersistenceRecord, RecordStatus>>;
+  readonly resetRequested: PersistenceRecord | null;
 }
 
 export type ScreenAction =
   | { readonly type: 'start'; readonly stageId: StageId; readonly vehicleId: VehicleId }
+  | { readonly type: 'select-stage'; readonly stageId: StageId }
+  | { readonly type: 'verify-saved-calibration' }
+  | { readonly type: 'request-reset'; readonly record: PersistenceRecord }
+  | { readonly type: 'confirm-reset'; readonly record: PersistenceRecord }
+  | { readonly type: 'cancel-reset' }
   | { readonly type: 'retry' }
   | { readonly type: 'menu' }
   | { readonly type: 'continue' }
   | { readonly type: 'resume' }
   | { readonly type: 'open-calibration' }
-  | { readonly type: 'request-reset-progress' }
-  | { readonly type: 'confirm-reset-progress' }
   | { readonly type: 'select-input'; readonly source: InputSource;
       readonly gamepadIndex: number | null }
   | { readonly type: 'update-settings'; readonly settings: SettingsSaveV1 }

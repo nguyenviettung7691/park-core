@@ -9,9 +9,12 @@ import { collidersForEnvironment } from './world/colliders';
 import { profiles } from './vehicle/profiles';
 import { buildPrototypeScene } from './render/prototype';
 import { AssetLoadError } from './world/assets';
+import { createPersistence, type StoragePort } from './storage/persistence';
+import type { PersistenceRecord } from './runtime-types';
 
 afterEach(() => {
   document.body.replaceChildren();
+  localStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -86,6 +89,193 @@ function fixture() {
 function makeSceneAssets() {
   return buildPrototypeScene(profiles.sedan, collidersForEnvironment('garage')).assets;
 }
+
+function appPersistence(
+  seed: Partial<Record<PersistenceRecord, string>> = {},
+  failWrites = false,
+) {
+  const keys: Record<PersistenceRecord, string> = {
+    progress: 'park-core.progress.v1',
+    settings: 'park-core.settings.v1',
+    calibration: 'park-core.calibration.v1',
+  };
+  const values = new Map<string, string>();
+  for (const record of ['progress', 'settings', 'calibration'] as const) {
+    const value = seed[record];
+    if (value !== undefined) values.set(keys[record], value);
+  }
+  const storage: StoragePort = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem(key, value) {
+      if (failWrites) throw new Error('quota exceeded');
+      values.set(key, value);
+    },
+    removeItem: (key) => { values.delete(key); },
+  };
+  const store = createPersistence(() => storage);
+  return {
+    store,
+    values,
+    saveProgress: vi.spyOn(store, 'saveProgress'),
+    saveSettings: vi.spyOn(store, 'saveSettings'),
+    saveCalibrations: vi.spyOn(store, 'saveCalibrations'),
+    resetRecord: vi.spyOn(store, 'resetRecord'),
+    recordConfirmedStageSuccess: vi.spyOn(store, 'recordConfirmedStageSuccess'),
+  };
+}
+
+it('hydrates persisted progress, vehicle and settings before showing the stage menu', async () => {
+  const f = fixture();
+  const persistence = appPersistence({
+    progress: JSON.stringify({ version: 1, completedStages: [1], lastVehicle: 'cuv' }),
+    settings: JSON.stringify({
+      version: 1, volume: 0.25, muted: true, driverFovDeg: 70,
+      cameraMode: 'chase', overhead: true, trajectory: true,
+      inputSource: 'keyboard', resolutionScale: 1,
+    }),
+  });
+  const app = f.app({ createPersistence: () => persistence.store });
+
+  expect(f.root.querySelector<HTMLSelectElement>('#vehicle')?.value).toBe('cuv');
+  expect(f.root.querySelector<HTMLButtonElement>('[data-stage-id="2"]')?.disabled).toBe(false);
+  f.click('Lái thử mô hình');
+  await f.flush();
+  expect(f.prototypes[0]).toMatchObject({
+    vehicleId: 'cuv',
+    settings: { volume: 0.25, cameraMode: 'chase', overhead: true, trajectory: true },
+  });
+  app.dispose();
+});
+
+it('persists vehicle and setting changes through only their matching records', async () => {
+  const f = fixture();
+  const persistence = appPersistence();
+  const app = f.app({ createPersistence: () => persistence.store });
+  const vehicle = f.root.querySelector<HTMLSelectElement>('#vehicle')!;
+  vehicle.value = 'cuv';
+  vehicle.dispatchEvent(new Event('change'));
+  expect(persistence.saveProgress).toHaveBeenCalledWith({
+    version: 1, completedStages: [], lastVehicle: 'cuv',
+  });
+  expect(persistence.saveSettings).not.toHaveBeenCalled();
+
+  await f.openPreview();
+  const camera = f.root.querySelector<HTMLSelectElement>('#camera-mode')!;
+  camera.value = 'chase';
+  camera.dispatchEvent(new Event('change'));
+  expect(persistence.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+    cameraMode: 'chase',
+  }));
+  expect(persistence.saveProgress).toHaveBeenCalledTimes(1);
+  app.dispose();
+});
+
+it('saves calibration by stable device ID and never records success from preview actions', async () => {
+  const f = fixture();
+  const pad = testGamepad();
+  const persistence = appPersistence();
+  const app = f.app({
+    createPersistence: () => persistence.store,
+    getGamepads: () => [pad],
+  });
+  const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
+  source.value = 'gamepad';
+  source.dispatchEvent(new Event('change'));
+  const device = f.root.querySelector<HTMLSelectElement>('#input-device')!;
+  device.value = '0';
+  device.dispatchEvent(new Event('change'));
+  f.root.querySelector<HTMLButtonElement>('#calibrate-device')!.click();
+
+  const click = (label: string) => {
+    const button = [...f.root.querySelectorAll('button')]
+      .find((candidate) => candidate.textContent === label);
+    if (!button) throw new Error(`Button missing: ${label}`);
+    button.click();
+  };
+  pad.axes[0] = -1; click('Ghi hết lái trái');
+  pad.axes[0] = 0; click('Ghi chính giữa');
+  pad.axes[0] = 1; click('Ghi hết lái phải');
+  for (const [index, label] of [[7, 'Chân ga'], [6, 'Phanh chân']] as const) {
+    pad.buttons[index]!.value = 0; click(`${label} — Ghi đã nhả`);
+    pad.buttons[index]!.value = 1; click(`${label} — Ghi đã nhấn hết`);
+  }
+  pad.buttons[4]!.value = 1; click('Xác minh nút R');
+  pad.buttons[5]!.value = 1; click('Xác minh nút D');
+  click('Lưu hiệu chuẩn');
+
+  expect(persistence.saveCalibrations).toHaveBeenCalledWith([
+    expect.objectContaining({ deviceId: 'wheel' }),
+  ]);
+  expect(persistence.saveProgress).not.toHaveBeenCalled();
+  expect(persistence.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+    inputSource: 'gamepad',
+  }));
+  await f.openPreview();
+  expect(persistence.recordConfirmedStageSuccess).not.toHaveBeenCalled();
+  app.dispose();
+});
+
+it('verifies a saved calibration only for the selected stable device ID', async () => {
+  const f = fixture();
+  const pad = testGamepad();
+  const saved = {
+    version: 1, deviceId: 'wheel', steeringAxis: 0,
+    steeringLeft: -1, steeringCenter: 0, steeringRight: 1,
+    throttle: { kind: 'button', index: 7, released: 0, pressed: 1 },
+    brake: { kind: 'button', index: 6, released: 0, pressed: 1 },
+    reverseButton: 4, driveButton: 5,
+  };
+  const persistence = appPersistence({
+    calibration: JSON.stringify({ version: 1, entries: [saved] }),
+  });
+  const app = f.app({
+    createPersistence: () => persistence.store,
+    getGamepads: () => [pad],
+  });
+  const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
+  source.value = 'gamepad';
+  source.dispatchEvent(new Event('change'));
+  const device = f.root.querySelector<HTMLSelectElement>('#input-device')!;
+  device.value = '0';
+  device.dispatchEvent(new Event('change'));
+  expect(f.root.querySelector('#verify-saved-calibration')).not.toBeNull();
+  f.click('Dùng hiệu chuẩn đã lưu');
+  expect(f.root.querySelector<HTMLButtonElement>('#start-stage')?.disabled).toBe(false);
+  f.click('Lái thử mô hình');
+  await f.flush();
+
+  expect(f.prototypes[0]).toMatchObject({ calibration: saved });
+  expect(persistence.saveCalibrations).not.toHaveBeenCalled();
+  app.dispose();
+});
+
+it('resets only the record that was explicitly confirmed', () => {
+  const f = fixture();
+  const persistence = appPersistence({ settings: '{invalid' });
+  const app = f.app({ createPersistence: () => persistence.store });
+
+  f.root.querySelector<HTMLButtonElement>('[data-reset-record="settings"]')!.click();
+  f.root.querySelector<HTMLButtonElement>('[data-confirm-reset="settings"]')!.click();
+
+  expect(persistence.resetRecord).toHaveBeenCalledOnce();
+  expect(persistence.resetRecord).toHaveBeenCalledWith('settings');
+  expect(persistence.values.has('park-core.settings.v1')).toBe(false);
+  expect(persistence.values.has('park-core.progress.v1')).toBe(false);
+  app.dispose();
+});
+
+it('shows a session-only notice when a persistence write fails', () => {
+  const f = fixture();
+  const persistence = appPersistence({}, true);
+  const app = f.app({ createPersistence: () => persistence.store });
+  const vehicle = f.root.querySelector<HTMLSelectElement>('#vehicle')!;
+  vehicle.value = 'cuv';
+  vehicle.dispatchEvent(new Event('change'));
+
+  expect(f.root.querySelector('#status-message')?.textContent?.toLocaleLowerCase('vi'))
+    .toContain('chỉ lưu trong phiên này');
+  app.dispose();
+});
 
 it('loads the selected vehicle and Garage before creating a preview and releases its assets on close', async () => {
   const f = fixture();
@@ -192,7 +382,7 @@ it('shows a retryable localized error for a typed vehicle asset failure', async 
   app.dispose();
 });
 
-it('mounts menu without touching WebGL or storage', () => {
+it('hydrates storage before mounting the menu without touching WebGL', () => {
   const f = fixture();
   const context = vi.spyOn(HTMLCanvasElement.prototype, 'getContext');
   const storage = vi.spyOn(Storage.prototype, 'getItem');
@@ -200,7 +390,10 @@ it('mounts menu without touching WebGL or storage', () => {
   expect(f.root.querySelector('#vehicle')).not.toBeNull();
   expect(f.root.querySelector('canvas')).toBeNull();
   expect(context).not.toHaveBeenCalled();
-  expect(storage).not.toHaveBeenCalled();
+  expect(storage).toHaveBeenCalledTimes(3);
+  expect(storage).toHaveBeenCalledWith('park-core.progress.v1');
+  expect(storage).toHaveBeenCalledWith('park-core.settings.v1');
+  expect(storage).toHaveBeenCalledWith('park-core.calibration.v1');
   expect(f.factory).not.toHaveBeenCalled();
   app.dispose();
 });
@@ -414,10 +607,10 @@ it('cancels calibration back to paused controls and restores its trigger focus',
   app.dispose();
 });
 
-it('passes initial settings and routes HUD changes to the live preview without persistence', async () => {
+it('passes initial settings and persists HUD changes through settings only', async () => {
   const f = fixture();
-  const setItem = vi.spyOn(Storage.prototype, 'setItem');
-  const app = f.app();
+  const persistence = appPersistence();
+  const app = f.app({ createPersistence: () => persistence.store });
   await f.openPreview();
 
   expect(f.prototypes[0]).toMatchObject({
@@ -435,7 +628,10 @@ it('passes initial settings and routes HUD changes to the live preview without p
   }));
   f.root.querySelector<HTMLButtonElement>('#recenter-view')!.click();
   expect(f.previews[0].recenterView).toHaveBeenCalledOnce();
-  expect(setItem).not.toHaveBeenCalled();
+  expect(persistence.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+    cameraMode: 'chase',
+  }));
+  expect(persistence.saveProgress).not.toHaveBeenCalled();
   app.dispose();
 });
 

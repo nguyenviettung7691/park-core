@@ -17,6 +17,9 @@ const context: ScreenContext = {
   },
   selectedStageId: 1,
   selectedVehicleId: 'sedan',
+  unlockedStageIds: [1],
+  recordStatus: { progress: 'persistent', settings: 'persistent', calibration: 'persistent' },
+  resetRequested: null,
 };
 
 function root() {
@@ -25,22 +28,89 @@ function root() {
   return element;
 }
 
-it('provides a labeled menu selector and emits typed preview and vehicle actions', () => {
+it('renders five stages, keeps locked stages disabled, and starts Stage 1 with the selected vehicle', () => {
   const element = root();
   const action = vi.fn();
   const unmount = mountScreen(element, { kind: 'menu' }, context, action);
-  expect(element.textContent).not.toContain('Bắt đầu');
   expect(element.querySelector('label[for="vehicle"]')).not.toBeNull();
-  const select = element.querySelector('select');
+  const stages = [...element.querySelectorAll<HTMLButtonElement>('[data-stage-id]')];
+  expect(stages).toHaveLength(5);
+  expect(stages.map((stage) => stage.disabled)).toEqual([false, true, true, true, true]);
+  expect(stages.slice(1).every((stage) => stage.textContent?.includes('Đã khóa'))).toBe(true);
+  const select = element.querySelector<HTMLSelectElement>('#vehicle');
   expect(select).toBeInstanceOf(HTMLSelectElement);
   if (!select) throw new Error('Vehicle selector missing');
   select.value = 'cuv';
   select.dispatchEvent(new Event('change'));
   expect(action).toHaveBeenLastCalledWith({ type: 'select-vehicle', vehicleId: 'cuv' });
-  element.querySelector('button')?.click();
-  expect(action).toHaveBeenLastCalledWith({ type: 'open-preview' });
+  element.querySelector<HTMLButtonElement>('#start-stage')?.click();
+  expect(action).toHaveBeenLastCalledWith({ type: 'start', stageId: 1, vehicleId: 'cuv' });
   unmount();
   expect(element.children.length).toBe(0);
+});
+
+it('enables only stages derived from the unlocked context and lets the learner select them', () => {
+  const element = root();
+  const action = vi.fn();
+  const unlocked = {
+    ...context,
+    progress: { ...context.progress, completedStages: [1] as const },
+    unlockedStageIds: [1, 2] as const,
+  };
+  mountScreen(element, { kind: 'menu' }, unlocked, action);
+  expect(element.querySelector('[data-stage-id="1"]')?.textContent).toContain('Đã hoàn thành');
+  const stage2 = element.querySelector<HTMLButtonElement>('[data-stage-id="2"]')!;
+  expect(stage2.disabled).toBe(false);
+  stage2.click();
+  expect(action).toHaveBeenCalledWith({ type: 'select-stage', stageId: 2 });
+});
+
+it('shows storage recovery and session-only states in Vietnamese without color-only cues', () => {
+  const element = root();
+  const action = vi.fn();
+  const state = {
+    ...context,
+    recordStatus: { progress: 'session-only', settings: 'reset-required', calibration: 'persistent' } as const,
+  };
+  mountScreen(element, { kind: 'menu' }, state, action);
+
+  expect(element.querySelector('[role="status"]')?.textContent?.toLocaleLowerCase('vi'))
+    .toContain('chỉ lưu trong phiên này');
+  expect(element.querySelector('[role="alert"]')?.textContent?.toLocaleLowerCase('vi'))
+    .toContain('không đọc được');
+  const request = element.querySelector<HTMLButtonElement>('[data-reset-record="settings"]')!;
+  request.click();
+  expect(action).toHaveBeenCalledWith({ type: 'request-reset', record: 'settings' });
+});
+
+it('requires confirmation for the matching reset record before emitting a reset action', () => {
+  const element = root();
+  const action = vi.fn();
+  const state = {
+    ...context,
+    recordStatus: { progress: 'persistent', settings: 'reset-required', calibration: 'persistent' } as const,
+    resetRequested: 'settings' as const,
+  };
+  mountScreen(element, { kind: 'menu' }, state, action);
+  expect(element.querySelector('[data-confirm-reset="settings"]')).not.toBeNull();
+  expect(element.querySelector('[data-confirm-reset="progress"]')).toBeNull();
+  element.querySelector<HTMLButtonElement>('[data-confirm-reset="settings"]')?.click();
+  expect(action).toHaveBeenCalledWith({ type: 'confirm-reset', record: 'settings' });
+});
+
+it('offers explicit verification for a saved calibration matching the selected device', () => {
+  const element = root();
+  const action = vi.fn();
+  mountScreen(element, { kind: 'menu' }, {
+    ...context,
+    settings: { ...context.settings, inputSource: 'gamepad' },
+  }, action, undefined, {
+    source: 'gamepad', index: 0, devices: [{ index: 0, id: 'wheel' }],
+    ready: false, savedCalibrationAvailable: true,
+  });
+
+  element.querySelector<HTMLButtonElement>('#verify-saved-calibration')?.click();
+  expect(action).toHaveBeenCalledWith({ type: 'verify-saved-calibration' });
 });
 
 it('shows accessible indeterminate asset progress and lets the learner cancel to the menu', () => {
