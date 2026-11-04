@@ -140,6 +140,10 @@ test('real keyboard drivetrain, brake, invalid shift, pause, stale key and reset
   await page.keyboard.up('w');
   await resume.click();
   await expect(resume).toHaveCount(0);
+  await waitForPointerLock(page);
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.pointerLockElement)).toBe(null);
   await page.getByRole('button', { name: 'Đặt lại xe', exact: true }).click();
   await expect(page.locator('#telemetry')).toContainText('0 km/h · P');
   await expect(page.locator('#telemetry')).toContainText('Phanh tay: Bật');

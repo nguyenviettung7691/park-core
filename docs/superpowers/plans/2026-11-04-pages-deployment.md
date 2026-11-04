@@ -135,6 +135,13 @@
   so no pause control existed: a test-sequencing flaw, not a product defect.
   Fix: approach by idle creep, brake to 0 km/h, engage parking brake, assert no
   contact before Escape; 60 s test timeout (about 20 s locally).
+
+  Run 41839162095 (8f4234d): audio test passed in both browsers; 27 passed /
+  1 failed. Chromium driving.spec.ts:118 timed out clicking Reset because the
+  resumed canvas held pointer lock and intercepted the mouse click (error context).
+  Correction pending CI: after resume, assert pointer lock, press Escape, assert
+  the resume button and no locked element before clicking Reset; assertions kept,
+  no forced clicks.
   Independent task review and scoped fix review are complete; the whole-branch
   review at `f97e646` found no Critical or Important issues and approved
   readiness for owner sign-off. Implementation commits: `6e952a7`, `f97e646`.
