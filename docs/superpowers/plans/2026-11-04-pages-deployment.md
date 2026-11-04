@@ -129,13 +129,16 @@
 **Interfaces:** Consumes Task 1's reviewed commit and owner sign-off; produces
 merged/pushed `main`, observed workflow result, and truthful closure status.
 
-- [ ] **Step 1: Present implementation evidence and request owner sign-off.**
+- [x] **Step 1: Present implementation evidence and request owner sign-off.**
   State changed files, check counts, runtime limitations and outstanding Pages
   setup. Wait for explicit approval before integration.
-- [ ] **Step 2: Merge and push after approval.**
+  Owner approved merge/push only and retained Pages configuration.
+- [x] **Step 2: Merge and push after approval.**
   Check both worktrees for unrelated changes, merge the approved branch into
   `main` non-interactively, verify merged-tree checks, and push without force.
   Do not overwrite or discard unrelated work.
+  Fast-forwarded and pushed `d751da9`; merged-tree unit tests (356), build
+  and production smoke tests (4) passed on local Node v24.13.1 (unsupported).
 - [ ] **Step 3: Observe deployment and live HTTPS delivery.**
   Inspect the actual Actions run, Pages configuration and HTTPS hostname.
   Check the app, JS/CSS and four GLBs; exercise a deployed Stage 1 launch.
