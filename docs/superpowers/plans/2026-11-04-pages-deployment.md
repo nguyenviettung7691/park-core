@@ -162,7 +162,7 @@ merged/pushed `main`, observed workflow result, and truthful closure status.
   Do not overwrite or discard unrelated work.
   Fast-forwarded and pushed `d751da9`; merged-tree unit tests (356), build
   and production smoke tests (4) passed on local Node v24.13.1 (unsupported).
-- [ ] **Step 3: Observe deployment and live HTTPS delivery.**
+- [x] **Step 3: Observe deployment and live HTTPS delivery.**
   Inspect the actual Actions run, Pages configuration and HTTPS hostname.
   Check the app, JS/CSS and four GLBs; exercise a deployed Stage 1 launch.
   If Pages activation/settings changes need authorization or DNS/TLS is
@@ -174,7 +174,16 @@ merged/pushed `main`, observed workflow result, and truthful closure status.
   `https_enforced: true`. The intended hostname still returns HTTPS 404.
   Owner-managed custom-domain setup and live app/asset checks remain blocked;
   no Pages settings or DNS were changed by the implementation.
-- [ ] **Step 4: Persist final evidence.**
+  Closure update, 2026-11-04: owner confirmed manual custom-domain verification
+  passed. Pages now confirms `cname: park-core.nguyenviettung.id.vn`.
+  Independent HTTPS checks returned 200 for the app, built JS/CSS with correct
+  MIME types, and all four GLBs with valid binary headers. A Node fetch timed
+  out on an asset connection; alternate-client checks validated all four GLBs.
+  Public HTTPS/HSTS is served through Cloudflare; Pages reports
+  `https_enforced: false`, so origin-side enforcement is not claimed.
+- [x] **Step 4: Persist final evidence.**
   Record run URL, deployed revision, live results, and remaining gaps in the
   remediation note and plan; commit/push this evidence only within the
   approved scope. Close finding 1 only when all its closure conditions pass.
+  Finding 1 marked Done in the readiness report following the owner's manual
+  sign-off and independent live checks. Findings 2–5 remain open.

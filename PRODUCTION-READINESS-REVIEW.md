@@ -8,9 +8,17 @@
 
 **Scope:** Repository implementation, build/test evidence, static delivery configuration, and user-facing claims. This is not a driver-training, legal, instructor, learner, or physical-hardware certification.
 
+## Current status — Finding 1: Done (2026-11-04)
+
+The owner confirmed manual verification of `https://park-core.nguyenviettung.id.vn/` passed. Independent live checks returned HTTPS 200 for the app, built JavaScript/CSS with correct MIME types, and all four GLBs with valid binary headers. Pages settings confirm `cname: park-core.nguyenviettung.id.vn`. Together with successful [deployment run 41841460826](https://github.com/nguyenviettung7691/park-core/actions/runs/41841460826) at `4ae956e` (356 unit tests, 28 browser tests, four production smoke tests, typecheck/build on supported Node 24.15.0), this closes Finding 1.
+
+Pages currently reports `https_enforced: false`; public HTTPS is verified through Cloudflare with HSTS, not claimed as origin-side Pages enforcement. Repository settings and DNS were owner-managed. Findings 2–5 remain unchanged and open; closing Finding 1 is not whole-product production approval.
+
+## Historical remediation record
+
 > **Remediation status, 2026-11-04 (Finding 1, in progress; original review below is unchanged):** after owner sign-off, the Pages workflow, `public/CNAME` and production-preview smoke suite were merged and pushed to `main` at `d751da9`. [Actions run 41833951982](https://github.com/nguyenviettung7691/park-core/actions/runs/41833951982) passed 356 unit tests, typecheck and build on supported Node 24.15.0, but Linux browser acceptance failed (17 failed, 11 passed); production smoke, artifact upload and deployment were skipped. Firefox reported unavailable WebGL2; Chromium's four failures need retained traces before a root cause can be confirmed. Diagnostic instrumentation is prepared separately, not a fix. Pages setup is owner-managed: the repository reported `has_pages: false` and the Pages API returned 404. The hostname's HTTPS 404 via Cloudflare and absent public CNAME answer are baseline observations only (proxying/flattening may hide DNS targets). Run 41835725600 (`e0cc61a`) reproduced 17 failed / 11 passed with retained artifacts (Firefox probe `webgl2:false`; slow Chromium actions, root cause incomplete); headed Xvfb (run 41837675459) fixed Firefox WebGL2 and left 27 passed / 1 failed, a Chromium audio test that drove into contact before pausing; the audio correction (8f4234d, run 41839162095) passed, leaving 27 passed / 1 failed: Chromium driving.spec.ts:118 clicked Reset while the resumed canvas held pointer lock; a second test-precondition correction is pending CI. Finding 1 remains open pending passing CI, deployment and live HTTPS/app/asset evidence.
 
-## Verdict: NO-GO for the requested public deployment
+## Original audit verdict: NO-GO for the requested public deployment
 
 > **Latest remediation evidence, 2026-11-04:** [run 41841460826](https://github.com/nguyenviettung7691/park-core/actions/runs/41841460826) at `4ae956e` passed all software gates on supported Node 24.15.0: 356 unit tests, typecheck/build, 28 browser tests and four production smoke tests. Artifact upload and Pages deployment succeeded. Headed Xvfb restored Firefox WebGL2; two browser tests were corrected to stop before checking audio pause and release pointer lock before clicking Reset. Runtime simulator code is unchanged. Finding 1 is **not closed**: Pages reports `build_type: workflow`, `cname: null` and the repository-subpath URL; the intended custom hostname still returns HTTPS 404. The owner retained Pages/domain setup. Set the Pages custom domain to `park-core.nguyenviettung.id.vn`, then verify live app, JS/CSS and GLBs; the root-path build is not intended for `/park-core/`. The verdict and findings below remain the original audit, not a new whole-product review.
 
@@ -37,6 +45,8 @@ The independent reviewer initially could not start a second browser suite becaus
 ## Findings
 
 ### 1. Blocker — GitHub Actions deployment to Pages is absent
+
+**Status:** Done, 2026-11-04. See current status above for deployment and live custom-domain closure evidence. The following evidence describes the original audit revision.
 
 **Confidence:** High
 
