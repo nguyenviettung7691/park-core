@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as CANNON from 'cannon-es';
 import { BufferGeometry, Color, MeshBasicMaterial, PerspectiveCamera, Vector4 } from 'three';
 import * as clockModule from '../clock';
-import { createWorld } from '../world/colliders';
+import { collidersForEnvironment, createWorld } from '../world/colliders';
+import { profiles } from '../vehicle/profiles';
+import { buildPrototypeScene } from './prototype';
 import { testGamepad } from '../test/gamepad';
 import type { SensorReading } from '../contracts';
 import { createPreview as startPreview, PreviewStartError, type PreviewDeps, type PreviewRenderer } from './preview';
@@ -23,17 +25,24 @@ const settings = {
   inputSource: 'keyboard', resolutionScale: 1,
 } as const;
 
-const options = {
-  vehicleId: 'sedan', source: 'keyboard', gamepadIndex: null,
-  calibration: null, getGamepads: () => [], settings,
-} as const;
+function options() {
+  const sceneAssets = buildPrototypeScene(
+    profiles.sedan, collidersForEnvironment('garage'),
+  ).assets;
+  for (const wheel of sceneAssets.wheelNodes) sceneAssets.vehicle.add(wheel);
+  return {
+    environmentId: 'garage' as const, vehicleId: 'sedan' as const,
+    sceneAssets, source: 'keyboard' as const, gamepadIndex: null,
+    calibration: null, getGamepads: () => [], settings,
+  };
+}
 
 function gamepadOptions() {
   const pad = testGamepad();
   return {
     pad,
     options: {
-      ...options, source: 'gamepad' as const, gamepadIndex: 0, getGamepads: () => [pad],
+      ...options(), source: 'gamepad' as const, gamepadIndex: 0, getGamepads: () => [pad],
       calibration: {
         version: 1, deviceId: 'wheel', steeringAxis: 0, steeringLeft: -1,
         steeringCenter: 0, steeringRight: 1,
@@ -49,7 +58,7 @@ function createPreview(
   canvas: HTMLCanvasElement, container: HTMLElement,
   events: Parameters<typeof startPreview>[2], deps: Partial<PreviewDeps>,
 ) {
-  const preview = startPreview(canvas, container, events, options, deps);
+  const preview = startPreview(canvas, container, events, options(), deps);
   canvas.focus();
   void preview.requestPointerLock();
   preview.resume();
@@ -147,6 +156,18 @@ function fixture() {
 }
 
 describe('preview lifecycle', () => {
+  it('disposes the loaded visual assets exactly once when the preview closes', () => {
+    const f = fixture();
+    const previewOptions = options();
+    const disposeAssets = vi.spyOn(previewOptions.sceneAssets, 'dispose');
+    const p = startPreview(f.canvas, f.container, f.events, previewOptions, f.deps);
+
+    p.dispose();
+    p.dispose();
+
+    expect(disposeAssets).toHaveBeenCalledOnce();
+  });
+
   it('coalesces audio warnings during a catch-up frame so a beep is not cancelled immediately', async () => {
     class CatchupAudioContext {
       state = 'suspended';
@@ -190,7 +211,7 @@ describe('preview lifecycle', () => {
 
   it('creates a settled paused preview and only runs after a successful explicit resume', () => {
     const f = fixture();
-    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    const p = startPreview(f.canvas, f.container, f.events, options(), f.deps);
     expect(f.frames.size).toBe(0);
     expect(f.renderer.render.mock.calls.some(([, camera]) => camera.name === 'driver-camera')).toBe(true);
     f.canvas.focus();
@@ -271,7 +292,7 @@ describe('preview lifecycle', () => {
     }
     vi.stubGlobal('AudioContext', TestAudioContext);
     const f = fixture();
-    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    const p = startPreview(f.canvas, f.container, f.events, options(), f.deps);
     expect(contexts).toHaveLength(0);
     p.unlockAudio();
     await Promise.resolve();
@@ -289,7 +310,7 @@ describe('preview lifecycle', () => {
   it('keeps sensor warnings available when audio is unavailable', async () => {
     vi.stubGlobal('AudioContext', undefined);
     const f = fixture();
-    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    const p = startPreview(f.canvas, f.container, f.events, options(), f.deps);
     p.unlockAudio();
     await vi.waitFor(() => expect(f.events.onNotice).toHaveBeenCalledWith('audioUnavailable'));
     expect(f.events.onFault).not.toHaveBeenCalled();
@@ -321,7 +342,7 @@ describe('preview lifecycle', () => {
     }
     vi.stubGlobal('AudioContext', FailedAudioContext);
     const f = fixture();
-    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    const p = startPreview(f.canvas, f.container, f.events, options(), f.deps);
     p.unlockAudio();
     await vi.waitFor(() => expect(f.events.onFault)
       .toHaveBeenCalledWith('runtime-error', failure));
@@ -365,7 +386,7 @@ describe('preview lifecycle', () => {
     const f = fixture();
     const p = createPreview(f.canvas, f.container, f.events, f.deps);
     const body = f.world.bodies.find((candidate) => candidate.mass > 0)!;
-    body.position.z = -7.815;
+    body.position.z = -12.415;
     body.velocity.z = -15 / 3.6;
     f.frame(100);
     expect(f.events.onPaused).toHaveBeenCalledExactlyOnceWith('contact');
@@ -409,7 +430,7 @@ describe('preview lifecycle', () => {
   it('releases the renderer and world when settling fails before listeners are mounted', () => {
     const f = fixture();
     f.world.gravity.set(0, 100, 0);
-    expect(() => startPreview(f.canvas, f.container, f.events, options, f.deps))
+    expect(() => startPreview(f.canvas, f.container, f.events, options(), f.deps))
       .toThrow(expect.objectContaining({ reason: 'simulation-failed' }));
     expect(f.renderer.dispose).toHaveBeenCalledOnce();
     expect(f.renderer.forceContextLoss).toHaveBeenCalledOnce();
@@ -506,7 +527,7 @@ describe('preview lifecycle', () => {
       ...settings, driverFovDeg: 72, cameraMode: 'chase' as const,
       overhead: true, trajectory: true,
     };
-    const p = startPreview(f.canvas, f.container, f.events, { ...options, settings: initial }, f.deps);
+    const p = startPreview(f.canvas, f.container, f.events, { ...options(), settings: initial }, f.deps);
     const scene = f.renderer.render.mock.calls[0]![0];
     expect(f.renderer.render.mock.calls.some(([, camera]) => camera.name === 'chase-camera')).toBe(true);
     expect(f.renderer.render.mock.calls.some(([, camera]) => camera.name === 'overhead-camera')).toBe(true);
@@ -539,7 +560,7 @@ describe('preview lifecycle', () => {
 
   it('accepts mouse-look only while pointer-locked and pauses when the lock is lost', async () => {
     const f = fixture();
-    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    const p = startPreview(f.canvas, f.container, f.events, options(), f.deps);
     f.canvas.focus();
     expect(p.resume()).toBe(false);
     vi.mocked(f.deps.requestPointerLock).mockImplementation(() => undefined);
@@ -571,7 +592,7 @@ describe('preview lifecycle', () => {
 
   it('resolves denied or unavailable pointer lock and settles pending requests on disposal', async () => {
     const f = fixture();
-    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    const p = startPreview(f.canvas, f.container, f.events, options(), f.deps);
     vi.mocked(f.deps.requestPointerLock).mockRejectedValueOnce(
       Object.assign(new Error('Denied'), { name: 'NotAllowedError' }),
     );
@@ -600,7 +621,7 @@ describe('preview lifecycle', () => {
     const f = fixture();
     const add = vi.spyOn(document, 'addEventListener');
     const remove = vi.spyOn(document, 'removeEventListener');
-    const p = startPreview(f.canvas, f.container, f.events, options, f.deps);
+    const p = startPreview(f.canvas, f.container, f.events, options(), f.deps);
     f.setPointerLock(f.canvas);
     p.dispose();
     expect(f.deps.exitPointerLock).toHaveBeenCalledOnce();

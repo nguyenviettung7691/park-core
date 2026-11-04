@@ -1,18 +1,22 @@
 import { vi } from './messages';
-import type { ControllerCalibration, MessageKey } from './contracts';
+import type { ControllerCalibration, EnvironmentId, MessageKey, VehicleId } from './contracts';
 import type { ScreenAction, ScreenContext, ShellView } from './runtime-types';
 import { createPreview, PreviewStartError, type Preview } from './render/preview';
+import { AssetLoadError, loadSceneAssets } from './world/assets';
+import type { AssetLoadProgress, SceneAssets } from './runtime-types';
 import { mountHud } from './ui/hud';
 import { mountCalibration, mountScreen, type InputSetup } from './ui/screens';
 
 export interface AppDeps {
   createPreview: typeof createPreview;
+  loadSceneAssets: typeof loadSceneAssets;
   getGamepads: () => readonly (Gamepad | null)[];
 }
 
 export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): { dispose(): void } {
   const deps: AppDeps = {
     createPreview,
+    loadSceneAssets,
     getGamepads: () => typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [],
     ...overrides,
   };
@@ -36,6 +40,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   let generation = 0;
   let resumeAttempt = 0;
   let resumePending = false;
+  let assetLoadController: AbortController | null = null;
   let disposed = false;
   let unmountScreen: (() => void) | undefined;
   const hud = mountHud(root, onAction);
@@ -101,6 +106,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     resumeAttempt++;
     resumePending = false;
     generation++;
+    const loading = assetLoadController;
+    assetLoadController = null;
+    loading?.abort();
     const current = preview;
     preview = null;
     current?.dispose();
@@ -154,10 +162,13 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       drawScreen();
     });
   }
-  function openPreview() {
-    if (!ready()) return;
-    closePreview();
-    const token = generation;
+  function startPreview(
+    assets: SceneAssets, token: number, environmentId: EnvironmentId, vehicleId: VehicleId,
+  ) {
+    if (disposed || token !== generation) {
+      assets.dispose();
+      return;
+    }
     canvas = document.createElement('canvas');
     canvas.id = 'simulation';
     canvas.tabIndex = 0;
@@ -203,19 +214,71 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
           notice(key);
         },
       }, {
-        vehicleId: context.selectedVehicleId, source: context.settings.inputSource,
+        environmentId, vehicleId,
+        sceneAssets: assets, source: context.settings.inputSource,
         gamepadIndex, calibration: pad ? calibrations.get(pad.id) ?? null : null,
         getGamepads: deps.getGamepads, settings: context.settings,
       });
       if (disposed || token !== generation) opened.dispose();
       else { preview = opened; void resumePreview(); }
     } catch (error) {
+      assets.dispose();
       if (disposed || token !== generation) return;
       const reason = error instanceof PreviewStartError ? error.reason : 'renderer-failed';
       showError(reason === 'webgl-unsupported' ? 'webglUnsupported' :
         reason === 'simulation-failed' ? 'physicsStartFailed' : 'rendererFailed',
       reason !== 'webgl-unsupported');
     }
+  }
+  function failAssetLoad(error: unknown, token: number, signal: AbortSignal) {
+    if (disposed || token !== generation || signal.aborted) return;
+    if (assetLoadController?.signal === signal) assetLoadController = null;
+    const messageKey: MessageKey = error instanceof AssetLoadError
+      ? error.resource === 'vehicle' ? 'vehicleAssetFailed' : 'environmentAssetFailed'
+      : 'assetLoadFailed';
+    showError(messageKey, true);
+  }
+  function openPreview() {
+    if (!ready()) return;
+    closePreview();
+    const token = generation;
+    const controller = new AbortController();
+    assetLoadController = controller;
+    const environmentId: EnvironmentId = 'garage';
+    const vehicleId = context.selectedVehicleId;
+    view = {
+      state: { kind: 'loading', stageId: context.selectedStageId },
+      preview: 'closed',
+      assetLoadProgress: null,
+    };
+    audioUnavailable = false;
+    status.textContent = '';
+    drawScreen();
+    const onProgress = (progress: AssetLoadProgress) => {
+      if (disposed || token !== generation || controller.signal.aborted) return;
+      view = { ...view, assetLoadProgress: progress };
+      drawScreen();
+    };
+    let loading: Promise<SceneAssets>;
+    try {
+      loading = deps.loadSceneAssets(
+        environmentId, vehicleId, controller.signal, onProgress,
+      );
+    } catch (error) {
+      failAssetLoad(error, token, controller.signal);
+      return;
+    }
+    void loading.then(
+      (assets) => {
+        if (disposed || token !== generation || controller.signal.aborted) {
+          assets.dispose();
+          return;
+        }
+        assetLoadController = null;
+        startPreview(assets, token, environmentId, vehicleId);
+      },
+      (error: unknown) => failAssetLoad(error, token, controller.signal),
+    );
   }
   function onAction(action: ScreenAction) {
     if (disposed) return;

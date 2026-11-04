@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { mountCalibration, mountScreen } from './screens';
 import { mountHud } from './hud';
-import type { ScreenContext } from '../runtime-types';
+import type { ScreenContext, ShellView } from '../runtime-types';
 import type { SensorSnapshot, VehicleTelemetry } from '../contracts';
 import { testGamepad } from '../test/gamepad';
 
@@ -41,6 +41,25 @@ it('provides a labeled menu selector and emits typed preview and vehicle actions
   expect(action).toHaveBeenLastCalledWith({ type: 'open-preview' });
   unmount();
   expect(element.children.length).toBe(0);
+});
+
+it('shows accessible indeterminate asset progress and lets the learner cancel to the menu', () => {
+  const element = root();
+  const action = vi.fn();
+  const view: ShellView = {
+    state: { kind: 'loading', stageId: 1 },
+    preview: 'closed',
+    assetLoadProgress: { resource: 'vehicle', loadedBytes: 120, totalBytes: null },
+  };
+  mountScreen(element, view.state, context, action, view);
+
+  const status = element.querySelector('[role="status"]');
+  const progress = element.querySelector('progress');
+  expect(status?.textContent?.toLocaleLowerCase('vi')).toContain('đang tải');
+  expect(progress).not.toBeNull();
+  expect(progress?.hasAttribute('value')).toBe(false);
+  element.querySelector<HTMLButtonElement>('button')?.click();
+  expect(action).toHaveBeenCalledWith({ type: 'menu' });
 });
 
 it('keeps unavailable HUD features empty and hidden with a discrete live status', () => {

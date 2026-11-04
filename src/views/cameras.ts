@@ -243,7 +243,9 @@ export function createViews(
     camera.layers.mask = MIRROR_LAYERS;
     mirrorCameras[id] = camera;
 
-    const surface = assets.vehicle.getObjectByName(`mirror-surface-${id}`);
+    const authoredName = `MirrorSurface${id[0]!.toUpperCase()}${id.slice(1)}`;
+    const surface = assets.vehicle.getObjectByName(authoredName) ??
+      assets.vehicle.getObjectByName(`mirror-surface-${id}`);
     if (!(surface instanceof Mesh) || !(surface.material instanceof MeshBasicMaterial)) {
       throw new Error(`Missing prototype mirror surface: ${id}`);
     }

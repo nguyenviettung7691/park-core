@@ -1,5 +1,5 @@
 import {
-  Color, Group, Mesh, OrthographicCamera, PerspectiveCamera, PlaneGeometry,
+  Color, Group, Mesh, MeshBasicMaterial, OrthographicCamera, PerspectiveCamera, PlaneGeometry,
   Scene, Vector3, Vector4, WebGLRenderTarget,
 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -224,6 +224,29 @@ describe('camera and auxiliary views', () => {
       fixture.views.dispose();
       fixture.content.dispose();
     }
+  });
+
+  it('binds mirror targets to authored GLB surface names', () => {
+    const profile = profiles.sedan;
+    const content = buildPrototypeScene(profile, []);
+    const renderer = new FakeRenderer();
+    for (const id of ['rear', 'left', 'right'] as const) {
+      const surface = content.assets.vehicle.getObjectByName(`mirror-surface-${id}`);
+      if (!(surface instanceof Mesh)) throw new Error(`Missing mirror surface: ${id}`);
+      surface.name = `MirrorSurface${id[0]!.toUpperCase()}${id.slice(1)}`;
+    }
+
+    const views = createViews(renderer, content.scene, content.assets, profile, []);
+    for (const id of ['rear', 'left', 'right'] as const) {
+      const surface = content.assets.vehicle.getObjectByName(
+        `MirrorSurface${id[0]!.toUpperCase()}${id.slice(1)}`,
+      );
+      expect(surface).toBeInstanceOf(Mesh);
+      expect((surface as Mesh).material).toBeInstanceOf(MeshBasicMaterial);
+      expect(((surface as Mesh).material as MeshBasicMaterial).map).not.toBeNull();
+    }
+    views.dispose();
+    content.dispose();
   });
 
   it('bounds driver FOV and mouse look, then recenters', () => {

@@ -114,4 +114,5 @@ export interface ShellView {
   readonly preview: PreviewPhase;
   readonly calibrating?: boolean;
   readonly pauseReason?: PreviewPauseReason | null;
+  readonly assetLoadProgress?: AssetLoadProgress | null;
 }

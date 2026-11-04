@@ -1,20 +1,20 @@
-import { PerspectiveCamera, WebGLRenderer } from 'three';
+import { WebGLRenderer } from 'three';
 import type { World } from 'cannon-es';
 import type {
-  ControllerCalibration, InputAction, InputSource, MessageKey, SensorSnapshot, VehicleId,
-  VehicleTelemetry,
+  ControllerCalibration, EnvironmentId, InputAction, InputSource, MessageKey, SensorSnapshot,
+  VehicleId, VehicleTelemetry,
 } from '../contracts';
-import type { PreviewPauseReason, SettingsSaveV1 } from '../runtime-types';
+import type { PreviewPauseReason, SceneAssets, SettingsSaveV1 } from '../runtime-types';
 import { createClock } from '../clock';
 import { createInputController } from '../input/controller';
 import { createAudio, type AudioOutput } from '../sensors/audio';
 import { createSensors } from '../sensors/proximity';
 import { profiles } from '../vehicle/profiles';
 import { createVehicleRig, SimulationStateError } from '../vehicle/rig';
-import { addColliderBoxes, createWorld, prototypeSpawn, prototypeYard } from '../world/colliders';
+import { addColliderBoxes, collidersForEnvironment, createWorld, prototypeSpawn } from '../world/colliders';
 import { createViews, type ViewSystem } from '../views/cameras';
 import type { RendererPort } from '../views/auxiliary';
-import { buildPrototypeScene } from './prototype';
+import { createAssetScene, type AssetScene } from './asset-scene';
 import { fitDrawingBuffer } from './fit';
 
 export type PreviewRenderer = RendererPort &
@@ -34,7 +34,9 @@ export interface PreviewDeps {
   exitPointerLock(): void;
 }
 export interface PrototypeOptions {
+  readonly environmentId: EnvironmentId;
   readonly vehicleId: VehicleId;
+  readonly sceneAssets: SceneAssets;
   readonly source: InputSource;
   readonly gamepadIndex: number | null;
   readonly calibration: ControllerCalibration | null;
@@ -98,6 +100,8 @@ export function createPreview(
   };
   let context: PreviewContext | null = null;
   let renderer: PreviewRenderer;
+  let content: AssetScene | null = null;
+  let ownsAssets = false;
   try {
     context = deps.createContext(canvas);
     if (!context) throw new PreviewStartError('webgl-unsupported');
@@ -137,12 +141,14 @@ export function createPreview(
     settlePointerLockWaiters(false);
     releasePointerLock();
     for (const cleanup of cleanups.reverse()) cleanup();
+    if (ownsAssets) content?.dispose();
     renderer.dispose();
     if (!lost) renderer.forceContextLoss();
   }
   try {
     const world = deps.createWorld();
-    cleanups.push(addColliderBoxes(world, prototypeYard));
+    const boxes = collidersForEnvironment(prototype.environmentId);
+    cleanups.push(addColliderBoxes(world, boxes));
     const profile = profiles[prototype.vehicleId];
     const rig = createVehicleRig(world, profile);
     const sensors = createSensors(world, rig.body, profile);
@@ -151,10 +157,10 @@ export function createPreview(
     let current = rig.snapshot(0);
     let previous = current;
     let simulationTime = 0;
-    const content = buildPrototypeScene(profile, prototypeYard);
-    cleanups.push(() => content.dispose());
+    const sceneContent = createAssetScene(prototype.sceneAssets);
+    content = sceneContent;
     const views: ViewSystem = createViews(
-      renderer, content.scene, content.assets, profile, prototypeYard,
+      renderer, sceneContent.scene, prototype.sceneAssets, profile, boxes,
     );
     cleanups.push(() => views.dispose());
     let currentSettings = prototype.settings;
@@ -165,7 +171,6 @@ export function createPreview(
       views.setFov(value.driverFovDeg);
     }
     applySettings(currentSettings);
-    const camera = new PerspectiveCamera(60, 1, 0.1, 100);
     const input = createInputController(canvas, prototype.getGamepads);
     cleanups.push(() => input.dispose());
     if (prototype.calibration) input.setCalibration(prototype.calibration);
@@ -201,8 +206,6 @@ export function createPreview(
         views.resize(rect.width, rect.height, requestedPixelRatio);
         return;
       }
-      camera.aspect = rect.width / rect.height;
-      camera.updateProjectionMatrix();
       renderer.setSize(size.width, size.height, false);
       views.resize(rect.width, rect.height, size.width / rect.width);
     }
@@ -261,7 +264,7 @@ export function createPreview(
         }
         lastTime = time;
         if (!running || disposed || faulted) return;
-        content.apply({ previous, current, alpha }, camera);
+        sceneContent.apply({ previous, current, alpha });
         views.render({ previous, current, alpha }, time);
         if (time - lastTelemetry >= 50) {
           lastTelemetry = time;
@@ -341,8 +344,9 @@ export function createPreview(
       events.onNotice('contactStop');
     }));
     resize();
-    content.apply({ previous, current, alpha: 0 }, camera);
+    sceneContent.apply({ previous, current, alpha: 0 });
     views.render({ previous, current, alpha: 0 }, lastTime);
+    ownsAssets = true;
     return {
       unlockAudio() {
         if (disposed || faulted || !audio) return;

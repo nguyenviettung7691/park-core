@@ -4,6 +4,11 @@ import { createApp } from './app';
 import { PreviewStartError, type Preview, type PreviewEvents } from './render/preview';
 import { testGamepad } from './test/gamepad';
 import type { SensorSnapshot } from './contracts';
+import type { AssetLoadProgress, SceneAssets } from './runtime-types';
+import { collidersForEnvironment } from './world/colliders';
+import { profiles } from './vehicle/profiles';
+import { buildPrototypeScene } from './render/prototype';
+import { AssetLoadError } from './world/assets';
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -25,6 +30,7 @@ function fixture() {
     expect(canvas.isConnected).toBe(true);
     events = handlers;
     prototypes.push(prototype);
+    const sceneAssets = (prototype as { sceneAssets?: SceneAssets }).sceneAssets;
     live++;
     let disposed = false;
     const preview: Preview = {
@@ -37,13 +43,26 @@ function fixture() {
       recenterView: vi.fn(),
       selectSource: vi.fn(),
       setCalibration: vi.fn(),
-      dispose: vi.fn(() => { if (!disposed) { disposed = true; live--; } }),
+      dispose: vi.fn(() => {
+        if (!disposed) {
+          disposed = true;
+          live--;
+          sceneAssets?.dispose();
+        }
+      }),
     };
     previews.push(preview);
     return preview;
   });
   return {
     root, factory, previews, prototypes,
+    app(overrides: Parameters<typeof createApp>[1] = {}) {
+      return createApp(root, {
+        createPreview: factory,
+        loadSceneAssets: async () => makeSceneAssets(),
+        ...overrides,
+      });
+    },
     setLockResult(value: boolean) { lockResult = value; },
     setLockRequest(request: () => Promise<boolean>) { lockRequest = request; },
     async flush() { await Promise.resolve(); await Promise.resolve(); },
@@ -51,6 +70,10 @@ function fixture() {
     get events() {
       if (!events) throw new Error('No preview events');
       return events;
+    },
+    async openPreview() {
+      this.click('Lái thử mô hình');
+      await this.flush();
     },
     click(text: string) {
       const button = [...root.querySelectorAll('button')].find((node) => node.textContent === text);
@@ -60,11 +83,120 @@ function fixture() {
   };
 }
 
+function makeSceneAssets() {
+  return buildPrototypeScene(profiles.sedan, collidersForEnvironment('garage')).assets;
+}
+
+it('loads the selected vehicle and Garage before creating a preview and releases its assets on close', async () => {
+  const f = fixture();
+  const assets = makeSceneAssets();
+  const dispose = vi.spyOn(assets, 'dispose');
+  const loadSceneAssets = vi.fn(async (
+    _environment: string, _vehicle: string, _signal: AbortSignal,
+    onProgress?: (progress: AssetLoadProgress) => void,
+  ) => {
+    onProgress?.({ resource: 'vehicle', loadedBytes: 120, totalBytes: 240 });
+    return assets;
+  });
+  const app = f.app({ loadSceneAssets });
+
+  f.click('Lái thử mô hình');
+  expect(f.root.querySelector('#screen-layer [role="status"]')?.textContent?.toLocaleLowerCase('vi'))
+    .toContain('đang tải xe');
+  expect(f.root.querySelector<HTMLProgressElement>('#screen-layer progress')?.value).toBe(120);
+  expect(f.root.querySelector<HTMLProgressElement>('#screen-layer progress')?.max).toBe(240);
+  expect(f.factory).not.toHaveBeenCalled();
+  await f.flush();
+
+  expect(loadSceneAssets).toHaveBeenCalledWith(
+    'garage', 'sedan', expect.any(AbortSignal), expect.any(Function),
+  );
+  expect(f.prototypes[0]).toMatchObject({ environmentId: 'garage', vehicleId: 'sedan' });
+  expect((f.prototypes[0] as { sceneAssets: SceneAssets }).sceneAssets).toBe(assets);
+  f.click('Quay lại menu');
+  expect(dispose).toHaveBeenCalledTimes(1);
+  app.dispose();
+});
+
+it('aborts loading on Menu and disposes a late result without attaching it', async () => {
+  const f = fixture();
+  const assets = makeSceneAssets();
+  const dispose = vi.spyOn(assets, 'dispose');
+  let signal: AbortSignal | undefined;
+  let resolveAssets!: (value: SceneAssets) => void;
+  const loadSceneAssets = vi.fn((_environment: string, _vehicle: string, request: AbortSignal) => {
+    signal = request;
+    return new Promise<SceneAssets>((resolve) => { resolveAssets = resolve; });
+  });
+  const app = f.app({ loadSceneAssets });
+
+  f.click('Lái thử mô hình');
+  f.click('Quay lại menu');
+  expect(signal?.aborted).toBe(true);
+  resolveAssets(assets);
+  await f.flush();
+
+  expect(f.factory).not.toHaveBeenCalled();
+  expect(dispose).toHaveBeenCalledTimes(1);
+  app.dispose();
+});
+
+it('aborts loading on app disposal and releases any late result', async () => {
+  const f = fixture();
+  const assets = makeSceneAssets();
+  const dispose = vi.spyOn(assets, 'dispose');
+  let signal: AbortSignal | undefined;
+  let resolveAssets!: (value: SceneAssets) => void;
+  const app = f.app({
+    loadSceneAssets: (_environment, _vehicle, request) => {
+      signal = request;
+      return new Promise<SceneAssets>((resolve) => { resolveAssets = resolve; });
+    },
+  });
+
+  f.click('Lái thử mô hình');
+  app.dispose();
+  expect(signal?.aborted).toBe(true);
+  resolveAssets(assets);
+  await f.flush();
+
+  expect(f.factory).not.toHaveBeenCalled();
+  expect(dispose).toHaveBeenCalledOnce();
+});
+
+it('releases loaded assets when preview initialization fails', async () => {
+  const f = fixture();
+  const assets = makeSceneAssets();
+  const dispose = vi.spyOn(assets, 'dispose');
+  f.factory.mockImplementationOnce(() => { throw new PreviewStartError('renderer-failed'); });
+  const app = f.app({
+    loadSceneAssets: async () => assets,
+  });
+  await f.openPreview();
+  expect(dispose).toHaveBeenCalledTimes(1);
+  expect(f.root.textContent).toContain('Không thể khởi tạo trình kết xuất');
+  app.dispose();
+});
+
+it('shows a retryable localized error for a typed vehicle asset failure', async () => {
+  const f = fixture();
+  const app = f.app({
+    loadSceneAssets: async () => { throw new AssetLoadError('vehicle', 'network'); },
+  });
+
+  await f.openPreview();
+
+  expect(f.root.textContent).toContain('Không thể tải mẫu xe đã chọn');
+  expect([...f.root.querySelectorAll('#screen-layer button')].map((node) => node.textContent))
+    .toEqual(['Thử lại', 'Quay lại menu']);
+  app.dispose();
+});
+
 it('mounts menu without touching WebGL or storage', () => {
   const f = fixture();
   const context = vi.spyOn(HTMLCanvasElement.prototype, 'getContext');
   const storage = vi.spyOn(Storage.prototype, 'getItem');
-  const app = createApp(f.root, { createPreview: f.factory });
+  const app = f.app();
   expect(f.root.querySelector('#vehicle')).not.toBeNull();
   expect(f.root.querySelector('canvas')).toBeNull();
   expect(context).not.toHaveBeenCalled();
@@ -73,12 +205,12 @@ it('mounts menu without touching WebGL or storage', () => {
   app.dispose();
 });
 
-it('ten open/close cycles keep at most one canvas and release all previews', () => {
+it('ten open/close cycles keep at most one canvas and release all previews', async () => {
   const f = fixture();
-  const app = createApp(f.root, { createPreview: f.factory });
+  const app = f.app();
   let previous: Element | null = null;
   for (let i = 0; i < 10; i++) {
-    f.click('Lái thử mô hình');
+    await f.openPreview();
     const canvas = f.root.querySelector('canvas');
     expect(canvas).not.toBeNull();
     expect(canvas).not.toBe(previous);
@@ -97,13 +229,13 @@ it('ten open/close cycles keep at most one canvas and release all previews', () 
     vi.mocked(preview.dispose).mock.calls.length === 1)).toBe(true);
 });
 
-it('keeps the selected vehicle when leaving the preview', () => {
+it('keeps the selected vehicle when leaving the preview', async () => {
   const f = fixture();
-  const app = createApp(f.root, { createPreview: f.factory });
+  const app = f.app();
   const select = f.root.querySelector<HTMLSelectElement>('#vehicle')!;
   select.value = 'cuv';
   select.dispatchEvent(new Event('change'));
-  f.click('Lái thử mô hình');
+  await f.openPreview();
   expect(f.root.textContent).toContain('CUV');
   f.click('Quay lại menu');
   expect(f.root.querySelector<HTMLSelectElement>('#vehicle')?.value).toBe('cuv');
@@ -112,9 +244,8 @@ it('keeps the selected vehicle when leaving the preview', () => {
 
 it('requires explicit resume after preview pause', async () => {
   const f = fixture();
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
-  await f.flush();
+  const app = f.app();
+  await f.openPreview();
   f.events.onPaused('focus');
   expect(document.activeElement?.textContent).toBe('Tiếp tục lái thử');
   expect(f.previews[0].requestPointerLock).toHaveBeenCalledTimes(1);
@@ -131,8 +262,8 @@ it('requires explicit resume after preview pause', async () => {
 
 it('preserves audio-unavailable notice and renders real sensor readings from the preview', async () => {
   const f = fixture();
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
+  const app = f.app();
+  await f.openPreview();
   f.events.onNotice('audioUnavailable');
   await f.flush();
   expect(f.root.querySelector('#status-message')?.textContent)
@@ -152,42 +283,43 @@ it('preserves audio-unavailable notice and renders real sensor readings from the
   app.dispose();
 });
 
-it('disposes context-lost content before showing recovery and reopens on a fresh canvas', () => {
+it('disposes context-lost content before showing recovery and reopens on a fresh canvas', async () => {
   const f = fixture();
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
+  const app = f.app();
+  await f.openPreview();
   const canvas = f.root.querySelector('canvas');
   f.events.onFault('context-lost');
   expect(f.live).toBe(0);
   expect(f.root.querySelector('canvas')).toBeNull();
   expect(f.root.textContent).toContain('Tải lại trang');
   f.click('Quay lại menu');
-  f.click('Lái thử mô hình');
+  await f.openPreview();
   expect(f.root.querySelector('canvas')).not.toBe(canvas);
   app.dispose();
 });
 
-it('surfaces startup failure without a canvas and offers retry only when recoverable', () => {
+it('surfaces startup failure without a canvas and offers retry only when recoverable', async () => {
   const f = fixture();
   f.factory.mockImplementationOnce(() => { throw new PreviewStartError('webgl-unsupported'); });
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
+  const app = f.app();
+  await f.openPreview();
   expect(f.root.querySelector('canvas')).toBeNull();
   expect([...f.root.querySelectorAll('#screen-layer button')].map((node) => node.textContent))
     .toEqual(['Quay lại menu']);
   f.click('Quay lại menu');
   f.factory.mockImplementationOnce(() => { throw new PreviewStartError('renderer-failed'); });
-  f.click('Lái thử mô hình');
+  await f.openPreview();
   expect(f.root.textContent).toContain('Thử lại');
   f.click('Thử lại');
+  await f.flush();
   expect(f.live).toBe(1);
   app.dispose();
 });
 
-it('ignores callbacks from a closed preview rather than changing the current screen', () => {
+it('ignores callbacks from a closed preview rather than changing the current screen', async () => {
   const f = fixture();
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
+  const app = f.app();
+  await f.openPreview();
   const old = f.events;
   f.click('Quay lại menu');
   old.onFault('runtime-error', new Error('Late callback'));
@@ -199,9 +331,8 @@ it('ignores callbacks from a closed preview rather than changing the current scr
 
 it('keeps the paused UI when pointer lock is denied on resume', async () => {
   const f = fixture();
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
-  await f.flush();
+  const app = f.app();
+  await f.openPreview();
   expect(f.previews[0].resume).toHaveBeenCalledTimes(1);
   f.events.onPaused('focus');
   f.setLockResult(false);
@@ -217,8 +348,8 @@ it('makes resume single-flight and ignores a lock request completed after pause'
   const f = fixture();
   let resolveLock!: (locked: boolean) => void;
   f.setLockRequest(() => new Promise((resolve) => { resolveLock = resolve; }));
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
+  const app = f.app();
+  await f.openPreview();
   const preview = f.previews[0]!;
   expect(preview.requestPointerLock).toHaveBeenCalledOnce();
   f.click('Tiếp tục lái thử');
@@ -233,13 +364,14 @@ it('makes resume single-flight and ignores a lock request completed after pause'
   app.dispose();
 });
 
-it('rebuilds a fresh prototype on reset and disposes the previous instance', () => {
+it('rebuilds a fresh prototype on reset and disposes the previous instance', async () => {
   const f = fixture();
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
+  const app = f.app();
+  await f.openPreview();
   const first = f.previews[0];
   const canvas = f.root.querySelector('canvas');
   f.click('Đặt lại xe');
+  await f.flush();
   expect(first.dispose).toHaveBeenCalledTimes(1);
   expect(f.root.querySelector('canvas')).not.toBe(canvas);
   expect(f.live).toBe(1);
@@ -249,7 +381,7 @@ it('rebuilds a fresh prototype on reset and disposes the previous instance', () 
 it('does not discover controllers until the learner selects that input source', () => {
   const f = fixture();
   const getGamepads = vi.fn(() => []);
-  const app = createApp(f.root, { createPreview: f.factory, getGamepads });
+  const app = f.app({ getGamepads });
   expect(getGamepads).not.toHaveBeenCalled();
   const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
   source.value = 'gamepad';
@@ -265,9 +397,8 @@ it('cancels calibration back to paused controls and restores its trigger focus',
   const pad = testGamepad();
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
-  const app = createApp(f.root, { createPreview: f.factory, getGamepads: () => [pad] });
-  f.click('Lái thử mô hình');
-  await f.flush();
+  const app = f.app({ getGamepads: () => [pad] });
+  await f.openPreview();
   f.events.onPaused('user');
   const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
   source.value = 'gamepad'; source.dispatchEvent(new Event('change'));
@@ -286,9 +417,8 @@ it('cancels calibration back to paused controls and restores its trigger focus',
 it('passes initial settings and routes HUD changes to the live preview without persistence', async () => {
   const f = fixture();
   const setItem = vi.spyOn(Storage.prototype, 'setItem');
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
-  await f.flush();
+  const app = f.app();
+  await f.openPreview();
 
   expect(f.prototypes[0]).toMatchObject({
     settings: {
@@ -311,9 +441,8 @@ it('passes initial settings and routes HUD changes to the live preview without p
 
 it('preserves the selected input source when later HUD settings change', async () => {
   const f = fixture();
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
-  await f.flush();
+  const app = f.app();
+  await f.openPreview();
   f.events.onPaused('focus');
 
   const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
@@ -332,24 +461,24 @@ it('preserves the selected input source when later HUD settings change', async (
 it('keeps the preview paused and displays a Vietnamese notice when pointer lock is denied', async () => {
   const f = fixture();
   f.setLockResult(false);
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
-  await f.flush();
+  const app = f.app();
+  await f.openPreview();
   expect(f.previews[0].resume).not.toHaveBeenCalled();
   expect(f.root.textContent).toContain('Tiếp tục lái thử');
   expect(f.root.querySelector('#status-message')?.textContent).toContain('con trỏ');
   app.dispose();
 });
 
-it('keeps native Reset connected when keyboard focus loss pauses before its click', () => {
+it('keeps native Reset connected when keyboard focus loss pauses before its click', async () => {
   const f = fixture();
-  const app = createApp(f.root, { createPreview: f.factory });
-  f.click('Lái thử mô hình');
+  const app = f.app();
+  await f.openPreview();
   const reset = [...f.root.querySelectorAll('button')].find((button) => button.textContent === 'Đặt lại xe')!;
   reset.focus();
   f.events.onPaused('focus');
   expect(reset.isConnected).toBe(true);
   reset.click();
+  await f.flush();
   expect(f.factory).toHaveBeenCalledTimes(2);
   app.dispose();
 });

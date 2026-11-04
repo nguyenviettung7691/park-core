@@ -83,7 +83,23 @@ export function mountScreen(
     }
   }
 
-  if (state.kind === 'error') {
+  if (state.kind === 'loading') {
+    text('h1', vi.appTitle);
+    const progressState = view?.assetLoadProgress ?? null;
+    const status = text('p', progressState
+      ? vi[progressState.resource === 'vehicle' ? 'loadingVehicle' : 'loadingEnvironment']
+      : vi.loadingAssets);
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    const progress = document.createElement('progress');
+    progress.setAttribute('aria-label', status.textContent ?? vi.loadingAssets);
+    if (progressState?.totalBytes !== null && progressState?.totalBytes !== undefined) {
+      progress.max = progressState.totalBytes;
+      progress.value = Math.min(progressState.loadedBytes, progressState.totalBytes);
+    }
+    screen.append(progress);
+    button(vi.closePreview, () => onAction({ type: 'menu' }));
+  } else if (state.kind === 'error') {
     text('h1', vi.appTitle);
     text('p', vi[state.messageKey]).setAttribute('role', 'alert');
     if (state.retryable) {
