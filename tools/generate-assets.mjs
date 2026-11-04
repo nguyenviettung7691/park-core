@@ -221,6 +221,7 @@ function createGltf(assetId, dimensionsM, origin) {
   }
 
   const root = addNode(`${assetId} asset`, null, { extras: { dimensionsM, origin } });
+  const yawQuaternion = (yaw) => [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)];
 
   if (vehicleNames.has(assetId)) {
     const data = profile[assetId];
@@ -270,13 +271,19 @@ function createGltf(assetId, dimensionsM, origin) {
     addNode('DriverEye', root, { translation: eye });
     const mirrorY = data.mirrorHeightM - data.comHeightM;
     const mirrorZ = frontZ + 0.35;
-    addNode('MirrorRear', root, { translation: [0, eye[1] + 0.12, eye[2] - 0.75] });
+    addNode('MirrorRear', root, {
+      translation: [0, eye[1] + 0.12, eye[2] - 0.75],
+      rotation: yawQuaternion(Math.PI),
+    });
     box('MirrorSurfaceRear', root, [0, eye[1] + 0.12, eye[2] - 0.75],
       [0.24, 0.1, 0.025], palette.metal);
     for (const side of [-1, 1]) {
       const sideName = side < 0 ? 'Left' : 'Right';
       const mirrorX = side * (data.mirrorWidthM + width) / 4;
-      addNode(`Mirror${sideName}`, root, { translation: [mirrorX, mirrorY, mirrorZ] });
+      addNode(`Mirror${sideName}`, root, {
+        translation: [mirrorX, mirrorY, mirrorZ],
+        rotation: yawQuaternion(side < 0 ? 105 * Math.PI / 180 : -105 * Math.PI / 180),
+      });
       box(`MirrorSurface${sideName}`, root, [mirrorX, mirrorY, mirrorZ],
         [0.18, 0.1, 0.035], palette.metal);
     }

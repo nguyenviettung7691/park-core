@@ -33,6 +33,12 @@ export interface ColliderBox {
   readonly yawRad: number;
 }
 
+export interface AssetLoadProgress {
+  readonly resource: 'vehicle' | 'environment';
+  readonly loadedBytes: number;
+  readonly totalBytes: number | null;
+}
+
 export const MIRROR_EXCLUDED_LAYER = 1;
 export const OVERHEAD_EXCLUDED_LAYER = 2;
 

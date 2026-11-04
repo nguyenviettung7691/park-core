@@ -1,5 +1,5 @@
 import * as CANNON from 'cannon-es';
-import type { SpawnPose, VehicleProfile } from '../contracts';
+import type { EnvironmentId, SpawnPose, VehicleProfile } from '../contracts';
 import type { ColliderBox } from '../runtime-types';
 
 export function createWorld(): CANNON.World {
@@ -25,6 +25,43 @@ export const prototypeYard: readonly ColliderBox[] = Object.freeze([
   wall('wall-east', 20, 0, WALL, 20),
   { id: 'barrier', kind: 'obstacle', centerM: [0, 0.5, -10], halfExtentsM: [4, 0.5, 0.05], yawRad: 0 },
 ] satisfies ColliderBox[]);
+
+const environmentColliders: Readonly<Record<EnvironmentId, readonly ColliderBox[]>> = {
+  garage: Object.freeze([
+    { id: 'garage-ground', kind: 'ground', centerM: [0, -0.125, 0],
+      halfExtentsM: [15, 0.125, 15], yawRad: 0 },
+    { id: 'garage-back-wall', kind: 'obstacle', centerM: [0, 2.8, -14.8],
+      halfExtentsM: [15, 2.8, 0.2], yawRad: 0 },
+    { id: 'garage-left-wall', kind: 'obstacle', centerM: [-14.8, 2.8, 0],
+      halfExtentsM: [0.2, 2.8, 15], yawRad: 0 },
+    { id: 'garage-right-wall', kind: 'obstacle', centerM: [14.8, 2.8, 0],
+      halfExtentsM: [0.2, 2.8, 15], yawRad: 0 },
+    { id: 'garage-pillar-lf', kind: 'obstacle', centerM: [-9, 2.45, -8],
+      halfExtentsM: [0.35, 2.45, 0.35], yawRad: 0 },
+    { id: 'garage-pillar-lb', kind: 'obstacle', centerM: [-9, 2.45, 8],
+      halfExtentsM: [0.35, 2.45, 0.35], yawRad: 0 },
+    { id: 'garage-pillar-rf', kind: 'obstacle', centerM: [9, 2.45, -8],
+      halfExtentsM: [0.35, 2.45, 0.35], yawRad: 0 },
+    { id: 'garage-pillar-rb', kind: 'obstacle', centerM: [9, 2.45, 8],
+      halfExtentsM: [0.35, 2.45, 0.35], yawRad: 0 },
+  ] satisfies ColliderBox[]),
+  roadside: Object.freeze([
+    { id: 'roadside-ground', kind: 'ground', centerM: [0, -0.12, 0],
+      halfExtentsM: [25, 0.12, 16], yawRad: 0 },
+    { id: 'roadside-curb-left', kind: 'curb', centerM: [-4.2, 0.12, 0],
+      halfExtentsM: [0.15, 0.12, 16], yawRad: 0 },
+    { id: 'roadside-curb-right', kind: 'curb', centerM: [4.2, 0.12, 0],
+      halfExtentsM: [0.15, 0.12, 16], yawRad: 0 },
+    { id: 'roadside-fence', kind: 'obstacle', centerM: [8, 0.9, 0],
+      halfExtentsM: [0.09, 0.9, 14], yawRad: 0 },
+    { id: 'roadside-block', kind: 'obstacle', centerM: [-7.2, 0.35, -1],
+      halfExtentsM: [0.6, 0.35, 0.35], yawRad: 0 },
+  ] satisfies ColliderBox[]),
+};
+
+export function collidersForEnvironment(id: EnvironmentId): readonly ColliderBox[] {
+  return environmentColliders[id];
+}
 
 export const prototypeSpawn = (profile: VehicleProfile): SpawnPose =>
   ({ positionM: [0, profile.centerOfMassHeightM, 4], yawRad: 0 });
