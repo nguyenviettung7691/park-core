@@ -180,6 +180,12 @@ export interface AttemptSummary {
   readonly usedAids: readonly ('chase' | '360' | 'trajectory' | 'help')[];
 }
 
+export interface CompletedAttemptRecord {
+  readonly id: string;
+  readonly completedAt: string;
+  readonly summary: AttemptSummary;
+}
+
 export interface LessonRuntime {
   readonly stageId: StageId;
   readonly stepIndex: number;

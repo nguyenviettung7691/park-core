@@ -1,9 +1,11 @@
 import type * as THREE from 'three';
 import type {
   AppState,
+  AttemptSummary,
   BodyPose,
   CameraMode,
   ControllerCalibration,
+  CompletedAttemptRecord,
   InputAction,
   InputFrame,
   InputSource,
@@ -93,6 +95,23 @@ export interface PersistenceSnapshot {
 export interface PersistenceResult {
   readonly record: PersistenceRecord;
   readonly status: RecordStatus;
+}
+
+export type AttemptHistoryStatus =
+  | 'saving' | 'persistent' | 'session-only' | 'reset-required';
+
+export interface AttemptHistorySnapshot {
+  readonly records: readonly CompletedAttemptRecord[];
+  readonly status: AttemptHistoryStatus;
+}
+
+export interface AttemptHistoryStore {
+  list(): Promise<AttemptHistorySnapshot>;
+  append(summary: AttemptSummary): Promise<{
+    readonly record: CompletedAttemptRecord;
+    readonly status: AttemptHistoryStatus;
+  }>;
+  reset(): Promise<AttemptHistoryStatus>;
 }
 
 export interface ScreenContext {

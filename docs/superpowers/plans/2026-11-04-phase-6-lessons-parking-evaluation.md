@@ -390,9 +390,9 @@ reappear. This operation never touches Phase 5 localStorage.
 - Consumes: `AttemptSummary` and Shared Interfaces `CompletedAttemptRecord`/`AttemptHistoryStore`.
 - Produces: database `park-core.attempt-history`, version 1, object store `attempts` keyed by `id`, and `completedAt` index; `createAttemptHistoryStore(indexedDB, now?, createId?)`.
 
-- [ ] **Step 1: Write failing history tests.** Cover valid-record validation, rejected unknown/malformed values, duplicate ID rejection, and session-only fallback after open/transaction/quota failure. Cover persistent ordering, independent append, malformed/unsupported data blocking persisted writes while retaining the current recap in memory, reset deleting/recreating only this dedicated database plus memory fallback, and reset failure in the real-browser Task 9 acceptance tests.
-- [ ] **Step 2: Run the tests red.** Run `npm test -- src/storage/attempt-history.test.ts`; confirm the store API is absent.
-- [ ] **Step 3: Implement versioned IDB storage.** Validate values from `unknown`; append a generated ID and ISO UTC timestamp; query newest first; merge session-only records with persisted records; retain prior records after a failed append; never auto-clear invalid/unsupported data.
+- [x] **Step 1: Write failing history tests.** Cover valid-record validation, rejected unknown/malformed values, duplicate ID rejection, and session-only fallback after open/transaction/quota failure. Cover persistent ordering, independent append, malformed/unsupported data blocking persisted writes while retaining the current recap in memory, reset deleting/recreating only this dedicated database plus memory fallback, and reset failure in the real-browser Task 9 acceptance tests.
+- [x] **Step 2: Run the tests red.** Run `npm test -- src/storage/attempt-history.test.ts`; confirm the store API is absent.
+- [x] **Step 3: Implement versioned IDB storage.** Validate values from `unknown`; append a generated ID and ISO UTC timestamp; query newest first; merge session-only records with persisted records; retain prior records after a failed append; never auto-clear invalid/unsupported data.
 - [ ] **Step 4: Verify.** Run store tests, `npm run typecheck`, and `npm run build`. Exercise persistent behavior in the real browser IndexedDB acceptance tests in Task 9; add an IDB test package only if the existing test/browser setup proves insufficient.
 - [ ] **Step 5: Commit.** `feat: persist completed attempt history`.
 
