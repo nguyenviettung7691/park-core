@@ -1031,6 +1031,12 @@ Have an experienced Vietnam driving instructor review lesson wording and
 observation reminders before release; do not substitute that review with
 automated collision tests.
 
+Release delivery (2026-11-04): the Pages workflow must pass `npm ci`, unit
+tests, typecheck, build, the development-server browser suite and
+`npm run test:production`, which loads the built `dist` and rejects missing or
+HTML-substituted JS, CSS and GLB assets. Only a validated `main` run deploys.
+Live-domain evidence is a separate, still outstanding release check.
+
 If a parameter fails acceptance, tune and remeasure the related behavior; do
 not change the acceptance result to match an unstable simulation. If simplified
 engine behavior cannot meet the training requirement, document that limitation

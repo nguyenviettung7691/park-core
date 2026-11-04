@@ -51,7 +51,7 @@
   suite using `npm run preview -- --port 4174 --strictPort`; a workflow that
   checks changes and deploys the checked artifact from `main`.
 
-- [ ] **Step 1: Add focused production delivery tests and runner configuration.**
+- [x] **Step 1: Add focused production delivery tests and runner configuration.**
   Set `testDir` to `tests/production`, `baseURL` to
   `http://127.0.0.1:4174`, `reuseExistingServer: false`, one worker, Chromium
   and Firefox projects, and retained-on-failure traces. Add the npm script
@@ -61,13 +61,13 @@
   after starting it, no page errors, and successful fetches of all four GLBs
   whose first little-endian uint32 equals `0x46546c67`.
 
-- [ ] **Step 2: Exercise the smoke check's negative path.**
+- [x] **Step 2: Exercise the smoke check's negative path.**
   Add a focused test that intercepts the Sedan GLB with an HTML 200 response
   and confirms the existing explicit asset-load alert appears instead of a
   working simulation. Run against a fresh build. The positive test must fail
   if a required built asset is absent; do not mock successful asset delivery.
 
-- [ ] **Step 3: Add the minimal Pages workflow and hostname file.**
+- [x] **Step 3: Add the minimal Pages workflow and hostname file.**
   Use Node `24.15.0`, `npm ci`, existing tests/typecheck/build, install Chromium
   and Firefox with Linux dependencies, run existing browser tests and the
   new production suite, then upload `dist` for eligible `main` runs.
@@ -81,7 +81,7 @@
   concurrency group with `cancel-in-progress: false`.
   `public\CNAME` contains exactly `park-core.nguyenviettung.id.vn`.
 
-- [ ] **Step 4: Document setup and reconcile master documents.**
+- [x] **Step 4: Document setup and reconcile master documents.**
   Document Pages source `GitHub Actions`, custom-domain verification and DNS,
   HTTPS readiness/enforcement, automatic/manual releases, workflow logs,
   live app/asset smoke checks, and recovery by restoring a known-good change
@@ -89,7 +89,7 @@
   Repository inspection on 2026-11-04 returned `has_pages: false` and HTTP 404
   for Pages settings; activation and live evidence remain outstanding.
 
-- [ ] **Step 5: Run verification and inspect workflow eligibility.**
+- [x] **Step 5: Run verification and inspect workflow eligibility.**
   Run `npm test`, `npm run typecheck`, `npm run build`,
   `npm run test:browser -- --reporter=line`,
   `npm run test:production -- --reporter=line`, and `git diff --check`.

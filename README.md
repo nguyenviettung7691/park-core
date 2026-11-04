@@ -49,6 +49,31 @@ npx playwright install chromium firefox
 npm run test:browser
 ```
 
+After `npm run build`, `npm run test:production` serves `dist` with Vite
+preview on port 4174 and checks the built JS/CSS, the four GLBs and Stage 1.
+
+## Deployment (GitHub Pages)
+
+The app is served from the root of `https://park-core.nguyenviettung.id.vn/`
+(`public/CNAME`); repository-subpath hosting is not supported.
+`.github/workflows/pages.yml` runs on pull requests, pushes to `main` and manual
+dispatch: Node 24.15.0, `npm ci`, unit tests, typecheck, build, Chromium/Firefox
+browser tests and the production smoke suite. Only a passing run on `main`
+uploads `dist` and deploys it; pull requests and other branches never publish.
+
+One-time external setup by the repository owner (not done by the workflow):
+
+1. Settings → Pages → Source: **GitHub Actions**.
+2. Verify the domain for the account/organization and add the DNS record for
+   `park-core.nguyenviettung.id.vn` pointing to the owner's GitHub Pages host.
+3. Set the custom domain, wait for the certificate, then enable **Enforce HTTPS**.
+
+Release: merge to `main` (automatic) or run the workflow manually on `main`.
+Check the Actions run log, then load the live URL over HTTPS and confirm the
+menu, Stage 1 and the `/assets/` JS, CSS and GLB responses succeed.
+Recovery: restore a known-good change through `main` so it passes the same
+validation and redeploys; do not hand-edit the published artifact.
+
 ## Controls
 
 Keyboard is selected by default:

@@ -51,6 +51,8 @@ The product target uses static lighting and five sequential parking lessons. Pha
 * **Environment 2: Underground Garage.** Baked ambient occlusion and point lights. Focuses on reverse-perpendicular parking, tight concrete pillars, and spatial alignment using the 360-degree camera.
 * **Failure State:** In lessons, collision and other failure boundaries stop the attempt and show its recap; Retry starts a fresh attempt. Sandbox contact stops driving until Reset or Menu.
 
+**Delivery:** The prototype is a static Vite build (`dist`) hosted at the root of `https://park-core.nguyenviettung.id.vn/` through GitHub Pages and Actions. Pull requests and `main` pushes are validated (unit, typecheck, build, Chromium/Firefox browser tests and a production-preview smoke test of built JS/CSS/GLBs); only a passing `main` run deploys, with manual reruns. Setup, domain/DNS/HTTPS and recovery steps are in the README. Live availability remains unverified until the owner enables Pages and a deployment is observed.
+
 ## 6. AI Implementation Plan & Model Routing
 
 To maximize the Copilot Pro+ token budget, prompt tasks must be strictly routed based on model capability and cost.

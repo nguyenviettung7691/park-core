@@ -556,6 +556,14 @@ agents modifying shared app/types/UI files.
 | 14-15: measured acceptance and deferred work | Task 8; blocked evidence reported explicitly |
 | 16: engine-sensitive references | Task 2 verifies pinned implementation assumptions |
 
+## Deployment addendum (2026-11-04)
+
+Public delivery is a later, separate change: `.github/workflows/pages.yml`,
+`public/CNAME` and `npm run test:production` validate and, from `main` only,
+deploy `dist` to `park-core.nguyenviettung.id.vn`. Owner sign-off precedes
+merge; enabling Pages (Source: GitHub Actions), DNS/TLS and live checks are
+external and still outstanding. Earlier phase evidence is unchanged.
+
 ## Plan review and execution boundary
 
 This plan does not claim that packages install, application code compiles,

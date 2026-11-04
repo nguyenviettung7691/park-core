@@ -8,6 +8,8 @@
 
 **Scope:** Repository implementation, build/test evidence, static delivery configuration, and user-facing claims. This is not a driver-training, legal, instructor, learner, or physical-hardware certification.
 
+> **Remediation status, 2026-11-04 (Finding 1, in progress; original review below is unchanged):** a validated Pages workflow, `public/CNAME` and a production-preview smoke suite are implemented on branch `fix-pages-deployment`, pending owner sign-off and merge. Finding 1 stays open: on 2026-11-04 the repository reported `has_pages: false` and the Pages API returned 404; a HEAD request to the hostname returned HTTPS 404 from Cloudflare with an `x-github-request-id` header (baseline only, not app evidence); a DNS CNAME query returned no answer (proxying/flattening may hide it). Actions-run, HTTPS and live-asset evidence are outstanding.
+
 ## Verdict: NO-GO for the requested public deployment
 
 The app builds and renders locally, but this repository has no GitHub Actions workflow to publish it to Pages. Consequently, the deployment path requested for the MVP is not configured or verified. Do not treat successful local tests as a release sign-off.
