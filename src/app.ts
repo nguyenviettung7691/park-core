@@ -1,20 +1,29 @@
 import { vi } from './messages';
 import type {
-  ControllerCalibration, EnvironmentId, MessageKey, StageId, VehicleId,
+  AttemptSummary, ControllerCalibration, EnvironmentId, LessonRuntime, MessageKey, StageId,
+  VehicleId,
 } from './contracts';
 import type { ScreenAction, ScreenContext, ShellView } from './runtime-types';
-import type { PersistenceRecord, PersistenceResult } from './runtime-types';
-import { createPreview, PreviewStartError, type Preview } from './render/preview';
+import type {
+  AttemptHistorySnapshot, AttemptHistoryStatus, AttemptHistoryStore, PersistenceRecord,
+  PersistenceResult,
+} from './runtime-types';
+import {
+  createPreview, PreviewStartError, type Preview, type PreviewSessionMode,
+} from './render/preview';
 import { AssetLoadError, loadSceneAssets } from './world/assets';
 import type { AssetLoadProgress, SceneAssets } from './runtime-types';
 import { mountHud } from './ui/hud';
 import { mountCalibration, mountScreen, type InputSetup } from './ui/screens';
 import { createPersistence, unlockedStages, type PersistenceStore } from './storage/persistence';
+import { createAttemptHistoryStore } from './storage/attempt-history';
+import { scenarios } from './lessons/scenarios';
 
 export interface AppDeps {
   createPreview: typeof createPreview;
   loadSceneAssets: typeof loadSceneAssets;
   createPersistence: () => PersistenceStore;
+  createAttemptHistoryStore: () => AttemptHistoryStore;
   getGamepads: () => readonly (Gamepad | null)[];
 }
 
@@ -29,10 +38,14 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     loadSceneAssets,
     createPersistence: () => createPersistence(() =>
       typeof localStorage === 'undefined' ? null : localStorage),
+    createAttemptHistoryStore: () => createAttemptHistoryStore(
+      typeof indexedDB === 'undefined' ? null : indexedDB,
+    ),
     getGamepads: () => typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [],
     ...overrides,
   };
   const persistence = deps.createPersistence();
+  const attemptHistory = deps.createAttemptHistoryStore();
   const initial = persistence.snapshot();
   let context: ScreenContext = {
     progress: initial.progress,
@@ -45,6 +58,12 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   };
   let view: ShellView = { state: { kind: 'menu' }, preview: 'closed' };
   let preview: Preview | null = null;
+  let retainedAssets: SceneAssets | null = null;
+  let currentLesson: LessonRuntime | null = null;
+  let activeLessonStageId: StageId | null = null;
+  let activeLessonVehicleId: VehicleId | null = null;
+  let historySnapshot: AttemptHistorySnapshot | null = null;
+  let historyRequest = 0;
   let canvas: HTMLCanvasElement | null = null;
   let gamepadIndex: number | null = null;
   let devices: readonly Gamepad[] = [];
@@ -155,12 +174,16 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     resumeAttempt++;
     resumePending = false;
     generation++;
+    historyRequest++;
     const loading = assetLoadController;
     assetLoadController = null;
     loading?.abort();
     const current = preview;
     preview = null;
     current?.dispose();
+    retainedAssets?.dispose();
+    retainedAssets = null;
+    currentLesson = null;
     canvas?.remove();
     canvas = null;
     hud.update(null, context.settings.inputSource);
@@ -205,7 +228,14 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         drawScreen();
         return;
       }
-      view = { ...view, preview: 'running', pauseReason: null };
+      view = {
+        ...view,
+        state: view.state.kind === 'paused' && currentLesson
+          ? { kind: 'playing', lesson: currentLesson }
+          : view.state,
+        preview: 'running',
+        pauseReason: null,
+      };
       clearStatus();
       hud.setDriveControls(context.settings.inputSource === 'gamepad');
       drawScreen();
@@ -213,6 +243,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   }
   function startPreview(
     assets: SceneAssets, token: number, environmentId: EnvironmentId, vehicleId: VehicleId,
+    mode: PreviewSessionMode,
   ) {
     if (disposed || token !== generation) {
       assets.dispose();
@@ -223,7 +254,21 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     canvas.tabIndex = 0;
     canvas.setAttribute('aria-label', vi.previewBadge);
     root.prepend(canvas);
-    view = { state: { kind: 'menu' }, preview: 'paused', pauseReason: null };
+    currentLesson = mode.kind === 'lesson' ? {
+      stageId: mode.scenario.stageId,
+      stepIndex: 0,
+      stepDwellS: 0,
+      parkingDwellS: 0,
+      acknowledgedStepIds: [],
+    } : null;
+    let attemptRecorded = false;
+    view = {
+      state: currentLesson
+        ? { kind: 'paused', lesson: currentLesson, reason: 'focus' }
+        : { kind: 'menu' },
+      preview: 'paused',
+      pauseReason: null,
+    };
     audioUnavailable = false;
     status.textContent = '';
     drawScreen();
@@ -234,7 +279,20 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
           if (disposed || token !== generation) return;
           resumeAttempt++;
           resumePending = false;
-          view = { ...view, preview: 'paused', pauseReason: reason };
+          if (currentLesson && mode.kind === 'lesson') {
+            view = {
+              ...view,
+              state: {
+                kind: 'paused',
+                lesson: currentLesson,
+                reason: reason === 'contact' ? 'user' : reason,
+              },
+              preview: 'paused',
+              pauseReason: reason,
+            };
+          } else {
+            view = { ...view, preview: 'paused', pauseReason: reason };
+          }
           hud.update(null, context.settings.inputSource);
           notice(reason === 'contact' ? 'contactStop' : 'pausedNotice');
           const focused = document.activeElement;
@@ -254,6 +312,41 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         onSensors(value) {
           if (!disposed && token === generation) hud.updateSensors(value);
         },
+        onLessonUpdate(runtime) {
+          if (disposed || token !== generation || mode.kind !== 'lesson') return;
+          currentLesson = runtime;
+          view = { ...view, state: { kind: 'playing', lesson: runtime } };
+          drawScreen();
+        },
+        onAttemptOutcome(summary) {
+          if (disposed || token !== generation || mode.kind !== 'lesson' || attemptRecorded) return;
+          attemptRecorded = true;
+          if (summary.outcome === 'success') {
+            reportPersistence(persistence.recordConfirmedStageSuccess(summary.stageId));
+            refreshPersistence();
+            view = {
+              ...view,
+              state: { kind: 'success', summary, historyStatus: 'saving' },
+              preview: 'paused',
+            };
+          } else {
+            view = {
+              ...view,
+              state: { kind: 'fail', summary, historyStatus: 'saving' },
+              preview: 'paused',
+            };
+          }
+          drawScreen();
+          void attemptHistory.append(summary).then(({ status }) => {
+            if (disposed || token !== generation) return;
+            if (view.state.kind !== 'success' && view.state.kind !== 'fail') return;
+            view = { ...view, state: { ...view.state, historyStatus: status } };
+            drawScreen();
+          }, () => {
+            if (disposed || token !== generation) return;
+            showError('runtimeError', false);
+          });
+        },
         onNotice(key) {
           if (disposed || token !== generation) return;
           if (key === 'controllerDisconnected' || key === 'controllerReplaced') {
@@ -267,7 +360,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         sceneAssets: assets, source: context.settings.inputSource,
         gamepadIndex, calibration: pad ? calibrations.get(pad.id) ?? null : null,
         getGamepads: deps.getGamepads, settings: context.settings,
-      });
+      }, undefined, mode);
       if (disposed || token !== generation) opened.dispose();
       else { preview = opened; void resumePreview(); }
     } catch (error) {
@@ -287,16 +380,19 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       : 'assetLoadFailed';
     showError(messageKey, true);
   }
-  function openPreview() {
+  function openPreview(mode: 'lesson' | 'sandbox', stageId = context.selectedStageId) {
     if (!ready()) return;
     closePreview();
     const token = generation;
     const controller = new AbortController();
     assetLoadController = controller;
-    const environmentId: EnvironmentId = 'garage';
+    const scenario = mode === 'lesson' ? scenarios[stageId] : null;
+    const environmentId: EnvironmentId = scenario?.environmentId ?? 'garage';
     const vehicleId = context.selectedVehicleId;
+    activeLessonStageId = mode === 'lesson' ? stageId : null;
+    activeLessonVehicleId = mode === 'lesson' ? vehicleId : null;
     view = {
-      state: { kind: 'loading', stageId: context.selectedStageId },
+      state: { kind: 'loading', stageId, mode },
       preview: 'closed',
       assetLoadProgress: null,
     };
@@ -324,10 +420,63 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
           return;
         }
         assetLoadController = null;
-        startPreview(assets, token, environmentId, vehicleId);
+        if (mode === 'lesson' && scenario) {
+          retainedAssets = assets;
+          view = { state: { kind: 'briefing', stageId }, preview: 'closed' };
+          drawScreen();
+        } else {
+          startPreview(assets, token, environmentId, vehicleId, { kind: 'sandbox' });
+        }
       },
       (error: unknown) => failAssetLoad(error, token, controller.signal),
     );
+  }
+  function readHistory() {
+    closePreview();
+    const request = ++historyRequest;
+    const token = generation;
+    view = { state: { kind: 'history-loading' }, preview: 'closed' };
+    drawScreen();
+    void attemptHistory.list().then((snapshot) => {
+      if (disposed || request !== historyRequest || token !== generation ||
+          view.state.kind !== 'history-loading') return;
+      historySnapshot = snapshot;
+      view = {
+        state: {
+          kind: 'history-list',
+          records: snapshot.records,
+          status: snapshot.status === 'saving' ? 'session-only' : snapshot.status,
+          resetRequested: false,
+        },
+        preview: 'closed',
+      };
+      drawScreen();
+    }, () => {
+      if (disposed || request !== historyRequest || token !== generation) return;
+      showError('runtimeError', false);
+    });
+  }
+  function confirmHistoryReset() {
+    if (view.state.kind !== 'history-list' && view.state.kind !== 'history-detail') return;
+    const request = ++historyRequest;
+    const token = generation;
+    void attemptHistory.reset().then(() => attemptHistory.list()).then((snapshot) => {
+      if (disposed || request !== historyRequest || token !== generation) return;
+      historySnapshot = snapshot;
+      view = {
+        state: {
+          kind: 'history-list',
+          records: snapshot.records,
+          status: snapshot.status === 'saving' ? 'session-only' : snapshot.status,
+          resetRequested: false,
+        },
+        preview: 'closed',
+      };
+      drawScreen();
+    }, () => {
+      if (disposed || request !== historyRequest || token !== generation) return;
+      showError('runtimeError', false);
+    });
   }
   function onAction(action: ScreenAction) {
     if (disposed) return;
@@ -360,14 +509,81 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       }
       case 'start':
         if (!context.unlockedStageIds.includes(action.stageId)) return;
-        if (action.stageId !== 1) {
-          notice('lessonUnavailable');
-          return;
-        }
         context = {
           ...context, selectedStageId: action.stageId, selectedVehicleId: action.vehicleId,
         };
-        openPreview();
+        openPreview('lesson', action.stageId);
+        break;
+      case 'start-driving': {
+        if (view.state.kind !== 'briefing' || !retainedAssets ||
+            activeLessonStageId === null || activeLessonVehicleId === null || !ready()) return;
+        const assets = retainedAssets;
+        retainedAssets = null;
+        const scenario = scenarios[activeLessonStageId];
+        startPreview(assets, generation, scenario.environmentId, activeLessonVehicleId, {
+          kind: 'lesson',
+          scenario,
+        });
+        break;
+      }
+      case 'free-drive':
+        activeLessonStageId = null;
+        activeLessonVehicleId = null;
+        openPreview('sandbox');
+        break;
+      case 'open-history':
+        readHistory();
+        break;
+      case 'select-attempt': {
+        const snapshot = historySnapshot;
+        const record = snapshot?.records.find((candidate) => candidate.id === action.id);
+        if (!snapshot || !record || view.state.kind !== 'history-list') return;
+        view = {
+          state: {
+            kind: 'history-detail',
+            record,
+            status: view.state.status,
+            resetRequested: false,
+          },
+          preview: 'closed',
+        };
+        drawScreen();
+        break;
+      }
+      case 'back-to-history':
+        if (view.state.kind !== 'history-detail' || !historySnapshot) return;
+        view = {
+          state: {
+            kind: 'history-list',
+            records: historySnapshot.records,
+            status: historySnapshot.status === 'saving' ? 'session-only' : historySnapshot.status,
+            resetRequested: false,
+          },
+          preview: 'closed',
+        };
+        drawScreen();
+        break;
+      case 'request-history-reset':
+        if (view.state.kind === 'history-list' || view.state.kind === 'history-detail') {
+          view = {
+            ...view,
+            state: { ...view.state, resetRequested: true },
+          };
+          drawScreen();
+        }
+        break;
+      case 'cancel-history-reset':
+        if (view.state.kind === 'history-list' || view.state.kind === 'history-detail') {
+          view = {
+            ...view,
+            state: { ...view.state, resetRequested: false },
+          };
+          drawScreen();
+        }
+        break;
+      case 'confirm-history-reset':
+        if ((view.state.kind === 'history-list' || view.state.kind === 'history-detail') &&
+            view.state.resetRequested) confirmHistoryReset();
         break;
       case 'request-reset':
         if (context.recordStatus[action.record] !== 'reset-required') return;
@@ -394,9 +610,17 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         drawScreen();
         break;
       case 'open-preview':
+        openPreview('sandbox');
+        break;
       case 'reset-preview':
       case 'retry':
-        openPreview();
+        if (activeLessonStageId !== null) openPreview('lesson', activeLessonStageId);
+        else openPreview('sandbox');
+        break;
+      case 'continue':
+        closePreview();
+        view = { state: { kind: 'menu' }, preview: 'closed' };
+        drawScreen();
         break;
       case 'close-preview':
       case 'menu':
@@ -448,7 +672,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         drawScreen();
         break;
       default:
-        throw new Error(`Action not implemented in the prototype: ${action.type}`);
+        throw new Error('Unsupported app action');
     }
   }
   function onConnection(event: GamepadEvent) {

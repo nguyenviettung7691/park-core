@@ -407,12 +407,12 @@ reappear. This operation never touches Phase 5 localStorage.
 - Consumes: preview session mode/events, IndexedDB history store, Phase 5 `PersistenceStore`, and existing `AppState`.
 - Produces: Menu actions `start lesson`, `open history`, and `Lái tự do`; loader-to-briefing ownership; outcome/retry/continue flow; history loading/list/detail/reset states.
 
-- [ ] **Step 1: Write failing app/UI tests.** Pin Stage 1 lesson briefing after asset load, explicit learner start before movement, locked-stage rejection, sandbox Garage launch with the selected vehicle and no recap/progress, success-only stage completion, failure recap without unlock, successful/failed summary persistence status, retry clearing held input/dwell/sensor history, history list/detail/return/reset confirmation, and stale asynchronous history reads ignored after navigation/disposal.
-- [ ] **Step 2: Run tests red.** Run `npm test -- src/app.test.ts src/ui/ui.test.ts`; confirm unimplemented actions/screens or expected assertions fail.
-- [ ] **Step 3: Add localized states/actions.** Extend screen state for briefing, playing, pause, outcome and history loading/list/detail/error; make history reset explicit and history storage status visible in Vietnamese.
-- [ ] **Step 4: Integrate app ownership.** Hold loaded assets through Briefing, transfer ownership only when preview starts, dispose pending assets on Menu, and reopen/reload the same scenario on Retry. Persist a recap exactly once; call `recordConfirmedStageSuccess` only after a lesson success. Keep free drive on the current Garage sandbox path.
-- [ ] **Step 5: Add accessible history navigation and recap presentation.** Sort newest first; list date/stage/vehicle/result; selecting opens the complete uniform summary. Keep keyboard focus, 44 px controls, and discrete live announcements.
-- [ ] **Step 6: Verify.** Run app/UI/history tests, `npm run typecheck`, and `npm run build`.
+- [x] **Step 1: Write failing app/UI tests.** Pin Stage 1 lesson briefing after asset load, explicit learner start before movement, locked-stage rejection, sandbox Garage launch with the selected vehicle and no recap/progress, success-only stage completion, failure recap without unlock, successful/failed summary persistence status, retry clearing held input/dwell/sensor history, history list/detail/return/reset confirmation, and stale asynchronous history reads ignored after navigation/disposal.
+- [x] **Step 2: Run tests red.** Run `npm test -- src/app.test.ts src/ui/ui.test.ts`; confirm unimplemented actions/screens or expected assertions fail.
+- [x] **Step 3: Add localized states/actions.** Extend screen state for briefing, playing, pause, outcome and history loading/list/detail/error; make history reset explicit and history storage status visible in Vietnamese.
+- [x] **Step 4: Integrate app ownership.** Hold loaded assets through Briefing, transfer ownership only when preview starts, dispose pending assets on Menu, and reopen/reload the same scenario on Retry. Persist a recap exactly once; call `recordConfirmedStageSuccess` only after a lesson success. Keep free drive on the current Garage sandbox path.
+- [x] **Step 5: Add accessible history navigation and recap presentation.** Sort newest first; list date/stage/vehicle/result; selecting opens the complete uniform summary. Keep keyboard focus, 44 px controls, and discrete live announcements.
+- [x] **Step 6: Verify.** Run app/UI/history tests, `npm run typecheck`, and `npm run build`.
 - [ ] **Step 7: Commit.** `feat: add lesson and recap history flows`.
 
 ### Task 9: Browser acceptance, documentation, and final verification

@@ -1,8 +1,11 @@
-import type { AppState, InputSource } from '../contracts';
+import type {
+  AppState, AttemptSummary, CompletedAttemptRecord, FailureReason, InputSource,
+} from '../contracts';
 import { vi } from '../messages';
 import type {
-  PersistenceRecord, ScreenAction, ScreenContext, ShellView,
+  AttemptHistoryStatus, PersistenceRecord, ScreenAction, ScreenContext, ShellView,
 } from '../runtime-types';
+import { scenarios } from '../lessons/scenarios';
 export { mountCalibration } from './calibration';
 
 export interface InputSetup {
@@ -11,6 +14,77 @@ export interface InputSetup {
   readonly devices: readonly { readonly index: number; readonly id: string }[];
   readonly ready: boolean;
   readonly savedCalibrationAvailable: boolean;
+}
+
+const FAILURE_MESSAGES: Readonly<Record<FailureReason, keyof typeof vi>> = {
+  collision: 'failureCollision',
+  'curb-contact': 'failureCurbContact',
+  'out-of-bounds': 'failureOutOfBounds',
+  tipped: 'failureTipped',
+  'speed-envelope': 'failureSpeedEnvelope',
+};
+const STEP_LABELS = new Map(
+  Object.values(scenarios).flatMap(({ steps }) =>
+    steps.map((step) => [step.id, vi[step.instructionKey]] as const)),
+);
+const OBSTACLE_MESSAGES: Readonly<Record<string, keyof typeof vi>> = {
+  ground: 'obstacleGround',
+  'roadside-curb-right': 'obstacleRoadsideCurb',
+  'stage1-parked-left': 'obstacleStage1Left',
+  'stage1-parked-right': 'obstacleStage1Right',
+  'stage2-parked-left': 'obstacleStage2Left',
+  'stage2-parked-right': 'obstacleStage2Right',
+  'stage3-parked-rear': 'obstacleStage3Rear',
+  'stage3-parked-front': 'obstacleStage3Front',
+  'stage4-adjacent-vehicle': 'obstacleStage4Vehicle',
+  'stage5-parked-rear': 'obstacleStage5Rear',
+  'stage5-parked-front': 'obstacleStage5Front',
+};
+
+function historyStatusText(status: AttemptHistoryStatus): string {
+  if (status === 'persistent') return vi.historyPersistent;
+  if (status === 'reset-required') return vi.historyResetRequired;
+  return vi.historySessionOnly;
+}
+
+function summaryRows(summary: AttemptSummary): readonly (readonly [string, string])[] {
+  const clearances = summary.closestSampledClearanceM === null
+    ? vi.noRecordedValue
+    : `${summary.closestSampledClearanceM.toFixed(2)} m`;
+  const steps = summary.acknowledgedStepIds.length
+    ? summary.acknowledgedStepIds
+      .map((id) => STEP_LABELS.get(id) ?? vi.historyUnknownStep).join('; ')
+    : vi.noRecordedValue;
+  const aids = summary.usedAids.length
+    ? summary.usedAids.map((aid) => vi[aid === 'chase' ? 'aidChase'
+      : aid === '360' ? 'aid360' : aid === 'trajectory' ? 'aidTrajectory' : 'aidHelp']).join(', ')
+    : vi.noRecordedValue;
+  const rows: (readonly [string, string])[] = [
+    [vi.historyElapsed, `${summary.elapsedSimulationS.toFixed(1)} giây`],
+    [vi.historyClosestClearance, clearances],
+    [vi.historyPeakSpeed, `${(summary.peakSpeedMps * 3.6).toFixed(1)} km/h`],
+    [vi.historyDirectionChanges, String(summary.directionChanges)],
+    [vi.historyAcknowledged, steps],
+    [vi.historyAids, aids],
+  ];
+  if (summary.failureReason) {
+    rows.push([vi.historyFailure, vi[FAILURE_MESSAGES[summary.failureReason]]]);
+  }
+  if (summary.obstacleId) {
+    const message = OBSTACLE_MESSAGES[summary.obstacleId] ?? 'historyObstacleGeneric';
+    rows.push([vi.historyObstacle, vi[message]]);
+  }
+  return rows;
+}
+
+function recordLabel(record: CompletedAttemptRecord): string {
+  const date = new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(record.completedAt));
+  const vehicle = record.summary.vehicleId === 'sedan' ? vi.sedan : vi.cuv;
+  const result = record.summary.outcome === 'success' ? vi.outcomeSuccess : vi.outcomeFail;
+  return `${date} — ${vi[`stage${record.summary.stageId}`]} — ${vehicle} — ${result}`;
 }
 
 export function mountScreen(
@@ -27,7 +101,7 @@ export function mountScreen(
   if (preview === 'paused') screen.classList.add('preview-paused');
   const listeners = new AbortController();
 
-  function text(tag: 'h1' | 'p', value: string) {
+  function text(tag: 'h1' | 'h2' | 'p', value: string) {
     const element = document.createElement(tag);
     element.textContent = value;
     screen.append(element);
@@ -67,6 +141,27 @@ export function mountScreen(
           request.dataset.resetRecord = record;
         }
       }
+    }
+  }
+
+  function renderSummary(summary: AttemptSummary) {
+    const list = document.createElement('dl');
+    for (const [label, value] of summaryRows(summary)) {
+      const term = document.createElement('dt');
+      term.textContent = label;
+      const description = document.createElement('dd');
+      description.textContent = value;
+      list.append(term, description);
+    }
+    screen.append(list);
+  }
+
+  function historyResetControls(resetRequested: boolean) {
+    if (resetRequested) {
+      button(vi.confirmHistoryReset, () => onAction({ type: 'confirm-history-reset' }));
+      button(vi.cancelHistoryReset, () => onAction({ type: 'cancel-history-reset' }));
+    } else {
+      button(vi.historyReset, () => onAction({ type: 'request-history-reset' }));
     }
   }
 
@@ -135,6 +230,71 @@ export function mountScreen(
     }
     screen.append(progress);
     button(vi.closePreview, () => onAction({ type: 'menu' }));
+  } else if (state.kind === 'briefing') {
+    const scenario = scenarios[state.stageId];
+    text('h1', vi[scenario.titleKey]);
+    text('p', context.selectedVehicleId === 'sedan' ? vi.sedan : vi.cuv);
+    text('p', vi.briefingNotice).setAttribute('role', 'status');
+    text('h2', vi.briefingStep);
+    const firstStep = scenario.steps[0];
+    if (firstStep) text('p', vi[firstStep.instructionKey]);
+    button(vi.startDriving, () => onAction({ type: 'start-driving' }));
+    button(vi.closePreview, () => onAction({ type: 'menu' }));
+  } else if (state.kind === 'history-loading') {
+    text('h1', vi.openHistory);
+    const status = text('p', vi.historyLoading);
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    button(vi.closePreview, () => onAction({ type: 'menu' }));
+  } else if (state.kind === 'history-list') {
+    text('h1', vi.openHistory);
+    const status = text('p', historyStatusText(state.status));
+    status.setAttribute('role', state.status === 'reset-required' ? 'alert' : 'status');
+    const list = document.createElement('div');
+    list.className = 'history-list';
+    if (state.records.length === 0) text('p', vi.historyEmpty);
+    for (const record of state.records) {
+      const item = button(recordLabel(record), () =>
+        onAction({ type: 'select-attempt', id: record.id }));
+      item.dataset.attemptId = record.id;
+      list.append(item);
+    }
+    screen.append(list);
+    historyResetControls(state.resetRequested);
+    button(vi.closePreview, () => onAction({ type: 'menu' }));
+  } else if (state.kind === 'history-detail') {
+    text('h1', vi.openHistory);
+    const status = text('p', historyStatusText(state.status));
+    status.setAttribute('role', state.status === 'reset-required' ? 'alert' : 'status');
+    text('h2', recordLabel(state.record));
+    renderSummary(state.record.summary);
+    button(vi.backToHistory, () => onAction({ type: 'back-to-history' }));
+    historyResetControls(state.resetRequested);
+    button(vi.closePreview, () => onAction({ type: 'menu' }));
+  } else if (state.kind === 'success' || state.kind === 'fail') {
+    text('h1', state.kind === 'success' ? vi.successTitle : vi.failTitle);
+    const result = text('p', state.historyStatus === 'saving'
+      ? vi.historyLoading : historyStatusText(state.historyStatus));
+    result.setAttribute('role', 'status');
+    renderSummary(state.summary);
+    button(vi.retryLesson, () => onAction({ type: 'retry' }));
+    button(vi.continue, () => onAction({ type: 'continue' }));
+    button(vi.closePreview, () => onAction({ type: 'menu' }));
+  } else if (state.kind === 'paused') {
+    text('h1', vi.pausedNotice);
+    button(vi.resumePreview, () => onAction({ type: 'resume' }));
+    inputControls();
+    text('p', vi.controlsHelp);
+    button(vi.retryLesson, () => onAction({ type: 'retry' }));
+    button(vi.closePreview, () => onAction({ type: 'menu' }));
+  } else if (state.kind === 'playing') {
+    const instruction = scenarios[state.lesson.stageId]
+      .steps[state.lesson.stepIndex]?.instructionKey;
+    if (instruction) {
+      const status = text('p', vi[instruction]);
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
+    }
   } else if (state.kind === 'error') {
     text('h1', vi.appTitle);
     text('p', vi[state.messageKey]).setAttribute('role', 'alert');
@@ -144,9 +304,7 @@ export function mountScreen(
       } else button(vi.retry, () => onAction({ type: 'retry' }));
     }
     button(vi.closePreview, () => onAction({ type: 'menu' }));
-  } else if (state.kind !== 'menu') {
-    throw new Error(`Screen not implemented in Phase 2: ${state.kind}`);
-  } else if (preview !== 'closed') {
+  } else if (state.kind === 'menu' && preview !== 'closed') {
     const controls = document.createElement('div');
     controls.className = 'preview-controls';
     const badge = text('h1', vi.previewBadge);
@@ -164,7 +322,7 @@ export function mountScreen(
       }
     }
     screen.append(controls);
-  } else {
+  } else if (state.kind === 'menu') {
     let selectedStageId = context.selectedStageId;
     let selectedVehicleId = context.selectedVehicleId;
     text('h1', vi.appTitle);
@@ -223,6 +381,9 @@ export function mountScreen(
     start.id = 'start-stage';
     start.disabled = !context.unlockedStageIds.includes(selectedStageId) ||
       (input ? !input.ready : false);
+    const freeDrive = button(vi.freeDrive, () => onAction({ type: 'free-drive' }));
+    freeDrive.disabled = input ? !input.ready : false;
+    button(vi.openHistory, () => onAction({ type: 'open-history' }));
   }
   root.append(screen);
   if (preview !== 'running') {

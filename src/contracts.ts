@@ -222,12 +222,24 @@ export interface ControllerCalibration {
 
 export type AppState =
   | { readonly kind: 'menu' }
-  | { readonly kind: 'loading'; readonly stageId: StageId }
+  | { readonly kind: 'loading'; readonly stageId: StageId;
+      readonly mode: 'lesson' | 'sandbox' }
   | { readonly kind: 'briefing'; readonly stageId: StageId }
   | { readonly kind: 'playing'; readonly lesson: LessonRuntime }
   | { readonly kind: 'paused'; readonly lesson: LessonRuntime;
       readonly reason: 'user' | 'focus' | 'controller' | 'input-source' }
-  | { readonly kind: 'success'; readonly summary: AttemptSummary }
-  | { readonly kind: 'fail'; readonly summary: AttemptSummary }
+  | { readonly kind: 'success'; readonly summary: AttemptSummary;
+      readonly historyStatus: 'saving' | 'persistent' | 'session-only' | 'reset-required' }
+  | { readonly kind: 'fail'; readonly summary: AttemptSummary;
+      readonly historyStatus: 'saving' | 'persistent' | 'session-only' | 'reset-required' }
+  | { readonly kind: 'history-loading' }
+  | { readonly kind: 'history-list';
+      readonly records: readonly CompletedAttemptRecord[];
+      readonly status: 'persistent' | 'session-only' | 'reset-required';
+      readonly resetRequested: boolean }
+  | { readonly kind: 'history-detail';
+      readonly record: CompletedAttemptRecord;
+      readonly status: 'persistent' | 'session-only' | 'reset-required';
+      readonly resetRequested: boolean }
   | { readonly kind: 'error'; readonly messageKey: MessageKey;
       readonly retryable: boolean };

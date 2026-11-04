@@ -1,16 +1,20 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { createApp } from './app';
-import { PreviewStartError, type Preview, type PreviewEvents } from './render/preview';
+import {
+  PreviewStartError, type Preview, type PreviewEvents, type PreviewSessionMode,
+} from './render/preview';
 import { testGamepad } from './test/gamepad';
-import type { SensorSnapshot } from './contracts';
+import type { AttemptSummary, SensorSnapshot } from './contracts';
 import type { AssetLoadProgress, SceneAssets } from './runtime-types';
 import { collidersForEnvironment } from './world/colliders';
 import { profiles } from './vehicle/profiles';
 import { buildPrototypeScene } from './render/prototype';
 import { AssetLoadError } from './world/assets';
 import { createPersistence, type StoragePort } from './storage/persistence';
-import type { PersistenceRecord } from './runtime-types';
+import type {
+  AttemptHistorySnapshot, AttemptHistoryStore, PersistenceRecord,
+} from './runtime-types';
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -27,12 +31,15 @@ function fixture() {
   let events: PreviewEvents | undefined;
   const previews: Preview[] = [];
   const prototypes: unknown[] = [];
+  const modes: (PreviewSessionMode | undefined)[] = [];
   const factory = vi.fn((
     canvas: HTMLCanvasElement, _container: HTMLElement, handlers: PreviewEvents, prototype: unknown,
+    _overrides?: unknown, mode?: PreviewSessionMode,
   ) => {
     expect(canvas.isConnected).toBe(true);
     events = handlers;
     prototypes.push(prototype);
+    modes.push(mode);
     const sceneAssets = (prototype as { sceneAssets?: SceneAssets }).sceneAssets;
     live++;
     let disposed = false;
@@ -58,7 +65,7 @@ function fixture() {
     return preview;
   });
   return {
-    root, factory, previews, prototypes,
+    root, factory, previews, prototypes, modes,
     app(overrides: Parameters<typeof createApp>[1] = {}) {
       return createApp(root, {
         createPreview: factory,
@@ -75,7 +82,7 @@ function fixture() {
       return events;
     },
     async openPreview() {
-      this.click('Lái thử mô hình');
+      this.click('Lái tự do');
       await this.flush();
     },
     click(text: string) {
@@ -88,6 +95,40 @@ function fixture() {
 
 function makeSceneAssets() {
   return buildPrototypeScene(profiles.sedan, collidersForEnvironment('garage')).assets;
+}
+
+const attemptSummary: AttemptSummary = {
+  stageId: 1,
+  vehicleId: 'sedan',
+  outcome: 'success',
+  failureReason: null,
+  obstacleId: null,
+  elapsedSimulationS: 4,
+  closestSampledClearanceM: null,
+  peakSpeedMps: 0.5,
+  directionChanges: 0,
+  acknowledgedStepIds: ['survey-space'],
+  usedAids: [],
+};
+
+function appHistory(
+  records: AttemptHistorySnapshot['records'] = [],
+  appendStatus: 'persistent' | 'session-only' | 'reset-required' = 'persistent',
+) {
+  let nextId = 0;
+  const store: AttemptHistoryStore = {
+    list: vi.fn(async () => ({ records, status: 'persistent' as const })),
+    append: vi.fn(async (summary) => ({
+      record: {
+        id: `attempt-${++nextId}`,
+        completedAt: '2026-11-04T10:00:00.000Z',
+        summary,
+      },
+      status: appendStatus,
+    })),
+    reset: vi.fn(async () => 'persistent' as const),
+  };
+  return store;
 }
 
 function appPersistence(
@@ -138,13 +179,169 @@ it('hydrates persisted progress, vehicle and settings before showing the stage m
 
   expect(f.root.querySelector<HTMLSelectElement>('#vehicle')?.value).toBe('cuv');
   expect(f.root.querySelector<HTMLButtonElement>('[data-stage-id="2"]')?.disabled).toBe(false);
-  f.click('Lái thử mô hình');
+  f.click('Lái tự do');
   await f.flush();
   expect(f.prototypes[0]).toMatchObject({
     vehicleId: 'cuv',
     settings: { volume: 0.25, cameraMode: 'chase', overhead: true, trajectory: true },
   });
   app.dispose();
+});
+
+it('holds lesson assets on the briefing screen until the learner explicitly starts driving', async () => {
+  const f = fixture();
+  const app = f.app();
+
+  f.click('Bắt đầu bài học');
+  await f.flush();
+
+  expect(f.root.textContent).toContain('Giai đoạn 1 — Garage: khu thử xe');
+  expect(f.factory).not.toHaveBeenCalled();
+  expect(f.root.querySelector('#screen-layer canvas')).toBeNull();
+  f.click('Bắt đầu lái');
+  await f.flush();
+  expect(f.factory).toHaveBeenCalledOnce();
+  expect(f.modes[0]).toMatchObject({ kind: 'lesson', scenario: { stageId: 1 } });
+  app.dispose();
+});
+
+it('records each lesson outcome once and awards progression only on success', async () => {
+  const f = fixture();
+  const persistence = appPersistence();
+  const history = appHistory();
+  const app = f.app({
+    createPersistence: () => persistence.store,
+    createAttemptHistoryStore: () => history,
+  });
+  f.click('Bắt đầu bài học');
+  await f.flush();
+  f.click('Bắt đầu lái');
+  await f.flush();
+  f.events.onAttemptOutcome!(attemptSummary);
+  f.events.onAttemptOutcome!(attemptSummary);
+  await f.flush();
+
+  expect(persistence.recordConfirmedStageSuccess).toHaveBeenCalledOnce();
+  expect(persistence.recordConfirmedStageSuccess).toHaveBeenCalledWith(1);
+  expect(history.append).toHaveBeenCalledOnce();
+  expect(history.append).toHaveBeenCalledWith(attemptSummary);
+  expect(f.root.textContent).toContain('Hoàn thành bài học');
+  expect(f.root.textContent).toContain('Lịch sử được lưu');
+  app.dispose();
+});
+
+it('does not store or award completion for a sandbox preview outcome callback', async () => {
+  const f = fixture();
+  const persistence = appPersistence();
+  const history = appHistory();
+  const app = f.app({
+    createPersistence: () => persistence.store,
+    createAttemptHistoryStore: () => history,
+  });
+  await f.openPreview();
+  f.events.onAttemptOutcome!(attemptSummary);
+  await f.flush();
+
+  expect(history.append).not.toHaveBeenCalled();
+  expect(persistence.recordConfirmedStageSuccess).not.toHaveBeenCalled();
+  app.dispose();
+});
+
+it('persists failure recaps without awarding stage completion', async () => {
+  const f = fixture();
+  const persistence = appPersistence();
+  const history = appHistory([], 'session-only');
+  const app = f.app({
+    createPersistence: () => persistence.store,
+    createAttemptHistoryStore: () => history,
+  });
+  f.click('Bắt đầu bài học');
+  await f.flush();
+  f.click('Bắt đầu lái');
+  await f.flush();
+  const failedPreview = f.previews[0]!;
+  f.events.onAttemptOutcome!({
+    ...attemptSummary,
+    outcome: 'fail',
+    failureReason: 'collision',
+    obstacleId: 'barrier',
+  });
+  await f.flush();
+
+  expect(history.append).toHaveBeenCalledOnce();
+  expect(persistence.recordConfirmedStageSuccess).not.toHaveBeenCalled();
+  expect(f.root.textContent).toContain('Lượt lái chưa đạt');
+  expect(f.root.textContent).toContain('Va chạm');
+  expect(f.root.textContent).toContain('chỉ được giữ trong phiên này');
+  f.click('Thử lại bài học');
+  await f.flush();
+  expect(f.root.textContent).toContain('Giai đoạn 1 — Garage: khu thử xe');
+  expect(f.factory).toHaveBeenCalledOnce();
+  expect(failedPreview.dispose).toHaveBeenCalledOnce();
+  f.click('Bắt đầu lái');
+  await f.flush();
+  expect(f.factory).toHaveBeenCalledTimes(2);
+  expect(f.modes[1]).toMatchObject({ kind: 'lesson', scenario: { stageId: 1 } });
+  app.dispose();
+});
+
+it('lists, opens, returns from, and explicitly resets attempt history', async () => {
+  const f = fixture();
+  const record = {
+    id: 'stored-attempt',
+    completedAt: '2026-11-04T10:00:00.000Z',
+    summary: attemptSummary,
+  };
+  const history = appHistory([record]);
+  const app = f.app({ createAttemptHistoryStore: () => history });
+  f.click('Lịch sử lượt lái');
+  await f.flush();
+
+  expect(f.root.textContent).toContain('Giai đoạn 1');
+  f.click(f.root.querySelector<HTMLButtonElement>('[data-attempt-id]')!.textContent ?? '');
+  expect(f.root.textContent).toContain('Các bước đã xác nhận');
+  f.click('Quay lại lịch sử');
+  f.click('Đặt lại lịch sử');
+  expect(f.root.textContent).toContain('Xác nhận xóa lịch sử');
+  f.click('Xác nhận xóa lịch sử');
+  await f.flush();
+  expect(history.reset).toHaveBeenCalledOnce();
+  expect(history.list).toHaveBeenCalledTimes(2);
+  app.dispose();
+});
+
+it('ignores a late history read after returning to the main menu', async () => {
+  const f = fixture();
+  const history = appHistory();
+  let resolveHistory!: (snapshot: AttemptHistorySnapshot) => void;
+  vi.mocked(history.list).mockImplementation(() => new Promise((resolve) => {
+    resolveHistory = resolve;
+  }));
+  const app = f.app({ createAttemptHistoryStore: () => history });
+  f.click('Lịch sử lượt lái');
+  f.click('Quay lại menu');
+  resolveHistory({ records: [], status: 'persistent' });
+  await f.flush();
+
+  expect(f.root.querySelector('#vehicle')).not.toBeNull();
+  expect(f.root.textContent).not.toContain('Chưa có lượt lái hoàn thành');
+  app.dispose();
+});
+
+it('ignores a late history read after app disposal', async () => {
+  const f = fixture();
+  const history = appHistory();
+  let resolveHistory!: (snapshot: AttemptHistorySnapshot) => void;
+  vi.mocked(history.list).mockImplementation(() => new Promise((resolve) => {
+    resolveHistory = resolve;
+  }));
+  const app = f.app({ createAttemptHistoryStore: () => history });
+  f.click('Lịch sử lượt lái');
+  app.dispose();
+  resolveHistory({ records: [], status: 'persistent' });
+  await f.flush();
+
+  expect(f.root.children).toHaveLength(0);
 });
 
 it('persists vehicle and setting changes through only their matching records', async () => {
@@ -241,7 +438,7 @@ it('verifies a saved calibration only for the selected stable device ID', async 
   expect(f.root.querySelector('#verify-saved-calibration')).not.toBeNull();
   f.click('Dùng hiệu chuẩn đã lưu');
   expect(f.root.querySelector<HTMLButtonElement>('#start-stage')?.disabled).toBe(false);
-  f.click('Lái thử mô hình');
+  f.click('Lái tự do');
   await f.flush();
 
   expect(f.prototypes[0]).toMatchObject({ calibration: saved });
@@ -290,7 +487,7 @@ it('loads the selected vehicle and Garage before creating a preview and releases
   });
   const app = f.app({ loadSceneAssets });
 
-  f.click('Lái thử mô hình');
+  f.click('Lái tự do');
   expect(f.root.querySelector('#screen-layer [role="status"]')?.textContent?.toLocaleLowerCase('vi'))
     .toContain('đang tải xe');
   expect(f.root.querySelector<HTMLProgressElement>('#screen-layer progress')?.value).toBe(120);
@@ -320,7 +517,7 @@ it('aborts loading on Menu and disposes a late result without attaching it', asy
   });
   const app = f.app({ loadSceneAssets });
 
-  f.click('Lái thử mô hình');
+  f.click('Lái tự do');
   f.click('Quay lại menu');
   expect(signal?.aborted).toBe(true);
   resolveAssets(assets);
@@ -344,7 +541,7 @@ it('aborts loading on app disposal and releases any late result', async () => {
     },
   });
 
-  f.click('Lái thử mô hình');
+  f.click('Lái tự do');
   app.dispose();
   expect(signal?.aborted).toBe(true);
   resolveAssets(assets);
@@ -580,7 +777,7 @@ it('does not discover controllers until the learner selects that input source', 
   source.value = 'gamepad';
   source.dispatchEvent(new Event('change'));
   expect(getGamepads).toHaveBeenCalledOnce();
-  expect([...f.root.querySelectorAll('button')].find((button) => button.textContent === 'Lái thử mô hình')?.disabled)
+  expect([...f.root.querySelectorAll('button')].find((button) => button.textContent === 'Lái tự do')?.disabled)
     .toBe(true);
   app.dispose();
 });

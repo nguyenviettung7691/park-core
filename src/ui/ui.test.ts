@@ -3,8 +3,11 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mountCalibration, mountScreen } from './screens';
 import { mountHud } from './hud';
 import type { ScreenContext, ShellView } from '../runtime-types';
-import type { SensorSnapshot, VehicleTelemetry } from '../contracts';
+import type {
+  AttemptSummary, CompletedAttemptRecord, SensorSnapshot, VehicleTelemetry,
+} from '../contracts';
 import { testGamepad } from '../test/gamepad';
+import { vi as messages } from '../messages';
 
 afterEach(() => document.body.replaceChildren());
 
@@ -47,6 +50,46 @@ it('renders five stages, keeps locked stages disabled, and starts Stage 1 with t
   expect(action).toHaveBeenLastCalledWith({ type: 'start', stageId: 1, vehicleId: 'cuv' });
   unmount();
   expect(element.children.length).toBe(0);
+});
+
+it('offers lesson, free-drive, and history entry points from the main menu', () => {
+  const element = root();
+  mountScreen(element, { kind: 'menu' }, context, vi.fn());
+
+  const labels = [...element.querySelectorAll('button')].map((button) => button.textContent);
+  expect(labels).toContain('Bắt đầu bài học');
+  expect(labels).toContain('Lái tự do');
+  expect(labels).toContain('Lịch sử lượt lái');
+});
+
+it('localizes acknowledged steps and obstacle labels in history details', () => {
+  const element = root();
+  const summary: AttemptSummary = {
+    stageId: 1,
+    vehicleId: 'sedan',
+    outcome: 'fail',
+    failureReason: 'collision',
+    obstacleId: 'stage1-parked-left',
+    elapsedSimulationS: 1,
+    closestSampledClearanceM: null,
+    peakSpeedMps: 0.2,
+    directionChanges: 0,
+    acknowledgedStepIds: ['survey-space'],
+    usedAids: [],
+  };
+  const record: CompletedAttemptRecord = {
+    id: 'attempt',
+    completedAt: '2026-11-04T10:00:00.000Z',
+    summary,
+  };
+  mountScreen(element, {
+    kind: 'history-detail', record, status: 'persistent', resetRequested: false,
+  }, context, vi.fn());
+
+  expect(element.textContent).toContain(messages.lessonSurveySpace);
+  expect(element.textContent).toContain('Xe đỗ bên trái');
+  expect(element.textContent).not.toContain('survey-space');
+  expect(element.textContent).not.toContain('stage1-parked-left');
 });
 
 it('enables only stages derived from the unlocked context and lets the learner select them', () => {
@@ -117,7 +160,7 @@ it('shows accessible indeterminate asset progress and lets the learner cancel to
   const element = root();
   const action = vi.fn();
   const view: ShellView = {
-    state: { kind: 'loading', stageId: 1 },
+    state: { kind: 'loading', stageId: 1, mode: 'sandbox' },
     preview: 'closed',
     assetLoadProgress: { resource: 'vehicle', loadedBytes: 120, totalBytes: null },
   };

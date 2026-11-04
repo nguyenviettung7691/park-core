@@ -126,6 +126,14 @@ export interface ScreenContext {
 
 export type ScreenAction =
   | { readonly type: 'start'; readonly stageId: StageId; readonly vehicleId: VehicleId }
+  | { readonly type: 'start-driving' }
+  | { readonly type: 'free-drive' }
+  | { readonly type: 'open-history' }
+  | { readonly type: 'select-attempt'; readonly id: string }
+  | { readonly type: 'back-to-history' }
+  | { readonly type: 'request-history-reset' }
+  | { readonly type: 'confirm-history-reset' }
+  | { readonly type: 'cancel-history-reset' }
   | { readonly type: 'select-stage'; readonly stageId: StageId }
   | { readonly type: 'verify-saved-calibration' }
   | { readonly type: 'request-reset'; readonly record: PersistenceRecord }
