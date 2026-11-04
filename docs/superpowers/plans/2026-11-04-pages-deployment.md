@@ -104,6 +104,14 @@
   scoped files with the required Copilot co-author trailer. Do not merge or
   push yet.
 
+  Recorded results (local Node v24.13.1, unsupported; CI pins 24.15.0):
+  `npm test` 356 passed; typecheck and build clean; `test:browser` 28 passed;
+  `test:production` 4 passed (includes built `CNAME` assertion);
+  `git diff --check` clean; actionlint v1.7.12 reports no findings on
+  `pages.yml`. Review fixes: validation concurrency scoped to the validate job,
+  `configure-pages` moved to the deploy job, `persist-credentials: false`.
+  Workflow not yet run on GitHub.
+
 ### Task 2: Sign off, publish and collect closure evidence
 
 **Interfaces:** Consumes Task 1's reviewed commit and owner sign-off; produces

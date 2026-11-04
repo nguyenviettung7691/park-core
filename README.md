@@ -55,7 +55,8 @@ preview on port 4174 and checks the built JS/CSS, the four GLBs and Stage 1.
 ## Deployment (GitHub Pages)
 
 The app is served from the root of `https://park-core.nguyenviettung.id.vn/`
-(`public/CNAME`); repository-subpath hosting is not supported.
+(`public/CNAME` is kept in the artifact; the Pages setting below is what
+configures the domain for Actions deployments); repository-subpath hosting is not supported.
 `.github/workflows/pages.yml` runs on pull requests, pushes to `main` and manual
 dispatch: Node 24.15.0, `npm ci`, unit tests, typecheck, build, Chromium/Firefox
 browser tests and the production smoke suite. Only a passing run on `main`

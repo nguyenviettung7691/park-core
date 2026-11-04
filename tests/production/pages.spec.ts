@@ -38,6 +38,10 @@ test('built app serves assets and enters Stage 1', async ({ page, request, baseU
     expect(asset.type).toMatch(/text\/css/i);
   }
 
+  const cname = await request.get('/CNAME');
+  expect(cname.status()).toBe(200);
+  expect((await cname.text()).trim()).toBe('park-core.nguyenviettung.id.vn');
+
   for (const path of glbPaths) {
     const response = await request.get(path);
     expect(response.status(), path).toBe(200);
