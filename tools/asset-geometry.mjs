@@ -85,3 +85,55 @@ export function torusGeometry(radiusM, tubeM, color, segments = 18, tubeSegments
   }
   return { positions, normals, colors, indices };
 }
+
+export function mergeGeometry(parts) {
+  const result = { positions: [], normals: [], colors: [], indices: [] };
+  for (const part of parts) {
+    const offset = result.positions.length / 3;
+    result.positions.push(...part.positions);
+    result.normals.push(...part.normals);
+    result.colors.push(...part.colors);
+    result.indices.push(...part.indices.map((index) => index + offset));
+  }
+  return result;
+}
+
+export function transformGeometry(geometry, translation = [0, 0, 0], rotation = [0, 0, 0]) {
+  const rotate = (point) => {
+    let [x, y, z] = point;
+    for (let axis = 0; axis < 3; axis++) {
+      const c = Math.cos(rotation[axis]), s = Math.sin(rotation[axis]);
+      if (axis === 0) [y, z] = [y * c - z * s, y * s + z * c];
+      if (axis === 1) [x, z] = [x * c + z * s, -x * s + z * c];
+      if (axis === 2) [x, y] = [x * c - y * s, x * s + y * c];
+    }
+    return [x, y, z];
+  };
+  const positions = [], normals = [];
+  for (let i = 0; i < geometry.positions.length; i += 3) {
+    positions.push(...rotate(geometry.positions.slice(i, i + 3)).map((v, axis) => v + translation[axis]));
+    normals.push(...rotate(geometry.normals.slice(i, i + 3)));
+  }
+  return { positions, normals, colors: [...geometry.colors], indices: [...geometry.indices] };
+}
+
+export function facesGeometry(faces) {
+  const result = { positions: [], normals: [], colors: [], indices: [] };
+  for (const { points, color } of faces) {
+    const a = points[1].map((v, axis) => v - points[0][axis]);
+    const b = points[2].map((v, axis) => v - points[0][axis]);
+    const cross = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const length = Math.hypot(...cross);
+    if (length < 1e-10) continue;
+    const normal = cross.map((v) => v / length);
+    const shade = 0.78 + Math.abs(normal[1]) * 0.2 + normal[0] * 0.06;
+    const start = result.positions.length / 3;
+    for (const point of points) {
+      result.positions.push(...point);
+      result.normals.push(...normal);
+      result.colors.push(...color.map((v) => Math.min(1, v * shade)));
+    }
+    for (let i = 1; i < points.length - 1; i++) result.indices.push(start, start + i, start + i + 1);
+  }
+  return result;
+}

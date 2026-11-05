@@ -1,4 +1,5 @@
-import { BufferGeometry, Mesh } from 'three';
+import { Box3, BufferGeometry, Mesh, Raycaster, Vector3 } from 'three';
+import { profiles } from '../vehicle/profiles.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildGlb } from '../../tools/generate-assets.mjs';
 import { AssetLoadError, loadSceneAssets } from './assets.ts';
@@ -64,6 +65,24 @@ function disposalEvents(assets) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('phase 5 scene asset loading', () => {
+  it.each(['sedan', 'cuv'])('keeps %s forward cockpit sightlines open in the real exported shell', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      for (const x of [0, -0.35, 0.35]) {
+        const ray = new Raycaster(new Vector3(...profiles[id].driverEyeLocalM),
+          new Vector3(x, 0, -1).normalize(), 0.1, 3);
+        expect(ray.intersectObject(assets.vehicle, true).map((hit) => hit.object.name)).toEqual([]);
+      }
+      expect(assets.vehicle.getObjectByName('Exterior')).toBeTruthy();
+      const bounds = new Box3().setFromObject(assets.vehicle.getObjectByName('Body'));
+      expect(bounds.max.y + profiles[id].centerOfMassHeightM).toBeCloseTo(profiles[id].bodySizeM[1], 4);
+      const hood = new Box3().setFromObject(assets.vehicle.getObjectByName('Hood'));
+      expect(hood.max.y).toBeLessThan(profiles[id].driverEyeLocalM[1]);
+    } finally { assets.dispose(); }
+  });
+
   it('loads only the selected vehicle/environment pair and disposes resources once', async () => {
     const calls = mockedFetch();
     const progress = [];
