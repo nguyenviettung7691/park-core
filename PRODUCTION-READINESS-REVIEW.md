@@ -74,6 +74,8 @@ The independent reviewer initially could not start a second browser suite becaus
 
 **Automation scope change (2026-11-05):** At the owner's request, the full-duration benchmark/export browser test is removed from the production suite, so Pages CI no longer waits for 70-second measurements in either browser. Manual `/benchmark.html` tooling, timing, validation and export are unchanged. Setup/assets and short Chromium resize checks remain automated alongside unit tests; the existing Firefox resize skip remains. This reduces the release gate's performance-test coverage, not the underlying Firefox timing risk. The successful full-duration CI run above is historical evidence, not an ongoing gate. Finding 2 remains open.
 
+**Scope-change deployment evidence (2026-11-05):** Signed-off merge `5627e3d` passed [Pages run 41958808599](https://github.com/nguyenviettung7691/park-core/actions/runs/41958808599): 417 unit tests, typecheck/build, 28 browser tests, and seven production smoke tests with one existing Firefox resize skip. The production suite took 10.1 seconds without full-duration measurements. Deployment succeeded; live app and manual benchmark entry returned HTTPS 200. No Firefox timing fix or reference-hardware certification is claimed.
+
 **Closure evidence:** Select and record the representative upper-mid/reference and minimum machines, OS, browser, resolution, refresh rate, and quality settings. Benchmark the worst garage view with mirrors, sensors, and overhead enabled; report frame-time percentiles and physics overruns against the design's target.
 
 ### 3. Medium — Dynamic completion of all five lessons is not demonstrated
