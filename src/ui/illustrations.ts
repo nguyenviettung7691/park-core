@@ -8,13 +8,15 @@ export function createParkingIllustration(stageId: StageId): SVGSVGElement {
   svg.setAttribute('aria-label', vi.goalDiagram);
   svg.classList.add('parking-illustration');
   const parallel = stageId === 3 || stageId === 5;
+  const halfWidth = stageId === 4 ? 55 : 67;
+  const end = stageId === 5 ? 105 : 118;
   svg.innerHTML = `
     <ellipse cx="290" cy="320" rx="200" ry="28" fill="#100e13" opacity=".5"/>
     <g transform="translate(280 175) skewY(-12) scale(1 .85)">
       <path d="M-245 160H245M-245 65H245M-245-30H245M-200-130V180M-75-130V180M50-130V180M175-130V180"
         fill="none" stroke="#58495f" stroke-width="1"/>
       <g transform="rotate(${parallel ? 90 : 0})">
-        <path d="M-67-120H67V118H-67Z" fill="#9b59b6" fill-opacity=".16" stroke="#d5b1e3" stroke-width="3"/>
+        <path d="M-${halfWidth}-120H${halfWidth}V${end}H-${halfWidth}Z" fill="#9b59b6" fill-opacity=".16" stroke="#d5b1e3" stroke-width="3"/>
         <path d="M-59 110H59" stroke="#9b59b6" stroke-width="7"/>
         <rect x="-48" y="-89" width="12" height="34" rx="4" fill="#100e13"/>
         <rect x="36" y="-89" width="12" height="34" rx="4" fill="#100e13"/>

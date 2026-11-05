@@ -234,6 +234,7 @@ it('hydrates persisted progress, vehicle and settings before showing the stage m
   const app = f.app({ createPersistence: () => persistence.store });
 
   expect(f.root.querySelector<HTMLSelectElement>('#vehicle')?.value).toBe('cuv');
+  expect(f.root.querySelector('[data-stage-id="2"]')?.getAttribute('aria-pressed')).toBe('true');
   expect(f.root.querySelector<HTMLButtonElement>('[data-stage-id="2"]')?.disabled).toBe(false);
   f.click('Lái tự do');
   await f.flush();
@@ -283,6 +284,20 @@ it('records each lesson outcome once and awards progression only on success', as
   expect(history.append).toHaveBeenCalledWith(attemptSummary);
   expect(f.root.textContent).toContain('Hoàn thành bài học');
   expect(f.root.textContent).toContain('Lịch sử được lưu');
+  f.click('Tiếp tục');
+  expect(f.root.querySelector('[data-stage-id="2"]')?.getAttribute('aria-pressed')).toBe('true');
+  app.dispose();
+});
+
+it('recommends Stage 5 for replay after completing the full curriculum', () => {
+  const f = fixture();
+  const persistence = appPersistence({
+    progress: JSON.stringify({ version: 1, completedStages: [1, 2, 3, 4, 5], lastVehicle: 'sedan' }),
+  });
+  const app = f.app({ createPersistence: () => persistence.store });
+  expect(f.root.querySelector('[data-stage-id="5"]')?.getAttribute('aria-pressed')).toBe('true');
+  f.root.querySelector<HTMLButtonElement>('[data-stage-id="1"]')!.click();
+  expect(f.root.querySelector('[data-stage-id="1"]')?.getAttribute('aria-pressed')).toBe('true');
   app.dispose();
 });
 

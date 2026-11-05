@@ -76,6 +76,15 @@ it('offers lesson, free-drive, and history entry points from the main menu', () 
   expect(labels).toContain('Lịch sử lượt lái');
 });
 
+it('explains the parking goal visually before accepting an explicit lesson start', () => {
+  const element = root();
+  const action = vi.fn();
+  mountScreen(element, { kind: 'briefing', stageId: 3 }, context, action);
+  expect(element.querySelector('svg[role="img"]')?.getAttribute('aria-label')).toContain('minh họa');
+  expect(element.textContent).toContain('song song');
+  expect(action).not.toHaveBeenCalled();
+});
+
 it('localizes acknowledged steps and obstacle labels in history details', () => {
   const element = root();
   const summary: AttemptSummary = {

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { vi } from '../../src/messages';
+import { enterLessonMenu } from '../ui-journey';
 
 test('first visit teaches the goal before driving and remains skippable and replayable', async ({ page }) => {
   await page.goto('/');
@@ -19,4 +20,16 @@ test('first visit teaches the goal before driving and remains skippable and repl
   await page.getByRole('button', { name: vi.skipTutorial, exact: true }).click();
   await expect(page.locator('#start-stage')).toBeVisible();
   expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
+});
+
+test('visual lesson goal remains a briefing until the learner explicitly starts', async ({ page }) => {
+  await page.goto('/');
+  await enterLessonMenu(page);
+  await page.locator('#start-stage').click();
+  await expect(page.locator('[data-screen="briefing"] svg[role="img"]')).toBeVisible();
+  await expect(page.locator('#simulation')).toHaveCount(0);
+  await page.getByRole('button', { name: vi.startDriving, exact: true }).click();
+  await expect(page.locator('#simulation')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: vi.resumePreview, exact: true })).toBeVisible();
 });

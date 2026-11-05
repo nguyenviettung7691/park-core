@@ -6,6 +6,7 @@ import type {
   AttemptHistoryStatus, PersistenceRecord, ScreenAction, ScreenContext, ShellView,
 } from '../runtime-types';
 import { scenarios } from '../lessons/scenarios';
+import { createParkingIllustration } from './illustrations';
 export { mountCalibration } from './calibration';
 
 export interface InputSetup {
@@ -102,19 +103,19 @@ export function mountScreen(
   if (preview === 'paused') screen.classList.add('preview-paused');
   const listeners = new AbortController();
 
-  function text(tag: 'h1' | 'h2' | 'p', value: string) {
+  function text(tag: 'h1' | 'h2' | 'p', value: string, parent: HTMLElement = screen) {
     const element = document.createElement(tag);
     element.textContent = value;
-    screen.append(element);
+    parent.append(element);
     return element;
   }
 
-  function button(label: string, handler: () => void) {
+  function button(label: string, handler: () => void, parent: HTMLElement = screen) {
     const element = document.createElement('button');
     element.type = 'button';
     element.textContent = label;
     element.addEventListener('click', handler, { signal: listeners.signal });
-    screen.append(element);
+    parent.append(element);
     return element;
   }
 
@@ -171,7 +172,7 @@ export function mountScreen(
     }
   }
 
-  function inputControls() {
+  function inputControls(parent: HTMLElement = screen) {
     if (!input) return;
     function select(
       name: string, labelText: string, options: readonly (readonly [string, string])[],
@@ -189,7 +190,7 @@ export function mountScreen(
       }
       node.value = value;
       node.addEventListener('change', () => onChange(node.value), { signal: listeners.signal });
-      screen.append(label, node);
+      parent.append(label, node);
     }
     select('input-source', vi.inputSource, [['keyboard', vi.keyboard], ['gamepad', vi.gamepad]],
       input.source, (source) => {
@@ -197,7 +198,7 @@ export function mountScreen(
         onAction({ type: 'select-input', source, gamepadIndex: input.index });
       });
     if (input.source === 'gamepad') {
-      text('p', vi.deviceHelp);
+      text('p', vi.deviceHelp, parent);
       select('input-device', vi.device,
         [['', vi.controllerDisconnected], ...input.devices.map((device) =>
           [String(device.index), device.id] as const)], input.index === null ? '' : String(input.index),
@@ -206,15 +207,15 @@ export function mountScreen(
         }));
       button(vi.discoverDevices, () => onAction({
         type: 'select-input', source: 'gamepad', gamepadIndex: input.index,
-      }));
+      }), parent);
       if (input.savedCalibrationAvailable) {
-        text('p', vi.savedCalibrationHelp);
+        text('p', vi.savedCalibrationHelp, parent);
         const verify = button(vi.verifySavedCalibration, () =>
-          onAction({ type: 'verify-saved-calibration' }));
+          onAction({ type: 'verify-saved-calibration' }), parent);
         verify.id = 'verify-saved-calibration';
       }
-      if (!input.ready) text('p', vi.controllerNeedsSetup);
-      const setup = button(vi.calibrate, () => onAction({ type: 'open-calibration' }));
+      if (!input.ready) text('p', vi.controllerNeedsSetup, parent);
+      const setup = button(vi.calibrate, () => onAction({ type: 'open-calibration' }), parent);
       setup.id = 'calibrate-device';
       setup.disabled = input.index === null;
     }
@@ -259,14 +260,17 @@ export function mountScreen(
     screen.append(progress);
     button(vi.closePreview, () => onAction({ type: 'menu' }));
   } else if (state.kind === 'briefing') {
+    screen.classList.add('briefing');
     const scenario = scenarios[state.stageId];
     text('h1', vi[scenario.titleKey]);
+    screen.append(createParkingIllustration(state.stageId));
+    text('p', vi[`goal${state.stageId}`]).className = 'lead';
     text('p', context.selectedVehicleId === 'sedan' ? vi.sedan : vi.cuv);
     text('p', vi.briefingNotice).setAttribute('role', 'status');
     text('h2', vi.briefingStep);
     const firstStep = scenario.steps[0];
     if (firstStep) text('p', vi[firstStep.instructionKey]);
-    button(vi.startDriving, () => onAction({ type: 'start-driving' }));
+    button(vi.startDriving, () => onAction({ type: 'start-driving' })).className = 'primary-action';
     button(vi.closePreview, () => onAction({ type: 'menu' }));
   } else if (state.kind === 'history-loading') {
     text('h1', vi.openHistory);
@@ -357,11 +361,27 @@ export function mountScreen(
     screen.append(controls);
     if (preview === 'paused') button(vi.help, () => onAction({ type: 'open-help' }));
   } else if (state.kind === 'menu') {
+    screen.classList.add('lesson-hub');
     let selectedStageId = context.selectedStageId;
     let selectedVehicleId = context.selectedVehicleId;
     text('h1', vi.appTitle);
     text('p', vi.menuTitle);
-    text('p', vi.menuNotice);
+    const hero = document.createElement('section');
+    hero.className = 'lesson-hero';
+    const art = document.createElement('figure');
+    art.className = 'lesson-art';
+    art.append(createParkingIllustration(context.selectedStageId));
+    const card = document.createElement('div');
+    card.className = 'intro-copy';
+    text('p', vi.yourNextLesson, card).className = 'eyebrow';
+    text('h2', vi[`stage${context.selectedStageId}`], card);
+    text('p', vi[`goal${context.selectedStageId}`], card);
+    hero.append(art, card);
+    screen.append(hero);
+    const setup = document.createElement('section');
+    setup.className = 'setup-panel';
+    setup.setAttribute('aria-label', vi.setupLabel);
+    text('h2', vi.setupLabel, setup);
     const label = document.createElement('label');
     label.htmlFor = 'vehicle';
     label.textContent = vi.vehicleLabel;
@@ -381,7 +401,7 @@ export function mountScreen(
       selectedVehicleId = select.value;
       onAction({ type: 'select-vehicle', vehicleId: select.value });
     }, { signal: listeners.signal });
-    screen.append(label, select);
+    setup.append(label, select);
     const stages = document.createElement('div');
     stages.className = 'stage-list';
     stages.setAttribute('role', 'group');
@@ -405,20 +425,30 @@ export function mountScreen(
       }, { signal: listeners.signal });
       stages.append(choice);
     }
-    screen.append(stages);
+    text('h2', vi.curriculum);
+    screen.append(stages, setup);
     persistenceNotices();
-    inputControls();
-    text('p', vi.controlsHelp);
+    inputControls(setup);
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = vi.fullControls;
+    details.append(summary);
+    text('p', vi.controlsHelp, details);
+    setup.append(details);
     const start = button(vi.startStage, () => onAction({
       type: 'start', stageId: selectedStageId, vehicleId: selectedVehicleId,
     }));
     start.id = 'start-stage';
+    start.className = 'primary-action';
+    card.append(start);
     start.disabled = !context.unlockedStageIds.includes(selectedStageId) ||
       (input ? !input.ready : false);
     const freeDrive = button(vi.freeDrive, () => onAction({ type: 'free-drive' }));
     freeDrive.disabled = input ? !input.ready : false;
     button(vi.openHistory, () => onAction({ type: 'open-history' }));
     button(vi.help, () => onAction({ type: 'open-help' }));
+    text('p', vi.sandboxLabel).className = 'safety-note';
+    text('p', vi.menuNotice).className = 'safety-note';
   }
   root.append(screen);
   if (preview !== 'running') {

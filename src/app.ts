@@ -60,7 +60,8 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     onboardingResetRequested: false,
     progress: initial.progress,
     settings: initial.settings,
-    selectedStageId: 1,
+    selectedStageId: unlockedStages(initial.progress)
+      .find((stage) => !initial.progress.completedStages.includes(stage)) ?? 5,
     selectedVehicleId: initial.progress.lastVehicle,
     unlockedStageIds: unlockedStages(initial.progress),
     recordStatus: initial.recordStatus,
@@ -726,6 +727,10 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         else openPreview('sandbox');
         break;
       case 'continue':
+        if (view.state.kind === 'success') {
+          context = { ...context, selectedStageId: context.unlockedStageIds
+            .find((stage) => !context.progress.completedStages.includes(stage)) ?? 5 };
+        }
         closePreview();
         view = { state: { kind: 'menu' }, preview: 'closed' };
         drawScreen();

@@ -292,6 +292,44 @@ body {
   width: min(100%, 68rem);
 }
 
+.lesson-hub {
+  width: min(100%, 70rem);
+}
+
+.lesson-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.setup-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.setup-panel h2,
+.setup-panel details,
+.setup-panel p {
+  grid-column: 1 / -1;
+}
+
+summary {
+  cursor: pointer;
+  padding: 10px 0;
+  min-height: 44px;
+  color: var(--color-accent-light);
+}
+
+.briefing .parking-illustration {
+  max-height: 240px;
+  background: radial-gradient(ellipse, #50345b, transparent 70%);
+}
+
 .intro-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -389,6 +427,8 @@ input {
 
 @media (max-width: 768px) {
   .intro-layout { grid-template-columns: minmax(0, 1fr); }
+  .lesson-hero { grid-template-columns: minmax(0, 1fr); }
+  .lesson-hub .parking-illustration { max-height: 200px; }
   .onboarding .lesson-art { max-height: 220px; overflow: hidden; }
   .onboarding .parking-illustration { max-height: 220px; }
 }
