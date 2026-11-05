@@ -1,130 +1,25 @@
-# Park-Core Public MVP Production-Readiness Review
+# Production Review — Change History
 
-**Review date:** 2026-11-04
+Chronological record of the changes made in response to the production-readiness review.
 
-**Reviewed commit:** `e41fabefcc90fd2329f554964b4379a71311b97e`
+## 2026-11-04 — GitHub Pages delivery
 
-**Target:** Public, low-traffic MVP/POC (about 10 concurrent users), built from this repository and hosted by GitHub Actions on GitHub Pages at the owner's custom subdomain.
+Added the Pages build-and-deploy workflow, custom-domain configuration, and production-preview smoke tests (`6e952a7`). Hosted run [41841460826](https://github.com/nguyenviettung7691/park-core/actions/runs/41841460826) passed 356 unit tests, typecheck/build, 28 browser tests, and four production smoke tests; deployment succeeded. The owner verified the custom domain.
 
-**Scope:** Repository implementation, build/test evidence, static delivery configuration, and user-facing claims. This is not a driver-training, legal, instructor, learner, or physical-hardware certification.
+## 2026-11-05 — Performance benchmark tooling
 
-## Current status — Finding 1: Done (2026-11-04)
+Added `/benchmark.html`, the versioned Garage workload, and local JSON report export (`e437d52`). Hosted run [41957312693](https://github.com/nguyenviettung7691/park-core/actions/runs/41957312693) passed 417 unit tests, typecheck/build, 28 browser tests, and nine production tests; deployment succeeded.
 
-The owner confirmed manual verification of `https://park-core.nguyenviettung.id.vn/` passed. Independent live checks returned HTTPS 200 for the app, built JavaScript/CSS with correct MIME types, and all four GLBs with valid binary headers. Pages settings confirm `cname: park-core.nguyenviettung.id.vn`. Together with successful [deployment run 41841460826](https://github.com/nguyenviettung7691/park-core/actions/runs/41841460826) at `4ae956e` (356 unit tests, 28 browser tests, four production smoke tests, typecheck/build on supported Node 24.15.0), this closes Finding 1.
+Changed automated production checks to short setup/asset smoke coverage rather than full-duration benchmark runs (`5627e3d`). Hosted run [41958808599](https://github.com/nguyenviettung7691/park-core/actions/runs/41958808599) passed 417 unit tests, typecheck/build, 28 browser tests, and seven production smoke tests; deployment succeeded.
 
-Pages currently reports `https_enforced: false`; public HTTPS is verified through Cloudflare with HSTS, not claimed as origin-side Pages enforcement. Repository settings and DNS were owner-managed. Findings 3 and 4 are closed by the software evidence below. Finding 2 remains open pending reference/minimum-PC performance evidence. Finding 5 is Done (2026-11-05) for wording alignment only; it does not establish hardware performance. This is not whole-product production approval.
+## 2026-11-05 — Lesson completion journeys
 
-## Historical remediation record
+Added browser journeys completing all five lessons with both Sedan and CUV, including recap and progression checks (`f1a8204`); adjusted the Stage 4 test-driver approach speed (`c921766`). Hosted run [41981753519](https://github.com/nguyenviettung7691/park-core/actions/runs/41981753519) passed 427 unit tests, typecheck/build, 19 browser tests, and five production smoke tests; deployment succeeded.
 
-> **Remediation status, 2026-11-04 (Finding 1, in progress; original review below is unchanged):** after owner sign-off, the Pages workflow, `public/CNAME` and production-preview smoke suite were merged and pushed to `main` at `d751da9`. [Actions run 41833951982](https://github.com/nguyenviettung7691/park-core/actions/runs/41833951982) passed 356 unit tests, typecheck and build on supported Node 24.15.0, but Linux browser acceptance failed (17 failed, 11 passed); production smoke, artifact upload and deployment were skipped. Firefox reported unavailable WebGL2; Chromium's four failures need retained traces before a root cause can be confirmed. Diagnostic instrumentation is prepared separately, not a fix. Pages setup is owner-managed: the repository reported `has_pages: false` and the Pages API returned 404. The hostname's HTTPS 404 via Cloudflare and absent public CNAME answer are baseline observations only (proxying/flattening may hide DNS targets). Run 41835725600 (`e0cc61a`) reproduced 17 failed / 11 passed with retained artifacts (Firefox probe `webgl2:false`; slow Chromium actions, root cause incomplete); headed Xvfb (run 41837675459) fixed Firefox WebGL2 and left 27 passed / 1 failed, a Chromium audio test that drove into contact before pausing; the audio correction (8f4234d, run 41839162095) passed, leaving 27 passed / 1 failed: Chromium driving.spec.ts:118 clicked Reset while the resumed canvas held pointer lock; a second test-precondition correction is pending CI. Finding 1 remains open pending passing CI, deployment and live HTTPS/app/asset evidence.
+## 2026-11-05 — Proximity HUD guidance
 
-## Original audit verdict: NO-GO for the requested public deployment
+Replaced safety-assuring proximity wording with neutral readings and a visible limitation note in each active sensor panel (`e47112a`). Hosted run [41988083375](https://github.com/nguyenviettung7691/park-core/actions/runs/41988083375) passed 428 unit tests, typecheck/build, 19 browser tests, and five production smoke tests; deployment succeeded.
 
-> **Latest remediation evidence, 2026-11-04:** [run 41841460826](https://github.com/nguyenviettung7691/park-core/actions/runs/41841460826) at `4ae956e` passed all software gates on supported Node 24.15.0: 356 unit tests, typecheck/build, 28 browser tests and four production smoke tests. Artifact upload and Pages deployment succeeded. Headed Xvfb restored Firefox WebGL2; two browser tests were corrected to stop before checking audio pause and release pointer lock before clicking Reset. Runtime simulator code is unchanged. Finding 1 is **not closed**: Pages reports `build_type: workflow`, `cname: null` and the repository-subpath URL; the intended custom hostname still returns HTTPS 404. The owner retained Pages/domain setup. Set the Pages custom domain to `park-core.nguyenviettung.id.vn`, then verify live app, JS/CSS and GLBs; the root-path build is not intended for `/park-core/`. The verdict and findings below remain the original audit, not a new whole-product review.
+## 2026-11-05 — Performance target documentation
 
-The app builds and renders locally, but this repository has no GitHub Actions workflow to publish it to Pages. Consequently, the deployment path requested for the MVP is not configured or verified. Do not treat successful local tests as a release sign-off.
-
-This verdict is specific to public deployment. The local prototype passes the current software gates below. It is not evidence of actual custom-domain reachability, upper-mid-PC performance, or dynamic playability of every lesson.
-
-## Verification evidence
-
-All commands ran from the audit worktree at the reviewed commit on Windows.
-
-| Check | Result |
-|---|---|
-| Node | `v24.13.1`, outside the package-supported range `^22.22.2 || ^24.15.0 || >=26.0.0`; therefore these checks do not establish supported-Node validation. |
-| Playwright | `1.64.1`; installed Chromium `1248` and Firefox `1555`. |
-| `npm test` | Passed: 24 files, 356 tests. |
-| `npm run typecheck` | Passed. |
-| `npm run build` | Passed. Vite reported an 822.21 kB minified JavaScript chunk (217.81 kB gzip), above its 500 kB warning threshold. This is not a performance measurement. |
-| `npm run test:browser -- --reporter=line` | Passed: 28 Chromium/Firefox tests in about 3.5 minutes. These run against the Vite development server (`playwright.config.ts:3,18-21`). |
-| Local production-preview smoke | `dist/index.html`, generated JS/CSS, Sedan GLB, and Garage GLB returned HTTP 200; Chromium rendered the menu at 1440×900. This verifies local build paths only, not GitHub Pages or DNS. |
-
-The independent reviewer initially could not start a second browser suite because port 4173 was occupied while this audit's suite was running. The audit's separate command completed with 28 passing tests; the reviewer confirmed its blocked attempt was superseded by that result.
-
-## Findings
-
-### 1. Blocker — GitHub Actions deployment to Pages is absent
-
-**Status:** Done, 2026-11-04. See current status above for deployment and live custom-domain closure evidence. The following evidence describes the original audit revision.
-
-**Confidence:** High
-
-**Evidence:** There is no tracked `.github/workflows/` directory. `package.json:9-15` defines development, test, typecheck, build, and preview scripts, but no deployment job or command. No tracked `CNAME` file was found; Pages settings may manage a domain separately, so this does not prove whether a domain is configured in GitHub.
-
-**Impact:** A local build does not publish the site, so the repository cannot currently deliver the stated Actions-to-Pages release path.
-
-**Closure evidence:** Add the agreed Pages build/deploy workflow using a supported Node version, then show a successful Actions deployment of `dist`. Verify the deployed custom subdomain serves the app and its JS, CSS, and GLB assets over HTTPS. Confirm the domain in Pages settings and DNS without exposing secrets.
-
-### 2. High — Performance on the stated upper-mid PC target is unverified
-
-**Current automation scope (2026-11-05):** The owner selected immediate fallback instead of a quantized-clock compatibility change: Firefox is removed from both learner acceptance and production test projects and from CI installation/probing. Chromium checks and manual benchmark implementation are retained unchanged. Firefox timing is not fixed; its automated compatibility coverage is no longer maintained. Previous Chromium/Firefox run results below remain historical evidence. Finding 2 remains open.
-
-**Chromium-only deployment evidence (2026-11-05):** Merge `6f163a3` passed [Pages run 41960377679](https://github.com/nguyenviettung7691/park-core/actions/runs/41960377679): 417 unit tests, typecheck/build, 14 Chromium acceptance tests and four production smoke tests, with no browser test skips. Validation took 3m43s; deployment succeeded. Live app and manual benchmark entry returned HTTPS 200. This verifies the reduced automated gate, not Firefox timing or reference-PC performance.
-
-**Confidence:** High as an evidence gap
-
-**Evidence:** `docs/detail-design.md:978-1003` requires selecting a named reference PC, measuring the worst garage view with all aids, targeting p95 frame interval ≤6.94 ms at 2560×1440, and retaining 60 rendered FPS on a declared minimum PC. The design says no reference hardware was supplied. The user target “most upper-mid PCs” does not name a machine or define a measurable threshold. No performance benchmark is recorded; the Vite bundle-size warning is not one.
-
-**Impact:** “Runs comfortably” cannot be verified or responsibly claimed without an agreed reference/minimum machine and measurements.
-
-**Status update (2026-11-04):** Benchmark tooling was delivered (`/benchmark.html`, workload v1, JSON export; criteria p95 <=17.5 ms, mean >=57 FPS, zero loss at 2560x1440/60 Hz). No real reference-PC or minimum-PC evidence exists yet, so this finding remains open.
-
-**Local software validation (2026-11-05, branch `performance-benchmark`):** 416 unit tests and typecheck/build passed on unsupported local Node 24.13.1. A single bounded production benchmark run returned four passed, one failed and one skipped: Chromium completed the real 10-second warm-up/60-second measurement and JSON export; Firefox setup passed, but its full case was invalidated with `Frame timestamps are not strictly increasing`. Firefox resize is skipped because Playwright viewport resizing stalls under pointer lock. The timeout is a consequence of invalidation, not evidence of poor FPS. The timestamp failure's cause is unresolved; no repeated benchmark run was attempted. Integration review found no Critical/Important defects before this run. Merge/push and supported-Node/hosted validation remain pending; this is not reference-hardware evidence.
-
-**Bounded follow-up (2026-11-05):** One six-second Firefox diagnostic observed integer-millisecond `performance.now()` values with one tied completion timestamp among 862 frames, no backwards steps and no repeated animation-frame timestamps. This establishes that clock ties can occur, not that a tie caused the retained production failure (the trace contains no frame values). Commit `369a7fe` makes measurement invalidation end the case immediately instead of waiting for the measurement deadline, and reports both timestamps; strict-increase validation is unchanged. A focused RED/GREEN regression covers immediate invalidation; the final short checks passed 417 unit tests and typecheck/build. No full benchmark was rerun, so Firefox completion remains unverified. Do not infer passing Firefox or hardware evidence from these checks.
-
-**Published tooling evidence (2026-11-05):** After explicit owner sign-off accepting the local Firefox gap, the tooling was merged and pushed at `e437d52`. [Pages run 41957312693](https://github.com/nguyenviettung7691/park-core/actions/runs/41957312693) passed on supported Node 24.15.0: 417 unit tests, typecheck/build, 28 browser acceptance tests, and nine production tests with one documented Firefox resize skip. Both full-duration benchmark cases passed in headed CI; this does not resolve the local timestamp failure or establish reference-PC performance (CI uses software rendering). Deployment succeeded. Live HTTPS checks returned 200 with correct MIME types for the normal app, `/benchmark.html`, and their built JS/CSS. Finding 2 remains open pending actual reference/minimum-PC evidence.
-
-**Automation scope change (2026-11-05):** At the owner's request, the full-duration benchmark/export browser test is removed from the production suite, so Pages CI no longer waits for 70-second measurements in either browser. Manual `/benchmark.html` tooling, timing, validation and export are unchanged. Setup/assets and short Chromium resize checks remain automated alongside unit tests; the existing Firefox resize skip remains. This reduces the release gate's performance-test coverage, not the underlying Firefox timing risk. The successful full-duration CI run above is historical evidence, not an ongoing gate. Finding 2 remains open.
-
-**Scope-change deployment evidence (2026-11-05):** Signed-off merge `5627e3d` passed [Pages run 41958808599](https://github.com/nguyenviettung7691/park-core/actions/runs/41958808599): 417 unit tests, typecheck/build, 28 browser tests, and seven production smoke tests with one existing Firefox resize skip. The production suite took 10.1 seconds without full-duration measurements. Deployment succeeded; live app and manual benchmark entry returned HTTPS 200. No Firefox timing fix or reference-hardware certification is claimed.
-
-**Closure evidence:** Select and record the representative upper-mid/reference and minimum machines, OS, browser, resolution, refresh rate, and quality settings. Benchmark the worst garage view with mirrors, sensors, and overhead enabled; report frame-time percentiles and physics overruns against the design's target.
-
-### 3. Medium — Dynamic completion of all five lessons is not demonstrated
-
-**Confidence:** High as an evidence gap; this does not prove a lesson is broken
-
-**Evidence:** `tests/browser/phase-6.spec.ts:46-85` drives a full success path only for Stage 1, then enters Stage 2 without completing it. `src/lessons/scenario-routes.test.ts:84-109` checks geometric route witnesses, while `docs/phase-6-implementation-plan.md:66-70` explicitly says those checks do not establish dynamic drivability and that learner walkthroughs remain pending.
-
-**Impact:** Five guided lessons are a core advertised MVP feature, but current evidence does not show that each is completable under the running physics and guidance rules.
-
-**Closure evidence:** Complete an end-to-end success attempt for each of the five lessons with both Sedan and CUV, including expected recap and progression behavior; retain collision/failure checks and record any route or checkpoint adjustments.
-
-**Historical remediation, 2026-11-05 (before recovery CI):** on the lesson-completion branch, `tests/browser/lesson-completion.spec.ts` completed all ten Stage/vehicle cases locally in Chromium against the Vite-served app (DEV-only observation, fake Gamepad API plus real keyboard events, UI calibration, reload/history/recap assertions; no route or checkpoint changes were needed). Not production-build, real-wheel, instructor or learner evidence. Finding 3 was not marked Done before review sign-off, merge, push and supported-Node CI pass. Hosted CI run 41969029953 failed on Sedan Stage 4 (parked 0.045 m outside the target inset); the Stage 4-only test-driver approach-speed fix then passed locally, with hosted re-verification still pending at that point.
-
-**Status: Done (2026-11-05), software completion evidence only.** After owner sign-off, fix `174f64a` was merged and pushed at `c921766`. [Pages run 41981753519](https://github.com/nguyenviettung7691/park-core/actions/runs/41981753519) passed on Node 24.15.0: 427 unit tests, typecheck/build, 19 Chromium browser tests and five production smoke tests, without skips or retries. Both five-stage journeys completed through normal calibrated Gamepad/keyboard input with success recaps, reload-persisted progression and history assertions; existing collision/failure checks remain. Stage 4 final body z was -6.98 m (Sedan) and -6.93 m (CUV). The fix changes only test-driver approach speed, not runtime physics, routes, checkpoints or parking tolerances. Pages deployment succeeded; live app, manual benchmark entry and built JS/CSS returned HTTPS 200 with correct MIME types. The journeys run against the Vite development server using software-rendered Chromium and a fake Gamepad; production smoke confirms the observation transport is absent. This closes the ten-case software evidence gap, not real-wheel, instructor, learner or reference-hardware validation.
-
-### 4. Medium — The proximity HUD presents an incomplete reading as “safe”
-
-**Confidence:** High
-
-**Evidence:** `src/messages.ts:186` labels the green band “XANH — an toàn” (“GREEN — safe”), and `src/ui/hud.ts:171-176,193-210` renders that text in the proximity HUD. However, `docs/detail-design.md:441-443` says the rays have coverage gaps, miss some low obstacles, and do not cover the full side sweep; it requires those limitations to be explained. `src/sensors/sensors.test.ts:108-115` verifies that a low obstacle can produce no hit.
-
-**Impact:** A user may interpret a green/no-warning state as clearance confirmation even though the simulation's limited rays can miss obstacles. The general prototype disclaimer does not explain that limitation next to the live reading.
-
-**Closure evidence:** Replace assurance wording with a neutral proximity description and show a concise visible explanation that the sensor is limited guidance, can miss obstacles, and never confirms clearance.
-
-**Status: Done (2026-11-05), HUD wording/disclosure only.** After owner sign-off, commit `65d4e5c` was merged and pushed at `e47112a`. [Pages run 41988083375](https://github.com/nguyenviettung7691/park-core/actions/runs/41988083375) passed on Node 24.15.0: 428 unit tests, typecheck/build, 19 Chromium browser tests, and five production smoke tests, with no retries or skips; deployment succeeded. The green wording is now neutral, no-hit is scoped to what the sensor detected, and each active front/rear panel shows the visible limitation, including no-hit snapshots. Sensor readings, classification, ray coverage, colors and audio were not changed. The deployed app, `/benchmark.html`, and generated JS/CSS returned HTTPS 200 with correct MIME types; the deployed app bundle contains the guidance copy. This closes the user-facing assurance wording gap, not the underlying sensor coverage, obstacle-clearance, real-wheel, instructor, learner or hardware validation.
-
-### 5. Low — Top-level performance guidance overstated the 144 Hz evidence
-
-**Confidence:** High
-
-**Evidence:** The approved benchmark contract in `docs/detail-design.md` sets 2560x1440 at 60 Hz as its target and leaves 144 Hz optional and unverified. The technical design already reflects that contract. At the time of the finding, `.github/copilot-instructions.md` and `docs/implementation-plan.md` described 144 Hz as the target; those statements have since been aligned.
-
-**Impact:** Top-level project guidance overstated the performance target despite the absence of reference/minimum-PC results.
-
-**Status: Done (2026-11-05), documentation wording only.** The stale top-level guidance now identifies the approved 2560x1440/60 Hz criteria (p95 frame interval <=17.5 ms, mean >=57 FPS and zero loss) and describes 144 Hz as optional and unverified. This aligns wording; it does not establish that the criteria have passed on any hardware, validate a minimum PC, or close Finding 2. Reference/minimum-PC measurements remain pending.
-
-## External and environment evidence still outstanding
-
-- Pages repository settings, the actual custom-subdomain DNS records, certificate issuance, and live HTTPS availability were not accessible from this checkout; the custom hostname was not provided.
-- Current checks ran on unsupported Node `v24.13.1`. They establish the listed local results only, not behavior under the declared supported Node range.
-- Browser acceptance ran in Chromium and Firefox on the available Windows host. Linux and other browsers/devices were not validated.
-- No named upper-mid/minimum PC performance results, physical-wheel compatibility evidence, instructor review, or learner walkthroughs were available. Formal training readiness remains out of scope.
-
-## Data and delivery boundary
-
-The inspected app stores progress/settings/calibration in browser `localStorage` and completed-attempt history in IndexedDB. No account, sync, or server-side persistence path was identified. The local production preview served the built root-path assets successfully, which is compatible with a custom domain at `/`; it does not verify the requested GitHub Pages workflow or live deployment.
+Aligned project guidance with the approved 1440p/60 Hz benchmark criteria and marked 144 Hz as optional and unverified (`140f64b`, `50185bc`). No runtime performance behavior was changed.
