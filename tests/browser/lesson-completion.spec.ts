@@ -5,11 +5,7 @@ import {
   calibrateThroughUi, driveLesson, ensureGamepadReady, installObservationAndPad, releasePad,
 } from './lesson-driver';
 
-declare const process: { readonly env: Readonly<Record<string, string | undefined>> };
-
 const stages: readonly StageId[] = [1, 2, 3, 4, 5];
-// Targeted debugging only: stop after this stage. The acceptance default is all five.
-const maxStage = Number(process.env.LESSON_MAX_STAGE ?? 5);
 const JOURNEY_TIMEOUT_MS = 10 * 60_000;
 
 async function openMenuAfterReload(page: Page) {
@@ -86,7 +82,7 @@ for (const vehicleId of ['sedan', 'cuv'] as const) {
     await expect(page.locator('#start-stage')).toBeEnabled();
 
     try {
-      for (const stageId of stages.filter((stage) => stage <= maxStage)) {
+      for (const stageId of stages) {
         await test.step(`stage ${stageId} ${vehicleId}`, async () => {
           const result = await completeStage(page, vehicleId, stageId, log);
           const line = `RESULT stage=${stageId} vehicle=${vehicleId} wallMs=${result.wallMs}` +

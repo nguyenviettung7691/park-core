@@ -9,6 +9,21 @@ import { rearAxleCenter } from '../../src/vehicle/geometry';
 
 export const STAGE_DRIVE_DEADLINE_MS = 90_000;
 const STALE_MS = 2000;
+const BROWSER_OPERATION_TIMEOUT_MS = 5000;
+
+// Races once against a timer; the timer is always cleared and a late rejection is swallowed.
+export async function boundedStep<T>(work: Promise<T>, timeoutMs: number, timeoutError: () => Error): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  work.catch(() => undefined);
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(timeoutError()), timeoutMs);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const FIRST_SAMPLE_MS = 10_000;
 const TARGET_SPEED_MPS = 0.7;
 const ROUTE_RADIUS_M = 5;
@@ -240,6 +255,7 @@ export interface DriveResult { readonly summary: AttemptSummary; readonly wallMs
 export async function driveLesson(
   page: Page, stageId: StageId, vehicleId: VehicleId,
   log: (line: string) => void = () => undefined,
+  operationTimeoutMs = BROWSER_OPERATION_TIMEOUT_MS,
 ): Promise<DriveResult> {
   const profile = profiles[vehicleId];
   const scenario = scenarios[stageId];
@@ -255,17 +271,26 @@ export async function driveLesson(
   let stoppedSinceSimS: number | null = null;
   let lastLogAt = 0;
   let firstSimS: number | null = null;
+  let lastKnown = `stage=${stageId} vehicle=${vehicleId} phase=prepare telemetry=none (no observation yet)`;
+
+  const bounded = <T>(work: Promise<T>, label: string): Promise<T> => {
+    const remainingMs = STAGE_DRIVE_DEADLINE_MS - (Date.now() - started);
+    const limitMs = Math.max(1, Math.min(operationTimeoutMs, remainingMs));
+    return boundedStep(work, limitMs, () => new Error(
+      `${label} unresponsive after ${limitMs}ms (${remainingMs <= operationTimeoutMs ? '90s drive deadline' : 'browser operation limit'}); last known: ${lastKnown}`));
+  };
 
   const press = async (code: string, now: number, gapMs = 700) => {
     if (now - lastKeyAt < gapMs) return;
     lastKeyAt = now;
-    await page.keyboard.press(code);
+    await bounded(page.keyboard.press(code), `keyboard ${code}`);
   };
 
   for (;;) {
     const now = Date.now();
-    const snap = await page.evaluate((value) => window.parkObs.poll(value), input);
+    const snap = await bounded(page.evaluate((value) => window.parkObs.poll(value), input), 'observation poll');
     const where = (extra = '') => describe(stageId, vehicleId, phase, snap, extra);
+    lastKnown = where();
     if (now - started > STAGE_DRIVE_DEADLINE_MS) throw new Error(`90s drive deadline exceeded: ${where()}`);
     if (snap.outcome) {
       if (snap.outcome.outcome === 'success') {
