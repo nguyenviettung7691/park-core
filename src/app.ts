@@ -18,6 +18,7 @@ import { mountCalibration, mountScreen, type InputSetup } from './ui/screens';
 import { createPersistence, unlockedStages, type PersistenceStore } from './storage/persistence';
 import { createAttemptHistoryStore } from './storage/attempt-history';
 import { scenarios } from './lessons/scenarios';
+import type { AppObservation, AppObservationPayload } from './app-observation';
 
 export interface AppDeps {
   createPreview: typeof createPreview;
@@ -25,6 +26,7 @@ export interface AppDeps {
   createPersistence: () => PersistenceStore;
   createAttemptHistoryStore: () => AttemptHistoryStore;
   getGamepads: () => readonly (Gamepad | null)[];
+  onObservation?: (event: AppObservation) => void;
 }
 
 export interface AppHandle {
@@ -77,6 +79,8 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   let resumePending = false;
   let assetLoadController: AbortController | null = null;
   let disposed = false;
+  let observedGeneration: number | null = null;
+  let observationSequence = 0;
   let unmountScreen: (() => void) | undefined;
   const hud = mountHud(root, onAction);
   const layer = document.createElement('div');
@@ -170,7 +174,28 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       unmountScreen = mountScreen(layer, view.state, context, onAction, view, inputSetup());
     }
   }
+  function buildObservation(token: number, payload: AppObservationPayload): AppObservation {
+    return structuredClone({
+      generation: token,
+      sequence: observationSequence++,
+      capturedAtMs: performance.now(),
+      ...payload,
+    } as AppObservation);
+  }
+  function observe(token: number, payload: AppObservationPayload) {
+    if (!deps.onObservation || disposed || observedGeneration !== token) return;
+    const event = buildObservation(token, payload);
+    try {
+      deps.onObservation(event);
+    } catch {
+      if (token === generation) showError('runtimeError', false);
+    }
+  }
   function closePreview() {
+    const closing = observedGeneration;
+    const closedEvent = deps.onObservation && closing !== null
+      ? buildObservation(closing, { kind: 'closed' }) : null;
+    observedGeneration = null;
     resumeAttempt++;
     resumePending = false;
     generation++;
@@ -189,6 +214,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     hud.update(null, context.settings.inputSource);
     hud.updateSensors(null);
     audioUnavailable = false;
+    if (closedEvent) deps.onObservation!(closedEvent);
   }
   function showError(messageKey: MessageKey, retryable: boolean) {
     closePreview();
@@ -237,6 +263,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         pauseReason: null,
       };
       clearStatus();
+      observe(token, { kind: 'resumed' });
       hud.setDriveControls(context.settings.inputSource === 'gamepad');
       drawScreen();
     });
@@ -272,6 +299,14 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     audioUnavailable = false;
     status.textContent = '';
     drawScreen();
+    observedGeneration = token;
+    observationSequence = 0;
+    observe(token, {
+      kind: 'session',
+      stageId: mode.kind === 'lesson' ? mode.scenario.stageId : null,
+      vehicleId,
+    });
+    if (currentLesson) observe(token, { kind: 'lesson', lesson: currentLesson });
     const pad = devices.find((candidate) => candidate.index === gamepadIndex);
     try {
       const opened = deps.createPreview(canvas, root, {
@@ -294,6 +329,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
             view = { ...view, preview: 'paused', pauseReason: reason };
           }
           hud.update(null, context.settings.inputSource);
+          observe(token, { kind: 'paused', reason });
           notice(reason === 'contact' ? 'contactStop' : 'pausedNotice');
           const focused = document.activeElement;
           drawScreen();
@@ -307,6 +343,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         onTelemetry(value) {
           if (!disposed && token === generation && view.preview === 'running') {
             hud.update(value, context.settings.inputSource);
+            observe(token, { kind: 'telemetry', telemetry: value });
           }
         },
         onSensors(value) {
@@ -316,11 +353,14 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
           if (disposed || token !== generation || mode.kind !== 'lesson') return;
           currentLesson = runtime;
           view = { ...view, state: { kind: 'playing', lesson: runtime } };
+          observe(token, { kind: 'lesson', lesson: runtime });
           drawScreen();
         },
         onAttemptOutcome(summary) {
           if (disposed || token !== generation || mode.kind !== 'lesson' || attemptRecorded) return;
           attemptRecorded = true;
+          observe(token, { kind: 'outcome', summary });
+          if (token !== generation) return;
           if (summary.outcome === 'success') {
             reportPersistence(persistence.recordConfirmedStageSuccess(summary.stageId));
             refreshPersistence();
@@ -699,10 +739,13 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       if (disposed) return;
       disposed = true;
       listeners.abort();
-      closePreview();
-      unmountScreen?.();
-      layer.remove();
-      hud.dispose();
+      try {
+        closePreview();
+      } finally {
+        unmountScreen?.();
+        layer.remove();
+        hud.dispose();
+      }
     },
   };
 }

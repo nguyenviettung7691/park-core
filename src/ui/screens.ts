@@ -288,12 +288,16 @@ export function mountScreen(
     button(vi.retryLesson, () => onAction({ type: 'retry' }));
     button(vi.closePreview, () => onAction({ type: 'menu' }));
   } else if (state.kind === 'playing') {
-    const instruction = scenarios[state.lesson.stageId]
-      .steps[state.lesson.stepIndex]?.instructionKey;
+    const step = scenarios[state.lesson.stageId].steps[state.lesson.stepIndex];
+    const instruction = step?.instructionKey;
     if (instruction) {
       const status = text('p', vi[instruction]);
       status.setAttribute('role', 'status');
       status.setAttribute('aria-live', 'polite');
+    }
+    if (step?.required.some((checkpoint) => checkpoint.kind === 'acknowledgement')
+      && !state.lesson.acknowledgedStepIds.includes(step.id)) {
+      text('p', vi.acknowledgeHint);
     }
   } else if (state.kind === 'error') {
     text('h1', vi.appTitle);

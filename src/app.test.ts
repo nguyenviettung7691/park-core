@@ -5,7 +5,8 @@ import {
   PreviewStartError, type Preview, type PreviewEvents, type PreviewSessionMode,
 } from './render/preview';
 import { testGamepad } from './test/gamepad';
-import type { AttemptSummary, SensorSnapshot } from './contracts';
+import type { AttemptSummary, SensorSnapshot, VehicleTelemetry } from './contracts';
+import type { AppObservation } from './app-observation';
 import type { AssetLoadProgress, SceneAssets } from './runtime-types';
 import { collidersForEnvironment } from './world/colliders';
 import { profiles } from './vehicle/profiles';
@@ -873,5 +874,100 @@ it('keeps native Reset connected when keyboard focus loss pauses before its clic
   reset.click();
   await f.flush();
   expect(f.factory).toHaveBeenCalledTimes(2);
+  app.dispose();
+});
+
+const observedTelemetry: VehicleTelemetry = {
+  simulationTimeS: 1, vehicleId: 'sedan',
+  pose: { positionM: [1, 0, 2], rotation: [0, 0, 0, 1] },
+  headingRad: 0, signedSpeedMps: 1, totalSpeedMps: 1, angularSpeedRadps: 0,
+  steeringWheelRad: 0, frontWheelAnglesRad: [0, 0], gear: 'D', parkingBrake: false,
+  indicator: 'off', brake: 0,
+};
+
+it('observes lesson session and initial lesson before telemetry, with per-generation identity', async () => {
+  const f = fixture();
+  const seen: AppObservation[] = [];
+  const app = f.app({ onObservation: (event) => seen.push(event) });
+  f.click('Bắt đầu bài học');
+  await f.flush();
+  f.click('Bắt đầu lái');
+  await f.flush();
+  f.events.onTelemetry!(observedTelemetry);
+  expect(seen.map((event) => event.kind)).toEqual(['session', 'lesson', 'resumed', 'telemetry']);
+  expect(seen[0]).toMatchObject({ kind: 'session', stageId: 1, vehicleId: 'sedan' });
+  expect(seen.map((event) => event.sequence)).toEqual([0, 1, 2, 3]);
+  expect(new Set(seen.map((event) => event.generation)).size).toBe(1);
+  expect(seen.every((event) => typeof event.capturedAtMs === 'number')).toBe(true);
+  const first = seen[0].generation;
+  f.events.onPaused('user');
+  expect(seen.at(-1)).toMatchObject({ kind: 'paused', reason: 'user' });
+  app.dispose();
+  expect(seen.at(-1)).toMatchObject({ kind: 'closed', generation: first });
+  expect(seen.at(-1)!.sequence).toBe(seen.length - 1);
+});
+
+it('observes sandbox with null stage and fresh generation per preview', async () => {
+  const f = fixture();
+  const seen: AppObservation[] = [];
+  const app = f.app({ onObservation: (event) => seen.push(event) });
+  await f.openPreview();
+  f.click('Quay lại menu');
+  await f.openPreview();
+  const sessions = seen.filter((event) => event.kind === 'session');
+  expect(sessions).toHaveLength(2);
+  expect(sessions[0]).toMatchObject({ stageId: null });
+  expect(sessions[1].generation).not.toBe(sessions[0].generation);
+  expect(seen.filter((event) => event.kind === 'closed')).toHaveLength(1);
+  expect(seen.some((event) => event.kind === 'lesson')).toBe(false);
+  expect(sessions[1].sequence).toBe(0);
+  app.dispose();
+});
+
+it('ignores stale preview callbacks and detaches observed objects from runtime and history', async () => {
+  const f = fixture();
+  const seen: AppObservation[] = [];
+  const history = appHistory();
+  const app = f.app({
+    onObservation: (event) => {
+      seen.push(event);
+      if (event.kind === 'outcome') (event.summary.acknowledgedStepIds as string[]).push('mutated');
+      if (event.kind === 'telemetry') (event.telemetry.pose.positionM as unknown as number[])[0] = 99;
+    },
+    createAttemptHistoryStore: () => history,
+  });
+  f.click('Bắt đầu bài học');
+  await f.flush();
+  f.click('Bắt đầu lái');
+  await f.flush();
+  const old = f.events;
+  f.events.onTelemetry!(observedTelemetry);
+  f.events.onAttemptOutcome!(attemptSummary);
+  await f.flush();
+  expect(observedTelemetry.pose.positionM[0]).toBe(1);
+  expect(attemptSummary.acknowledgedStepIds).toEqual(['survey-space']);
+  expect(history.append).toHaveBeenCalledWith(attemptSummary);
+  f.click('Quay lại menu');
+  const count = seen.length;
+  old.onTelemetry!(observedTelemetry);
+  old.onPaused('focus');
+  old.onLessonUpdate!({
+    stageId: 1, stepIndex: 0, stepDwellS: 0, parkingDwellS: 0, acknowledgedStepIds: [],
+  });
+  expect(seen).toHaveLength(count);
+  app.dispose();
+});
+
+it('turns observer failures into the standard runtime fault', async () => {
+  const f = fixture();
+  const app = f.app({
+    onObservation: (event) => { if (event.kind === 'lesson') throw new Error('observer'); },
+  });
+  f.click('Bắt đầu bài học');
+  await f.flush();
+  f.click('Bắt đầu lái');
+  await f.flush();
+  expect(f.root.querySelector('[role="alert"]')).not.toBeNull();
+  expect(f.live).toBe(0);
   app.dispose();
 });

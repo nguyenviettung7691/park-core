@@ -61,6 +61,28 @@ not supported-Node validation.
 The declared supported-Node range is `^22.22.2 || ^24.15.0 || >=26.0.0`;
 supported-Node validation remains pending.
 
+## Dynamic ten-case browser evidence (lesson-completion branch)
+
+`tests/browser/lesson-completion.spec.ts` (two Playwright tests, five
+`test.step` stages each, 10-minute test timeout, 90-second active drive per
+stage, no retries) completes Stages 1-5 in order for Sedan and CUV from empty
+storage on the Vite dev server in Chromium. It calibrates a fake Gamepad through
+the visible UI, sends steering/pedals through `navigator.getGamepads`, and uses
+real keyboard events for gear, parking brake, indicator and F. A route-following
+controller (`tests/browser/lesson-driver.ts`: straight Stages 1/2/4, radius-5
+arcs for 3/5, about 0.7 m/s) reads the DEV-only `park-core:observation` events;
+it cannot write poses, inputs, outcomes or storage. Each stage asserts the
+success recap, reload persistence of the unlock, history identity/recap and no
+Stage 6. Production builds emit no observation events (existing smoke test).
+
+Latest local run (all ten passed, wall seconds per stage S1/S2/S3/S4/S5):
+Sedan 22.7/30.3/18.3/28.1/20.1; CUV 22.9/30.1/18.1/27.9/20.0. This is
+software-rendered Chromium evidence from the dev-served app; the geometric
+witnesses above remain separate. Hosted supported-Node CI after merge is
+pending, as are manual walkthrough, instructor review and real-wheel testing.
+Final local counts: 427 unit tests (27 files), typecheck/build, 16 browser
+tests (14 existing plus the two journeys) and 5 production smoke tests.
+
 ## Limits and pending validation
 
 The scenario route witnesses are geometry/curvature checks, not proof of
