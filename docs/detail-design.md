@@ -1009,6 +1009,14 @@ after any outcome; partial reports are marked incomplete and test-only timing
 cannot certify. The page stores nothing in localStorage or IndexedDB and uses
 no learner save data.
 
+**Automation boundary (2026-11-05).** Full-duration benchmark measurements and
+JSON downloads are manual checks, excluded from the production test suite and
+Pages CI. Automated validation retains setup/asset smoke checks, short Chromium
+resize interruption (Firefox remains skipped), and unit-tested measurement and
+report behavior. The manual workload, thresholds and strict timestamp validation
+are unchanged; excluding a long test is not a Firefox timing fix or hardware
+certification.
+
 Offer a lower-resolution quality option if the target is missed. Do not silently
 reduce physics frequency or hide mirrors to claim the full-feature benchmark.
 The first release must remain usable at 60 rendered FPS on its eventual declared
