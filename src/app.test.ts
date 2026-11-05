@@ -557,6 +557,29 @@ it('shows a session-only notice when a persistence write fails', () => {
   app.dispose();
 });
 
+it('exposes denied settings saves inside the active overlay without losing focus or expiring', async () => {
+  const f = fixture();
+  const persistence = appPersistence({}, true);
+  const app = f.app({ createPersistence: () => persistence.store });
+  await f.openPreview();
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
+  vi.useFakeTimers();
+  try {
+    f.events.onNotice('gearRejected');
+    const camera = f.root.querySelector<HTMLSelectElement>('#camera-mode')!;
+    camera.focus();
+    camera.value = 'chase';
+    camera.dispatchEvent(new Event('change'));
+    expect(f.root.querySelector('[role="dialog"]')?.textContent).toContain('Chỉ lưu trong phiên này');
+    expect(document.activeElement?.id).toBe('camera-mode');
+    vi.advanceTimersByTime(6000);
+    expect(f.root.querySelector('#status-message')?.textContent).toContain('chỉ lưu trong phiên này');
+    f.events.onNotice('gearRejected');
+    expect(f.root.querySelector('#status-message')?.textContent).toContain('chỉ lưu trong phiên này');
+  } finally { app.dispose(); vi.useRealTimers(); }
+});
+
 it('loads the selected vehicle and Garage before creating a preview and releases its assets on close', async () => {
   const f = fixture();
   const assets = makeSceneAssets();

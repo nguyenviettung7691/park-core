@@ -312,10 +312,30 @@ it('shows the most severe warning band rather than the nearest lower-severity se
       { id: 'front-left', distanceM: 0.3, obstacleId: 'latched', band: 'stop' },
     ],
   });
+
   const front = element.querySelector<HTMLElement>('#proximity-front')!;
   expect(front.textContent).toContain('DỪNG');
   expect(front.className).toContain('sensor-stop');
   hud.dispose();
+});
+
+it('announces sensor severity and direction changes without repeating distance samples', () => {
+    const element = root();
+    const hud = mountHud(element, vi.fn());
+    const update = (distanceM: number, id: 'front-center' | 'front-left' = 'front-center') =>
+      hud.updateSensors({ sampledAtS: 1, readings: [{ id, distanceM, obstacleId: 'wall', band: 'red' }] });
+    update(0.55);
+    const announcement = element.querySelector<HTMLElement>('#sensor-announcement')!;
+    expect(announcement?.getAttribute('aria-live')).toBe('polite');
+    expect(announcement?.textContent).toContain('ĐỎ');
+    const original = announcement.firstChild;
+    update(0.54);
+    expect(announcement.firstChild).toBe(original);
+    update(0.53, 'front-left');
+    expect(announcement.firstChild).not.toBe(original);
+    hud.updateSensors(null);
+    expect(announcement.textContent).toBe('');
+    hud.dispose();
 });
 
 it('qualifies green and no-hit sensor readings and clears the note without a snapshot', () => {

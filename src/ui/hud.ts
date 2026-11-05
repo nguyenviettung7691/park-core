@@ -61,6 +61,14 @@ export function mountHud(root: HTMLElement, onAction: (action: ScreenAction) => 
   });
   frontSensorNode.setAttribute('aria-live', 'off');
   rearSensorNode.setAttribute('aria-live', 'off');
+  const sensorAnnouncement = document.createElement('div');
+  sensorAnnouncement.id = 'sensor-announcement';
+  sensorAnnouncement.className = 'sr-only';
+  sensorAnnouncement.setAttribute('role', 'status');
+  sensorAnnouncement.setAttribute('aria-live', 'polite');
+  sensorAnnouncement.setAttribute('aria-atomic', 'true');
+  hud.append(sensorAnnouncement);
+  let announcedWarnings = '';
   const controls = nodes.get('driving-controls')!;
   const session = document.createElement('div');
   session.id = 'session-controls';
@@ -153,6 +161,8 @@ export function mountHud(root: HTMLElement, onAction: (action: ScreenAction) => 
       parking.setAttribute('aria-pressed', String(telemetry.parkingBrake));
     },
     updateSensors(sensors) {
+      const announcements: string[] = [];
+      const warningKeys: string[] = [];
       for (const [index, panel, sideLabel] of [
         [0, sensorPanels[0], vi.sensorFront],
         [1, sensorPanels[1], vi.sensorRear],
@@ -168,6 +178,10 @@ export function mountHud(root: HTMLElement, onAction: (action: ScreenAction) => 
         }
         const warning = selectMostSevereWarning(sensors.readings.filter((reading) =>
           reading.id.startsWith(front ? 'front-' : 'rear-')));
+        if (warning) {
+          warningKeys.push(`${warning.id}:${warning.band}`);
+          announcements.push(`${sideLabel}: ${bandNames[warning.band]} · ${sensorNames[warning.id]}`);
+        }
         node.hidden = false;
         node.className = `proximity-warning sensor-${warning?.band ?? 'clear'}`;
         setText(reading, warning
@@ -175,6 +189,11 @@ export function mountHud(root: HTMLElement, onAction: (action: ScreenAction) => 
             `${warning.distanceM!.toFixed(2).replace('.', ',')} m`
           : `${sideLabel}: ${vi.sensorNoWarning}`);
         setText(guidance, vi.sensorReminder);
+      }
+      const nextWarnings = warningKeys.join('|');
+      if (nextWarnings !== announcedWarnings) {
+        setText(sensorAnnouncement, announcements.join('. '));
+        announcedWarnings = nextWarnings;
       }
     },
     updateSettings(value) {

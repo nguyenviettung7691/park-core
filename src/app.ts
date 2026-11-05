@@ -100,12 +100,13 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   root.append(layer);
   const status = root.querySelector<HTMLElement>('#status-message')!;
   let audioUnavailable = false;
+  let persistenceNotice = '';
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   let overlayFocusLabel: string | null = null;
   let settingsFocusLabel: string | null = null;
 
   function notice(key: MessageKey) {
-    if (key === 'gearRejected' && audioUnavailable) return;
+    if (key === 'gearRejected' && (audioUnavailable || persistenceNotice)) return;
     clearTimeout(noticeTimer);
     if (key === 'audioUnavailable') audioUnavailable = true;
     status.setAttribute('aria-live', key === 'gearRejected' ? 'off' : 'polite');
@@ -114,17 +115,26 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   }
   function clearStatus() {
     clearTimeout(noticeTimer);
-    status.textContent = audioUnavailable ? vi.audioUnavailable : '';
+    status.textContent = persistenceNotice || (audioUnavailable ? vi.audioUnavailable : '');
   }
   function recordLabel(record: PersistenceRecord) {
     return record === 'progress' ? vi.progressRecord
       : record === 'settings' ? vi.settingsRecord : vi.calibrationRecord;
   }
   function reportPersistence(result: PersistenceResult) {
-    if (result.status === 'persistent') return;
-    status.textContent = `${recordLabel(result.record)}: ${
+    if (result.status === 'persistent') {
+      if (persistenceNotice.startsWith(`${recordLabel(result.record)}:`)) {
+        persistenceNotice = '';
+        clearStatus();
+      }
+      return;
+    }
+    clearTimeout(noticeTimer);
+    persistenceNotice = `${recordLabel(result.record)}: ${
       result.status === 'session-only' ? vi.sessionOnlyNotice : vi.resetRequiredNotice
     }`;
+    status.setAttribute('aria-live', 'polite');
+    status.textContent = persistenceNotice;
   }
   function refreshPersistence() {
     const saved = persistence.snapshot();
@@ -797,13 +807,20 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         }
         drawScreen();
         break;
-      case 'update-settings':
+      case 'update-settings': {
+        const previousStatus = context.recordStatus.settings;
+        const focusedId = document.activeElement?.id;
         context = { ...context, settings: action.settings };
         reportPersistence(persistence.saveSettings(action.settings));
         refreshPersistence();
         preview?.updateSettings(context.settings);
         hud.updateSettings(context.settings);
+        if (previousStatus !== context.recordStatus.settings) {
+          drawScreen();
+          if (focusedId) root.querySelector<HTMLElement>(`#${focusedId}`)?.focus();
+        }
         break;
+      }
       case 'recenter-view':
         preview?.recenterView();
         break;
