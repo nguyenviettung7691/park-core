@@ -98,7 +98,11 @@ Keyboard is selected by default:
 - `A` / `D` or `Left` / `Right`: steer; mouse: look around.
 - Hold the brake and press `1` / `2` / `3` / `4` to select `P` / `R` / `N` /
   `D`.
-- `Space`: parking brake; `Q` / `E`: indicators; `Escape`: pause.
+- `Space`: parking brake; `Q` / `E`: indicators; `F`: acknowledge the current
+  lesson step (only accepted while stopped); `Escape`: pause.
+- `1`-`4`, `Space`, `Q` / `E` and `F` work in both Keyboard and Gamepad input
+  modes while the simulation canvas is focused; throttle, brake and steering
+  stay source-specific.
 
 For a gamepad or simulation wheel, select the Gamepad input source and complete
 the in-app calibration before starting or resuming a session.
