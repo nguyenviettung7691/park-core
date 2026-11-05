@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { enterLessonMenu } from '../ui-journey';
 
 test('all vehicle and environment assets load and render through WebGL', async ({ page }) => {
   test.setTimeout(60000);
@@ -42,6 +43,7 @@ test('Stage 1 loads selected assets, cancels stale loading, retries and closes r
     else await route.continue();
   });
   await page.goto('/');
+  await enterLessonMenu(page);
 
   const stageButtons = page.locator('[data-stage-id]');
   await expect(stageButtons).toHaveCount(5);

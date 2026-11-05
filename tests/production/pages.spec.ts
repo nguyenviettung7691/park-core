@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { enterLessonMenu } from '../ui-journey';
 
 const glbPaths = [
   '/assets/vehicles/sedan.glb',
@@ -24,6 +25,7 @@ test('built app serves assets and enters Stage 1', async ({ page, request, baseU
   });
 
   await page.goto('/');
+  await enterLessonMenu(page);
   await expect(page.getByRole('heading', { name: 'Park-Core', exact: true })).toBeVisible();
   const scripts = builtAssets.filter((asset) => asset.url.endsWith('.js'));
   const styles = builtAssets.filter((asset) => asset.url.endsWith('.css'));
@@ -72,6 +74,7 @@ test('production build emits no app observation events', async ({ page, request 
     if (/^\/assets\/.+\.js$/.test(path)) scripts.push(path);
   });
   await page.goto('/');
+  await enterLessonMenu(page);
   await page.getByRole('button', { name: 'Bắt đầu bài học', exact: true }).click();
   await page.getByRole('button', { name: 'Bắt đầu lái', exact: true }).click();
   await expect(page.locator('#simulation')).toBeVisible();
@@ -90,6 +93,7 @@ test('malformed built GLB shows the asset-load alert instead of a simulation', a
     body: '<!doctype html><title>spa fallback</title>',
   }));
   await page.goto('/');
+  await enterLessonMenu(page);
   await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Không thể tải mẫu xe');
   await expect(page.locator('#simulation')).toHaveCount(0);

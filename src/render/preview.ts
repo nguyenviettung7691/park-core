@@ -27,6 +27,7 @@ import type { RendererPort } from '../views/auxiliary';
 import { createAssetScene, type AssetScene } from './asset-scene';
 import { fitDrawingBuffer } from './fit';
 import { createLessonScene, type LessonScene } from './lesson-scene';
+import { getOverheadInset } from '../views/layout';
 
 export type PreviewRenderer = RendererPort &
   Pick<WebGLRenderer, 'setSize' | 'dispose' | 'forceContextLoss'>;
@@ -289,6 +290,7 @@ export function createPreview(
     }
     function resize() {
       const rect = container.getBoundingClientRect();
+      container.style.setProperty('--overhead-inset-size', `${getOverheadInset(rect.width, rect.height).size}px`);
       const requestedPixelRatio = window.devicePixelRatio * currentSettings.resolutionScale;
       const size = fitDrawingBuffer(rect.width, rect.height, requestedPixelRatio);
       if (!size) {
@@ -497,6 +499,7 @@ export function createPreview(
     container.addEventListener('keydown', onKey);
     container.addEventListener('focusin', onFocus);
     cleanups.push(() => {
+      container.style.removeProperty('--overhead-inset-size');
       window.removeEventListener('resize', onResize);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('visibilitychange', onVisibility);

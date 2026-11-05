@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { enterLessonMenu, openSettings, closeSettings } from '../ui-journey';
 
 interface TestPad {
   id: string; index: number; connected: boolean; mapping: string; timestamp: number;
@@ -15,6 +16,7 @@ declare global {
 
 async function open(page: Page) {
   await page.goto('/');
+  await enterLessonMenu(page);
   await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await expect(page.locator('#simulation')).toBeFocused();
   await expect(page.locator('#telemetry')).toBeVisible();
@@ -84,6 +86,7 @@ async function checkFreshViewport(browser: Browser, url: string, width: number, 
     const page = await context.newPage();
     await installAudioMock(page);
     await page.goto(url);
+    await enterLessonMenu(page);
     await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
     await waitForPointerLock(page);
     const canvas = page.locator('#simulation');
@@ -145,7 +148,8 @@ test('real keyboard drivetrain, brake, invalid shift, pause, stale key and reset
   await expect(resume).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.pointerLockElement)).toBe(null);
   await page.getByRole('button', { name: 'Đặt lại xe', exact: true }).click();
-  await expect(page.locator('#telemetry')).toContainText('0 km/h · P');
+  await expect(page.locator('[data-telemetry="speed"]')).toHaveText('0 km/h');
+  await expect(page.locator('[data-telemetry="gear"]')).toHaveText('P');
   await expect(page.locator('#telemetry')).toContainText('Phanh tay: Bật');
   await page.keyboard.press('Escape');
   await expect(resume).toBeVisible();
@@ -163,7 +167,8 @@ test('real contact stops the prototype until Reset or Menu', async ({ page }) =>
   await expect(page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Đặt lại xe', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Đặt lại xe', exact: true }).click();
-  await expect(page.locator('#telemetry')).toContainText('0 km/h · P');
+  await expect(page.locator('[data-telemetry="speed"]')).toHaveText('0 km/h');
+  await expect(page.locator('[data-telemetry="gear"]')).toHaveText('P');
 });
 
 test('explicit calibration, physical brake and gamepad gear, disconnect and same-ID reconnect', async ({ page }) => {
@@ -176,6 +181,7 @@ test('explicit calibration, physical brake and gamepad gear, disconnect and same
     Object.defineProperty(navigator, 'getGamepads', { value: () => [window.testPad] });
   });
   await page.goto('/');
+  await enterLessonMenu(page);
   await page.getByLabel('Nguồn điều khiển', { exact: true }).selectOption('gamepad');
   await page.getByLabel('Thiết bị', { exact: true }).selectOption('0');
   await expect(page.getByRole('button', { name: 'Lái tự do', exact: true })).toBeDisabled();
@@ -200,12 +206,12 @@ test('explicit calibration, physical brake and gamepad gear, disconnect and same
   await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await expect(page.locator('#telemetry')).toBeVisible();
   await setButton(page, 6, 1);
-  await expect(page.locator('#telemetry')).toContainText('Phanh chân: 100%');
+  await expect(page.locator('[data-telemetry="brake"]')).toHaveJSProperty('value', 1);
   await setButton(page, 5, 1);
   await expect(page.locator('#telemetry')).toContainText('D');
   await setButton(page, 5, 0);
   await setButton(page, 6, 0);
-  await expect(page.locator('#telemetry')).toContainText('Phanh chân: 0%');
+  await expect(page.locator('[data-telemetry="brake"]')).toHaveJSProperty('value', 0);
   await page.evaluate(() => { window.testPad.connected = false; });
   const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });
   await expect(resume).toBeDisabled();
@@ -221,7 +227,7 @@ test('explicit calibration, physical brake and gamepad gear, disconnect and same
   await expect(resume).toBeEnabled();
   await resume.click();
   await waitForPointerLock(page);
-  await expect(page.locator('#telemetry')).toContainText('Bàn phím');
+  await expect(page.locator('#telemetry')).toHaveAccessibleName(/Bàn phím/);
 });
 
 test('unlocks audio on start, pauses silently, and requires explicit pointer-lock resume', async ({ page }) => {
@@ -230,6 +236,7 @@ test('unlocks audio on start, pauses silently, and requires explicit pointer-loc
   page.on('pageerror', (error) => errors.push(error.message));
   await installAudioMock(page);
   await page.goto('/');
+  await enterLessonMenu(page);
   expect(await page.evaluate(() => window.testAudioStats.contexts)).toBe(0);
   await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await waitForPointerLock(page);
@@ -271,17 +278,25 @@ test('keeps front and rear distance labels visible while warnings are muted', as
   await waitForPointerLock(page);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true })).toBeVisible();
+  await openSettings(page, 'audio');
   await page.getByLabel('Tắt âm thanh cảnh báo', { exact: true }).check();
   await expect(page.locator('#mute-audio')).toBeChecked();
+  await closeSettings(page);
   await page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true }).click();
   await waitForPointerLock(page);
   await keyboardDrive(page);
-  await page.keyboard.down('w');
   await expect(page.locator('#proximity-front')).toContainText(/\d,\d{2} m/, { timeout: 25000 });
-  await page.keyboard.up('w');
+  await page.keyboard.down('s');
+  await expect(page.locator('[data-telemetry="speed"]')).toHaveText('0 km/h');
+  await expect(page.locator('[data-telemetry="brake"]')).toHaveJSProperty('value', 1);
+  await page.keyboard.press('Space');
+  await expect(page.locator('[data-telemetry="parking-brake"]')).toHaveText('Phanh tay: Bật');
+  await page.keyboard.up('s');
+  await expect(page.locator('#hud')).toHaveAttribute('data-session', 'running');
+  await expect(page.locator('#status-message')).not.toContainText('Xe đã chạm');
   const front = page.locator('#proximity-front');
   const rear = page.locator('#proximity-rear');
-  const guidance = 'Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.';
+  const guidance = 'Cảm biến có thể bỏ sót vật cản.';
   await expect(front).toContainText('Trước:');
   await expect(front.locator('.sensor-guidance')).toHaveText(guidance);
   await expect(rear).toContainText('Sau:');
@@ -308,6 +323,7 @@ test('keeps visual proximity warnings when AudioContext is unavailable', async (
   page.on('pageerror', (error) => errors.push(error.message));
   await installAudioMock(page, true);
   await page.goto('/');
+  await enterLessonMenu(page);
   expect(await page.evaluate(() => window.testAudioStats.contexts)).toBe(0);
   await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await waitForPointerLock(page);
@@ -339,7 +355,9 @@ test('renders camera modes, bounded look, resized overhead, trajectory and mirro
 
   await page.keyboard.press('Escape');
   await expect(resume).toBeVisible();
+  await openSettings(page, 'view');
   await page.locator('#camera-mode').selectOption('chase');
+  await closeSettings(page);
   await resume.click();
   await waitForPointerLock(page);
   const chaseView = await canvas.screenshot();
@@ -347,11 +365,13 @@ test('renders camera modes, bounded look, resized overhead, trajectory and mirro
 
   await page.keyboard.press('Escape');
   await expect(resume).toBeVisible();
+  await openSettings(page, 'view');
   await page.locator('#camera-mode').selectOption('driver');
   await page.locator('#overhead-view').check();
   await page.locator('#driver-fov').focus();
   await page.keyboard.press('End');
   await expect(page.locator('#driver-fov')).toHaveValue('80');
+  await closeSettings(page);
   await resume.click();
   await waitForPointerLock(page);
   const overheadView = await canvas.screenshot();
@@ -359,7 +379,9 @@ test('renders camera modes, bounded look, resized overhead, trajectory and mirro
 
   await page.keyboard.press('Escape');
   await expect(resume).toBeVisible();
+  await openSettings(page, 'view');
   await page.locator('#trajectory-view').check();
+  await closeSettings(page);
   await resume.click();
   await waitForPointerLock(page);
   const trajectoryView = await canvas.screenshot();
@@ -372,7 +394,9 @@ test('renders camera modes, bounded look, resized overhead, trajectory and mirro
 
   await page.keyboard.press('Escape');
   await expect(resume).toBeVisible();
+  await openSettings(page, 'view');
   await page.locator('#recenter-view').click();
+  await closeSettings(page);
   await resume.click();
   await waitForPointerLock(page);
   const centeredView = await canvas.screenshot();
@@ -380,8 +404,10 @@ test('renders camera modes, bounded look, resized overhead, trajectory and mirro
 
   await page.keyboard.press('Escape');
   await expect(resume).toBeVisible();
+  await openSettings(page, 'view');
   await page.locator('#overhead-view').uncheck();
   await page.locator('#trajectory-view').uncheck();
+  await closeSettings(page);
   if (browser.browserType().name() === 'chromium') {
     await page.setViewportSize({ width: 800, height: 600 });
     await expect.poll(() => canvas.evaluate((element) => {
@@ -407,6 +433,7 @@ test('repeatedly opens and closes the preview without uncaught errors', async ({
   page.on('pageerror', (error) => errors.push(error.message));
   await installAudioMock(page);
   await page.goto('/');
+  await enterLessonMenu(page);
   for (let cycle = 0; cycle < 3; cycle++) {
     await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
     await waitForPointerLock(page);
