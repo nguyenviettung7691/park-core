@@ -86,7 +86,8 @@ for (const vehicleId of ['sedan', 'cuv'] as const) {
         await test.step(`stage ${stageId} ${vehicleId}`, async () => {
           const result = await completeStage(page, vehicleId, stageId, log);
           const line = `RESULT stage=${stageId} vehicle=${vehicleId} wallMs=${result.wallMs}` +
-            ` simS=${result.simulationS.toFixed(1)} elapsedS=${result.summary.elapsedSimulationS.toFixed(1)}`;
+            ` simS=${result.simulationS.toFixed(1)} elapsedS=${result.summary.elapsedSimulationS.toFixed(1)}` +
+            ` finalPos=${result.finalPositionM?.map((v) => v.toFixed(2)).join(',') ?? 'n/a'}`;
           log(line);
           console.log(line);
           await verifyPersistence(page, vehicleId, stageId);

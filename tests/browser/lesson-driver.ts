@@ -26,6 +26,8 @@ export async function boundedStep<T>(work: Promise<T>, timeoutMs: number, timeou
 }
 const FIRST_SAMPLE_MS = 10_000;
 const TARGET_SPEED_MPS = 0.7;
+// Stage 4 only: approach speed tapers with remaining route distance (m/s per m) so the final brake starts from a crawl.
+const STAGE4_MIN_APPROACH_MPS = 0.15;
 const ROUTE_RADIUS_M = 5;
 const ROUTE_SPACING_M = 0.04;
 const LOOKAHEAD_SAMPLES = 30;
@@ -249,7 +251,9 @@ function describe(stageId: StageId, vehicleId: VehicleId, phase: string, snap: O
     ` age=${snap.telemetryAgeMs?.toFixed(0) ?? 'n/a'}ms ${extra}`;
 }
 
-export interface DriveResult { readonly summary: AttemptSummary; readonly wallMs: number; readonly simulationS: number }
+export interface DriveResult {
+  readonly summary: AttemptSummary; readonly wallMs: number; readonly simulationS: number; readonly finalPositionM: Vec3Data | null;
+}
 
 // Drives the active lesson through the normal gamepad axis/pedals and keyboard discrete keys.
 export async function driveLesson(
@@ -296,7 +300,8 @@ export async function driveLesson(
       if (snap.outcome.outcome === 'success') {
         await releasePad(page);
         return { summary: snap.outcome, wallMs: Date.now() - started,
-          simulationS: (snap.telemetry?.simulationTimeS ?? 0) - (firstSimS ?? 0) };
+          simulationS: (snap.telemetry?.simulationTimeS ?? 0) - (firstSimS ?? 0),
+          finalPositionM: snap.telemetry?.pose.positionM ?? null };
       }
       throw new Error(`lesson failed (${snap.outcome.failureReason}, obstacle=${snap.outcome.obstacleId}): ${where()}`);
     }
@@ -352,6 +357,13 @@ export async function driveLesson(
     if (phase === 'drive') {
       if (near >= route.length - 3) phase = 'stop';
       else {
+        const end = route[route.length - 1];
+        const remainingM = Math.hypot(end[0] - rear[0], end[2] - rear[2]);
+        if (stageId === 4) {
+          const approachMps = Math.min(TARGET_SPEED_MPS, Math.max(STAGE4_MIN_APPROACH_MPS, remainingM));
+          input = { steering: axis, throttle: speed < approachMps ? 0.3 : 0, brake: speed > approachMps + 0.1 ? 0.5 : 0 };
+          continue;
+        }
         input = { steering: axis, throttle: speed < TARGET_SPEED_MPS ? 0.3 : 0, brake: speed > 0.9 ? 0.2 : 0 };
         continue;
       }

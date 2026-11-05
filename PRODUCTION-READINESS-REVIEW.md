@@ -92,7 +92,7 @@ The independent reviewer initially could not start a second browser suite becaus
 
 **Closure evidence:** Complete an end-to-end success attempt for each of the five lessons with both Sedan and CUV, including expected recap and progression behavior; retain collision/failure checks and record any route or checkpoint adjustments.
 
-**Status, 2026-11-05 (pending post-merge supported CI):** on the lesson-completion branch, `tests/browser/lesson-completion.spec.ts` completed all ten Stage/vehicle cases locally in Chromium against the Vite-served app (DEV-only observation, fake Gamepad API plus real keyboard events, UI calibration, reload/history/recap assertions; no route or checkpoint changes were needed). Not production-build, real-wheel, instructor or learner evidence. Finding 3 is not marked Done until review sign-off, merge, push and supported-Node CI pass.
+**Status, 2026-11-05 (pending post-merge supported CI):** on the lesson-completion branch, `tests/browser/lesson-completion.spec.ts` completed all ten Stage/vehicle cases locally in Chromium against the Vite-served app (DEV-only observation, fake Gamepad API plus real keyboard events, UI calibration, reload/history/recap assertions; no route or checkpoint changes were needed). Not production-build, real-wheel, instructor or learner evidence. Finding 3 is not marked Done until review sign-off, merge, push and supported-Node CI pass. Hosted CI run 41969029953 failed on Sedan Stage 4 (parked 0.045 m outside the target inset); a Stage 4-only test-driver approach-speed fix passes locally but is pending hosted re-verification, so Finding 3 stays pending.
 
 ### 4. Medium — The proximity HUD presents an incomplete reading as “safe”
 
