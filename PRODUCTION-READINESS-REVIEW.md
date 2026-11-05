@@ -60,6 +60,8 @@ The independent reviewer initially could not start a second browser suite becaus
 
 **Current automation scope (2026-11-05):** The owner selected immediate fallback instead of a quantized-clock compatibility change: Firefox is removed from both learner acceptance and production test projects and from CI installation/probing. Chromium checks and manual benchmark implementation are retained unchanged. Firefox timing is not fixed; its automated compatibility coverage is no longer maintained. Previous Chromium/Firefox run results below remain historical evidence. Finding 2 remains open.
 
+**Chromium-only deployment evidence (2026-11-05):** Merge `6f163a3` passed [Pages run 41960377679](https://github.com/nguyenviettung7691/park-core/actions/runs/41960377679): 417 unit tests, typecheck/build, 14 Chromium acceptance tests and four production smoke tests, with no browser test skips. Validation took 3m43s; deployment succeeded. Live app and manual benchmark entry returned HTTPS 200. This verifies the reduced automated gate, not Firefox timing or reference-PC performance.
+
 **Confidence:** High as an evidence gap
 
 **Evidence:** `docs/detail-design.md:978-1003` requires selecting a named reference PC, measuring the worst garage view with all aids, targeting p95 frame interval ≤6.94 ms at 2560×1440, and retaining 60 rendered FPS on a declared minimum PC. The design says no reference hardware was supplied. The user target “most upper-mid PCs” does not name a machine or define a measurable threshold. No performance benchmark is recorded; the Vite bundle-size warning is not one.

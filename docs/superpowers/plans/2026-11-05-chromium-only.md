@@ -39,5 +39,10 @@ Check these through Playwright listing, scoped diff and existing tests.
   Actual: baseline 417 unit tests; build/typecheck passed; 14 acceptance tests
   and four production tests passed without skips. Existing bundle warning
   retained. Runtime source unchanged; no full-duration benchmark performed.
-- [ ] Review scoped diff and commit with required co-author trailer.
-- [ ] Obtain sign-off, merge into main, run unit suite, push and observe CI.
+- [x] Review scoped diff and commit with required co-author trailer.
+  Independent Standard-tier review approved; historical dual-browser evidence
+  intentionally retained. Implementation committed `79af1b1`.
+- [x] Obtain sign-off, merge into main, run unit suite, push and observe CI.
+  Owner approved; merge `6f163a3` pushed after 417 merged-tree unit tests passed.
+  Pages run 41960377679 passed 417 unit, 14 acceptance and four production
+  tests, typecheck/build; deployed successfully. Live app/benchmark HTTPS 200.
