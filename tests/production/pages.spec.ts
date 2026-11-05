@@ -58,6 +58,30 @@ test('built app serves assets and enters Stage 1', async ({ page, request, baseU
   expect(errors).toEqual([]);
 });
 
+test('production build emits no app observation events', async ({ page, request }) => {
+  test.setTimeout(60000);
+  await page.addInitScript(() => {
+    (window as unknown as { __observed: number }).__observed = 0;
+    window.addEventListener('park-core:observation', () => {
+      (window as unknown as { __observed: number }).__observed++;
+    });
+  });
+  const scripts: string[] = [];
+  page.on('response', (response) => {
+    const path = new URL(response.url()).pathname;
+    if (/^\/assets\/.+\.js$/.test(path)) scripts.push(path);
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Bắt đầu bài học', exact: true }).click();
+  await page.getByRole('button', { name: 'Bắt đầu lái', exact: true }).click();
+  await expect(page.locator('#simulation')).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __observed: number }).__observed)).toBe(0);
+  expect(scripts.length).toBeGreaterThan(0);
+  for (const path of scripts) {
+    expect(await (await request.get(path)).text(), path).not.toContain('park-core:observation');
+  }
+});
+
 test('malformed built GLB shows the asset-load alert instead of a simulation', async ({ page }) => {
   test.setTimeout(60000);
   await page.route('**/assets/vehicles/sedan.glb', (route) => route.fulfill({
