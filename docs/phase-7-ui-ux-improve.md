@@ -2,9 +2,9 @@
 
 Date: 2026-11-05
 
-Status: Draft for owner approval. Product changes and README screenshots are
-not implemented. This document will also record implementation evidence once
-the approved work is built.
+Status: Approved by the owner on 2026-11-05, including the proposed defaults.
+Product changes and README screenshots are not implemented. This document will
+also record implementation evidence once the approved work is built.
 
 ## Intent and decisions
 
@@ -23,8 +23,8 @@ Owner decisions:
 - Review every screen and component, document Phase 7 here, and add screenshots
   of new implemented screens to README with captions.
 
-The implementation proposals below remain subject to approval of this document.
-They are not additional decisions attributed to the owner.
+The implementation proposals below were approved with this document. Their
+origin remains a designer proposal rather than an initial owner requirement.
 
 ## Goals, non-goals, and anti-goals
 
@@ -352,7 +352,8 @@ Builder check completed on 2026-11-05. Its questions were resolved from the
 existing request and explicit proposals: all listed screens are in scope;
 onboarding uses the separate record and reload behavior above; routine tutorial
 cues are visual-only initially; narrow layouts do not add touch driving.
-These proposals still require owner approval, not another builder decision.
+The owner subsequently approved these proposals with this document.
 
-Pending owner review of this document and the tutorial-first browser mockups.
-After approval, write the implementation plan before changing product code.
+The owner approved this document and requested the implementation plan on
+2026-11-05. No product implementation is authorized by this document's status
+alone; review the implementation plan and confirm its execution approach first.
