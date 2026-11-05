@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- The measured target criteria are 2560x1440 at 60 Hz: p95 frame interval <=17.5 ms, mean >=57 FPS and zero loss.
+- The approved benchmark criteria are 2560x1440 at 60 Hz: p95 frame interval <=17.5 ms, mean >=57 FPS and zero loss.
 - 144 Hz remains optional and unverified.
 - Reference/minimum-PC measurements remain pending; do not imply tested performance or general support.
 - Finding 2 remains open until actual hardware evidence exists.

@@ -112,7 +112,7 @@ The independent reviewer initially could not start a second browser suite becaus
 
 **Confidence:** High
 
-**Evidence:** The approved benchmark contract in `docs/detail-design.md` sets 2560x1440 at 60 Hz as its measured target and leaves 144 Hz optional and unverified. The technical design already reflects that contract; `.github/copilot-instructions.md` and `docs/implementation-plan.md` still described 144 Hz as the target.
+**Evidence:** The approved benchmark contract in `docs/detail-design.md` sets 2560x1440 at 60 Hz as its target and leaves 144 Hz optional and unverified. The technical design already reflects that contract. At the time of the finding, `.github/copilot-instructions.md` and `docs/implementation-plan.md` described 144 Hz as the target; those statements have since been aligned.
 
 **Impact:** Top-level project guidance overstated the performance target despite the absence of reference/minimum-PC results.
 
