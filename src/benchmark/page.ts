@@ -301,6 +301,10 @@ export function createBenchmarkPage(
       return;
     }
     measurement.observe(sample);
+    if (measurement.phase === 'invalid') {
+      finishRun();
+      return;
+    }
     if (!announcedMeasuring && sample.completedAtMs >= warmupEndMs) {
       announcedMeasuring = true;
       setStatus('Đang đo… giữ yên chuột và phím.');

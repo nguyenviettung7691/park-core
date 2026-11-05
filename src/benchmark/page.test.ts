@@ -244,6 +244,18 @@ describe('four-case suite', () => {
     expect(h.live().preview.dispose).toHaveBeenCalledTimes(1);
   });
 
+  it('ends the case immediately on a repeated frame timestamp and reports both times', async () => {
+    const h = setup();
+    h.fill();
+    await h.begin();
+    h.frame(20);
+    h.frame(20);
+    const report = h.report();
+    expect(report.cases[0]).toMatchObject({ status: 'invalid', verdict: null });
+    expect(report.cases[0].invalidReason).toMatch(/20.*20/);
+    expect(h.live().preview.dispose).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores query parameters and keeps the fixed shipping timing', async () => {
     history.replaceState(null, '', '/benchmark.html?warmupMs=1&measurementMs=1&testOnly=1');
     const h = setup({ timing: undefined });

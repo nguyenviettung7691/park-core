@@ -42,6 +42,7 @@ export interface MeasurementResult {
   readonly verdict: boolean | null;
 }
 export interface Measurement {
+  readonly phase: MeasurementPhase;
   observe(sample: PreviewFrameSample): void;
   invalidate(reason: string): void;
   snapshot(): MeasurementResult;
@@ -118,12 +119,13 @@ export function createMeasurement(
   }
 
   return {
+    get phase() { return phase; },
     observe(sample) {
       if (phase === 'invalid' || phase === 'complete') return;
       const problem = sampleProblem(sample);
       if (problem) { invalidate(problem); return; }
       if (lastMs !== null && sample.completedAtMs <= lastMs) {
-        invalidate('Frame timestamps are not strictly increasing');
+        invalidate(`Frame timestamps are not strictly increasing (previous ${lastMs} ms, current ${sample.completedAtMs} ms)`);
         return;
       }
       const previousMs = lastMs;
