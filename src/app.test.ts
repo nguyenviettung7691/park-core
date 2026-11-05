@@ -294,7 +294,7 @@ it('records each lesson outcome once and awards progression only on success', as
   expect(history.append).toHaveBeenCalledWith(attemptSummary);
   expect(f.root.textContent).toContain('Hoàn thành bài học');
   expect(f.root.textContent).toContain('Lịch sử được lưu');
-  f.click('Tiếp tục');
+  f.click('Về hành trình');
   expect(f.root.querySelector('[data-stage-id="2"]')?.getAttribute('aria-pressed')).toBe('true');
   app.dispose();
 });

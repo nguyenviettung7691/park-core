@@ -116,6 +116,57 @@ it('localizes acknowledged steps and obstacle labels in history details', () => 
   expect(element.textContent).not.toContain('stage1-parked-left');
 });
 
+const recap: AttemptSummary = {
+  stageId: 5, vehicleId: 'sedan', outcome: 'success', failureReason: null, obstacleId: null,
+  elapsedSimulationS: 40, closestSampledClearanceM: null, peakSpeedMps: 0.4,
+  directionChanges: 2, acknowledgedStepIds: [], usedAids: [],
+};
+
+it.each([
+  ['collision', 'Va chạm', 'hai đầu xe'],
+  ['curb-contact', 'Chạm lề', 'lề đường'],
+  ['out-of-bounds', 'Ra khỏi khu vực lái', 'ranh giới'],
+  ['tipped', 'Xe nghiêng quá giới hạn', 'giảm tốc'],
+  ['speed-envelope', 'Vượt tốc độ an toàn kéo dài', 'chân phanh'],
+] as const)('offers a specific practice tip for %s without hiding the recorded metrics', (failureReason, reason, tip) => {
+  const element = root();
+  mountScreen(element, { kind: 'fail', summary: { ...recap, outcome: 'fail', failureReason },
+    historyStatus: 'persistent' }, context, vi.fn());
+  expect(element.querySelector('[data-practice-tip]')?.textContent).toContain(tip);
+  expect(element.textContent).toContain(reason);
+  expect(element.querySelector('details')?.open).toBe(false);
+  expect(element.querySelector('details dl')?.textContent).toContain(messages.historyPeakSpeed);
+  expect(element.querySelector('.primary-action')?.textContent).toBe(messages.retryLesson);
+});
+
+it('pages all history records in batches without dropping older attempts', () => {
+  const element = root();
+  const records = Array.from({ length: 45 }, (_, index): CompletedAttemptRecord => ({
+    id: `attempt-${index}`, completedAt: '2026-11-04T10:00:00.000Z', summary: recap,
+  }));
+  const action = vi.fn();
+  mountScreen(element, { kind: 'history-list', records, status: 'persistent', resetRequested: false }, context, action);
+  expect(element.querySelectorAll('[data-attempt-id]')).toHaveLength(20);
+  const more = [...element.querySelectorAll('button')].find((node) => node.textContent === 'Xem thêm lượt lái')!;
+  more.click();
+  expect(element.querySelectorAll('[data-attempt-id]')).toHaveLength(40);
+  more.click();
+  expect(element.querySelectorAll('[data-attempt-id]')).toHaveLength(45);
+  expect(more.hidden).toBe(true);
+  element.querySelector<HTMLButtonElement>('[data-attempt-id="attempt-44"]')!.click();
+  expect(action).toHaveBeenLastCalledWith({ type: 'select-attempt', id: 'attempt-44' });
+});
+
+it('returns from Stage 5 to the journey without suggesting a sixth lesson', () => {
+  const element = root();
+  const action = vi.fn();
+  mountScreen(element, { kind: 'success', summary: recap, historyStatus: 'persistent' }, context, action);
+  expect(element.querySelector('[data-recap-outcome]')?.textContent).toContain('mục tiêu');
+  element.querySelector<HTMLButtonElement>('.primary-action')!.click();
+  expect(action).toHaveBeenCalledWith({ type: 'continue' });
+  expect(element.textContent).not.toContain('Giai đoạn 6');
+});
+
 it('enables only stages derived from the unlocked context and lets the learner select them', () => {
   const element = root();
   const action = vi.fn();

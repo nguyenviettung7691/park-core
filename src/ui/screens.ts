@@ -25,6 +25,13 @@ const FAILURE_MESSAGES: Readonly<Record<FailureReason, keyof typeof vi>> = {
   tipped: 'failureTipped',
   'speed-envelope': 'failureSpeedEnvelope',
 };
+const PRACTICE_MESSAGES: Readonly<Record<FailureReason, keyof typeof vi>> = {
+  collision: 'practiceCollision',
+  'curb-contact': 'practiceCurbContact',
+  'out-of-bounds': 'practiceOutOfBounds',
+  tipped: 'practiceTipped',
+  'speed-envelope': 'practiceSpeedEnvelope',
+};
 const STEP_LABELS = new Map(
   Object.values(scenarios).flatMap(({ steps }) =>
     steps.map((step) => [step.id, vi[step.instructionKey]] as const)),
@@ -154,6 +161,21 @@ export function mountScreen(
   }
 
   function renderSummary(summary: AttemptSummary) {
+    const outcome = text('p', summary.outcome === 'success' ? vi.recapSuccess
+      : summary.failureReason ? vi[FAILURE_MESSAGES[summary.failureReason]] : vi.outcomeFail);
+    outcome.dataset.recapOutcome = summary.outcome;
+    outcome.className = 'lead';
+    if (summary.failureReason) {
+      const tip = document.createElement('aside');
+      tip.dataset.practiceTip = '';
+      tip.className = 'practice-tip';
+      text('h2', vi.practiceLabel, tip);
+      text('p', vi[PRACTICE_MESSAGES[summary.failureReason]], tip);
+      screen.append(tip);
+    }
+    const details = document.createElement('details');
+    const heading = document.createElement('summary');
+    heading.textContent = vi.metricDetails;
     const list = document.createElement('dl');
     for (const [label, value] of summaryRows(summary)) {
       const term = document.createElement('dt');
@@ -162,7 +184,8 @@ export function mountScreen(
       description.textContent = value;
       list.append(term, description);
     }
-    screen.append(list);
+    details.append(heading, list);
+    screen.append(details);
   }
 
   function historyResetControls(resetRequested: boolean) {
@@ -311,16 +334,45 @@ export function mountScreen(
     text('h1', vi.openHistory);
     const status = text('p', historyStatusText(state.status));
     status.setAttribute('role', state.status === 'reset-required' ? 'alert' : 'status');
-    const list = document.createElement('div');
+    const list = document.createElement('ol');
     list.className = 'history-list';
     if (state.records.length === 0) text('p', vi.historyEmpty);
-    for (const record of state.records) {
-      const item = button(recordLabel(record), () =>
-        onAction({ type: 'select-attempt', id: record.id }));
-      item.dataset.attemptId = record.id;
-      list.append(item);
+    let visible = 0;
+    function appendRecords() {
+      if (state.kind !== 'history-list') return;
+      for (const record of state.records.slice(visible, visible + 20)) {
+        const row = document.createElement('li');
+        const item = button('', () => onAction({ type: 'select-attempt', id: record.id }), row);
+        item.dataset.attemptId = record.id;
+        item.dataset.outcome = record.summary.outcome;
+        item.setAttribute('aria-label', recordLabel(record));
+        const date = document.createElement('time');
+        date.dateTime = record.completedAt;
+        date.textContent = new Intl.DateTimeFormat('vi-VN', {
+          dateStyle: 'short', timeStyle: 'short',
+        }).format(new Date(record.completedAt));
+        const lesson = document.createElement('strong');
+        lesson.textContent = vi[`stage${record.summary.stageId}`];
+        const metadata = document.createElement('span');
+        metadata.textContent = `${vi[record.summary.vehicleId]} — ${record.summary.outcome === 'success'
+          ? vi.outcomeSuccess : vi.outcomeFail}`;
+        item.append(date, lesson, metadata);
+        list.append(row);
+      }
+      visible = Math.min(visible + 20, state.records.length);
     }
+    appendRecords();
     screen.append(list);
+    const count = text('p', `${vi.historyCount}: ${visible} / ${state.records.length}`);
+    count.setAttribute('role', 'status');
+    const more = button(vi.showMoreHistory, () => {
+      const firstNew = visible;
+      appendRecords();
+      count.textContent = `${vi.historyCount}: ${visible} / ${state.records.length}`;
+      more.hidden = visible >= state.records.length;
+      list.children.item(firstNew)?.querySelector('button')?.focus();
+    });
+    more.hidden = visible >= state.records.length;
     historyResetControls(state.resetRequested);
     button(vi.closePreview, () => onAction({ type: 'menu' }));
   } else if (state.kind === 'history-detail') {
@@ -333,13 +385,18 @@ export function mountScreen(
     historyResetControls(state.resetRequested);
     button(vi.closePreview, () => onAction({ type: 'menu' }));
   } else if (state.kind === 'success' || state.kind === 'fail') {
+    screen.classList.add('recap');
     text('h1', state.kind === 'success' ? vi.successTitle : vi.failTitle);
+    text('p', `${vi[`stage${state.summary.stageId}`]} · ${vi[state.summary.vehicleId]}`).className = 'eyebrow';
+    if (state.kind === 'success') screen.append(createParkingIllustration(state.summary.stageId));
     const result = text('p', state.historyStatus === 'saving'
       ? vi.historyLoading : historyStatusText(state.historyStatus));
     result.setAttribute('role', 'status');
     renderSummary(state.summary);
-    button(vi.retryLesson, () => onAction({ type: 'retry' }));
-    button(vi.continue, () => onAction({ type: 'continue' }));
+    if (state.kind === 'success') {
+      button(vi.continue, () => onAction({ type: 'continue' })).className = 'primary-action';
+      button(vi.retryLesson, () => onAction({ type: 'retry' }));
+    } else button(vi.retryLesson, () => onAction({ type: 'retry' })).className = 'primary-action';
     button(vi.closePreview, () => onAction({ type: 'menu' }));
   } else if (state.kind === 'paused') {
     text('h1', vi.pausedNotice);

@@ -36,7 +36,8 @@ async function completeStage(page: Page, vehicleId: VehicleId, stageId: StageId,
   expect(result.summary).toMatchObject({ stageId, vehicleId, outcome: 'success', failureReason: null });
 
   await expect(page.getByRole('heading', { name: vi.successTitle, exact: true })).toBeVisible({ timeout: 15000 });
-  await expect(page.locator('#screen-layer')).toContainText(vi.historyPeakSpeed);
+  await page.getByText(vi.metricDetails, { exact: true }).click();
+  await expect(page.getByText(vi.historyPeakSpeed, { exact: true })).toBeVisible();
   await expect(page.locator('#screen-layer')).not.toContainText(vi.failTitle);
   await releasePad(page);
   await page.getByRole('button', { name: vi.continue, exact: true }).click();
@@ -61,7 +62,8 @@ async function verifyPersistence(page: Page, vehicleId: VehicleId, stageId: Stag
   await expect(attempts.first()).toContainText(vehicleId === 'sedan' ? vi.sedan : vi.cuv);
   await expect(attempts.first()).toContainText(`— ${vi.outcomeSuccess}`);
   await attempts.first().click();
-  await expect(page.locator('#screen-layer')).toContainText(vi.historyPeakSpeed);
+  await page.getByText(vi.metricDetails, { exact: true }).click();
+  await expect(page.getByText(vi.historyPeakSpeed, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: vi.backToHistory, exact: true }).click();
   await page.getByRole('button', { name: vi.closePreview, exact: true }).click();
   await expect(page.locator('#start-stage')).toBeVisible();

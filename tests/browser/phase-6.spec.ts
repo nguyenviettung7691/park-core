@@ -20,7 +20,7 @@ async function startStageOne(page: Page) {
 
 async function shiftToDrive(page: Page) {
   await page.keyboard.down('s');
-  await expect(page.locator('#telemetry')).toContainText('Phanh chân: 100%');
+  await expect(page.locator('[data-telemetry="brake"]')).toHaveJSProperty('value', 1);
   await page.keyboard.press('Digit4');
   await expect(page.locator('#telemetry')).toContainText('D');
   await page.keyboard.up('s');
@@ -38,7 +38,7 @@ async function secureVehicle(page: Page) {
 
 async function shiftToReverse(page: Page) {
   await page.keyboard.down('s');
-  await expect(page.locator('#telemetry')).toContainText('Phanh chân: 100%');
+  await expect(page.locator('[data-telemetry="brake"]')).toHaveJSProperty('value', 1);
   await page.keyboard.press('Digit2');
   await expect(page.locator('#telemetry')).toContainText('R');
   await page.keyboard.up('s');
@@ -74,9 +74,10 @@ test('lesson outcomes, persistence, progression and free drive pass browser acce
 
   await expect(page.getByRole('heading', { name: 'Hoàn thành bài học', exact: true }))
     .toBeVisible({ timeout: 15000 });
-  await expect(page.locator('#screen-layer')).toContainText('Tốc độ cao nhất');
+  await page.getByText('Xem chi tiết lượt lái', { exact: true }).click();
+  await expect(page.getByText('Tốc độ cao nhất', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Tiếp tục', exact: true }).click();
+  await page.getByRole('button', { name: 'Về hành trình', exact: true }).click();
   await expect(page.locator('[data-stage-id="2"]')).toBeEnabled();
   await page.locator('[data-stage-id="2"]').click();
   await page.getByRole('button', { name: 'Bắt đầu bài học', exact: true }).click();
@@ -94,7 +95,8 @@ test('lesson outcomes, persistence, progression and free drive pass browser acce
   await expect(attempts.nth(0)).toContainText(/— Đạt$/);
   await expect(attempts.nth(1)).toContainText(/— Chưa đạt$/);
   await attempts.nth(0).click();
-  await expect(page.locator('#screen-layer')).toContainText('Tốc độ cao nhất');
+  await page.getByText('Xem chi tiết lượt lái', { exact: true }).click();
+  await expect(page.getByText('Tốc độ cao nhất', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Quay lại lịch sử', exact: true }).click();
   await page.getByRole('button', { name: 'Đặt lại lịch sử', exact: true }).click();
   await page.getByRole('button', { name: 'Xác nhận xóa lịch sử', exact: true }).click();
