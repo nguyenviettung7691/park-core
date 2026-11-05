@@ -75,6 +75,16 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     pillar(s, frontFoot, belt, roofFront, roofY - 0.05, 0.065))), paint);
   addMesh('RearWindow', body, mergeGeometry([-1, 1].map((s) =>
     pillar(s, rearFoot, belt, roofRear, roofY - 0.05, cuv ? 0.12 : 0.075))), paint);
+  const glazing = addNode('ParkedGlazing', body);
+  const glassFaces = [
+    { points: [[-0.7, belt, frontFoot], [0.7, belt, frontFoot],
+      [0.69, roofY - 0.04, roofFront], [-0.69, roofY - 0.04, roofFront]], color: palette.glass },
+    { points: [[-0.7, belt, rearFoot], [0.7, belt, rearFoot],
+      [0.69, roofY - 0.04, roofRear], [-0.69, roofY - 0.04, roofRear]], color: palette.glass },
+    ...[-1, 1].map((s) => ({ points: [[s * 0.73, belt, frontFoot], [s * 0.73, belt, rearFoot],
+      [s * 0.69, roofY - 0.04, roofRear], [s * 0.69, roofY - 0.04, roofFront]], color: palette.glass })),
+  ];
+  addMesh('StaticWindowFaces', glazing, facesGeometry(glassFaces), palette.glass);
   const rearDeck = cuv
     ? part([1.66, 0.1, half - rearFoot], [0, belt - 0.04, (half + rearFoot) / 2], paint)
     : part([1.72, 0.09, half - rearFoot], [0, belt - 0.07, (half + rearFoot) / 2], paint);

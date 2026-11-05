@@ -70,10 +70,12 @@ describe('phase 5 scene asset loading', () => {
     const assets = await loadSceneAssets('garage', id, new AbortController().signal);
     try {
       assets.vehicle.updateMatrixWorld(true);
+      const visibleMeshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) visibleMeshes.push(node); });
       for (const x of [0, -0.35, 0.35]) {
         const ray = new Raycaster(new Vector3(...profiles[id].driverEyeLocalM),
           new Vector3(x, 0, -1).normalize(), 0.1, 3);
-        expect(ray.intersectObject(assets.vehicle, true).map((hit) => hit.object.name)).toEqual([]);
+        expect(ray.intersectObjects(visibleMeshes, false).map((hit) => hit.object.name)).toEqual([]);
       }
       expect(assets.vehicle.getObjectByName('Exterior')).toBeTruthy();
       const bounds = new Box3().setFromObject(assets.vehicle.getObjectByName('Body'));

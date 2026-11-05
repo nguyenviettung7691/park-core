@@ -49,6 +49,7 @@ const environmentDimensions: Readonly<Record<EnvironmentId, Vec3Data>> = {
 };
 
 const vehicleNodeNames = [
+  'Exterior', 'ParkedGlazing',
   'Body', 'WheelFL', 'WheelFR', 'WheelRL', 'WheelRR', 'DriverEye',
   'MirrorRear', 'MirrorLeft', 'MirrorRight',
   'MirrorSurfaceRear', 'MirrorSurfaceLeft', 'MirrorSurfaceRight',
@@ -412,6 +413,7 @@ async function loadAsset(
     if (resource === 'vehicle') {
       if (id !== 'sedan' && id !== 'cuv') throw failure(resource, 'invalid-contract');
       validateVehicleScene(root, id);
+      requiredObject(root, 'ParkedGlazing', resource).visible = false;
       for (const name of ['WheelFL', 'WheelFR', 'WheelRL', 'WheelRR',
         'DriverEye', 'MirrorRear', 'MirrorLeft', 'MirrorRight',
         'MirrorSurfaceRear', 'MirrorSurfaceLeft', 'MirrorSurfaceRight']) {

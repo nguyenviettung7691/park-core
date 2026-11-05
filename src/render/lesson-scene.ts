@@ -5,8 +5,10 @@ import {
   PlaneGeometry,
   Quaternion,
   Vector3,
+  type Object3D,
 } from 'three';
 import type { LessonRuntime, OrientedRegion, ScenarioDefinition } from '../contracts';
+import { createParkedVehicle } from './parked-vehicle';
 
 const PURPLE = '#9B59B6';
 const UP = new Vector3(0, 1, 0);
@@ -40,7 +42,7 @@ function createRegionMesh(
   return mesh;
 }
 
-export function createLessonScene(scenario: ScenarioDefinition): LessonScene {
+export function createLessonScene(scenario: ScenarioDefinition, vehicleTemplate: Object3D): LessonScene {
   const group = new Group();
   group.name = 'lesson-visuals';
   group.add(createRegionMesh(scenario.target.region, PURPLE, 0.2, 'lesson-target'));
@@ -55,6 +57,7 @@ export function createLessonScene(scenario: ScenarioDefinition): LessonScene {
   highlight.position.y = 0.04;
   highlight.renderOrder = 2;
   group.add(highlight);
+  for (const collider of scenario.obstacles) group.add(createParkedVehicle(vehicleTemplate, collider));
 
   let disposed = false;
   return {
@@ -74,14 +77,16 @@ export function createLessonScene(scenario: ScenarioDefinition): LessonScene {
     dispose() {
       if (disposed) return;
       disposed = true;
+      const resources = new Set<{ dispose(): void }>();
       group.traverse((object) => {
         if (!(object instanceof Mesh)) return;
-        object.geometry.dispose();
+        resources.add(object.geometry);
         const materials = Array.isArray(object.material)
           ? object.material
           : [object.material];
-        for (const material of materials) material.dispose();
+        for (const material of materials) resources.add(material);
       });
+      for (const resource of resources) resource.dispose();
       group.clear();
     },
   };
