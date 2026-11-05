@@ -285,9 +285,15 @@ test('keeps front and rear distance labels visible while warnings are muted', as
   await page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true }).click();
   await waitForPointerLock(page);
   await keyboardDrive(page);
-  await page.keyboard.down('w');
   await expect(page.locator('#proximity-front')).toContainText(/\d,\d{2} m/, { timeout: 25000 });
-  await page.keyboard.up('w');
+  await page.keyboard.down('s');
+  await expect(page.locator('[data-telemetry="speed"]')).toHaveText('0 km/h');
+  await expect(page.locator('[data-telemetry="brake"]')).toHaveJSProperty('value', 1);
+  await page.keyboard.press('Space');
+  await expect(page.locator('[data-telemetry="parking-brake"]')).toHaveText('Phanh tay: Bật');
+  await page.keyboard.up('s');
+  await expect(page.locator('#hud')).toHaveAttribute('data-session', 'running');
+  await expect(page.locator('#status-message')).not.toContainText('Xe đã chạm');
   const front = page.locator('#proximity-front');
   const rear = page.locator('#proximity-rear');
   const guidance = 'Cảm biến có thể bỏ sót vật cản.';
