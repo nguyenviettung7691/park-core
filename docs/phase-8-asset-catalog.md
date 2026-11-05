@@ -16,7 +16,7 @@ alloy wheels. Designs are generic and unbranded.
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
 | [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 2,854 | 30 / 21 | 200,548 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 2,970 | 30 / 21 | 209,488 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 2,970 | 30 / 21 | 209,464 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden. Both are below the 10,000-triangle vehicle gate.
@@ -62,6 +62,9 @@ Mirror anchor yaw remains rear 180 degrees, left +105 degrees and right
 cabin, offset from its unchanged virtual camera by (-0.25, -0.075, +0.52) m.
 It is a view proxy, not a newly calibrated optical mirror. Planar mirror
 surfaces now have UVs; updates retain the existing 15 FPS cap.
+Side housings sit behind their reflective planes relative to the driver.
+Loaded-mesh 9 x 9 ray grids verify both side faces are unobstructed from
+each fixed eye; this does not establish optical calibration.
 
 ## Environments and modular objects
 
@@ -129,8 +132,8 @@ All GLBs are self-contained and use no external image/buffer resources.
 |---|---:|
 | Sedan + garage | 383,172 |
 | Sedan + roadside | 363,344 |
-| CUV + garage | 392,112 |
-| CUV + roadside | 372,284 |
+| CUV + garage | 392,088 |
+| CUV + roadside | 372,260 |
 
 All pairs are below the 5,000,000-byte gate.
 
@@ -173,12 +176,18 @@ part of the production app. See [asset pipeline](asset-pipeline.md).
 
 ## Verification limits
 
-Final software checks passed: 448 unit/DOM/physics/asset tests, 35 explicitly
-selected generator/loader checks, typecheck, production build, 29 Chromium
+Final software checks passed: 487 unit/DOM/physics/asset tests, 37 explicitly
+selected generator/loader checks, typecheck, production build, 40 Chromium
 browser checks (including both five-stage journeys) and five production
 checks. The explicit asset selection overlaps the ordinary suite; these
 numbers are not additive. No lint script exists. The existing bundle-size
 warning remains.
+
+The branch includes the current Phase 7 learner experience. Its app captures
+follow the real tutorial/menu/settings/briefing flow rather than bypassing it.
+The independent whole-branch review found side-mirror housing obstruction;
+driver-eye grid regressions reproduced it before the housing correction,
+and all software gates above passed after that fix.
 
 Captures used Chromium 156.0.8078.4 with ANGLE Vulkan **SwiftShader**, not the
 host's hardware GPU. App screenshots are 1920 x 1080; asset captures are

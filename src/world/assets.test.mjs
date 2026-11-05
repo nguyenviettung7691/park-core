@@ -128,6 +128,31 @@ describe('phase 5 scene asset loading', () => {
     } finally { assets.dispose(); }
   });
 
+  it.each(['sedan', 'cuv'])('keeps both %s side-mirror faces visible from the fixed driver eye', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      const eye = new Vector3(...profiles[id].driverEyeLocalM);
+      for (const side of ['Left', 'Right']) {
+        const surface = assets.vehicle.getObjectByName(`MirrorSurface${side}`);
+        surface.geometry.computeBoundingBox();
+        const size = surface.geometry.boundingBox.getSize(new Vector3());
+        for (let x = -4; x <= 4; x++) {
+          for (let y = -4; y <= 4; y++) {
+            const point = new Vector3(x * size.x / 10, y * size.y / 10, 0).applyMatrix4(surface.matrixWorld);
+            const ray = new Raycaster(eye, point.clone().sub(eye).normalize(), 0, eye.distanceTo(point) + 0.001);
+            ray.layers.enable(1);
+            expect(ray.intersectObjects(meshes, false)[0]?.object.name, `${side} sample ${x},${y}`)
+              .toBe(surface.name);
+          }
+        }
+      }
+    } finally { assets.dispose(); }
+  });
+
   it.each(['garage', 'roadside'])('keeps %s details on the appropriate camera layers', async (id) => {
     mockedFetch();
     const assets = await loadSceneAssets(id, 'sedan', new AbortController().signal);

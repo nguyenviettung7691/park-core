@@ -10,6 +10,12 @@
 
 **Spec:** `docs\superpowers\specs\2026-11-05-phase-8-3d-assets-design.md` (owner approved 2026-11-05).
 
+**Implementation:** Original artwork, runtime integration, software gates and
+illustrated documentation delivered 2026-11-05. See the
+[catalog](../../phase-8-asset-catalog.md) for final measurements and remaining
+hardware/manual validation. The approved steps below are the execution plan;
+the pull request records review and delivery.
+
 ## Global Constraints
 
 - At most 10,000 triangles per interactive vehicle, including cockpit.

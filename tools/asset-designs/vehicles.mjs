@@ -177,6 +177,6 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     };
     addMesh(`MirrorSurface${name}`, root, surface, [1, 1, 1], display);
     addMesh(`MirrorHousing${name}`, exterior, boxGeometry(size.map((v) => v + 0.025), palette.trim),
-      palette.trim, [display[0], display[1], display[2] - 0.04]);
+      palette.trim, [display[0], display[1], display[2] + (name === 'Rear' ? -0.04 : 0.04)]);
   }
 }
