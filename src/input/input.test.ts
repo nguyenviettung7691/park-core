@@ -319,6 +319,47 @@ describe('keyboard source', () => {
   });
 });
 
+describe('shared discrete learner controls', () => {
+  it('emits one acknowledge-step per non-repeat F press in keyboard mode', () => {
+    const { target, controller } = setup();
+    expect(key(target, 'keydown', 'KeyF').defaultPrevented).toBe(true);
+    key(target, 'keydown', 'KeyF', { repeat: true });
+    expect(controller.poll().actions).toEqual([{ type: 'acknowledge-step' }]);
+    expect(controller.poll().actions).toEqual([]);
+  });
+
+  it('accepts F, Digit1, Space and E in calibrated gamepad mode without keyboard movement', () => {
+    const { target, controller, world } = gamepadController();
+    world.pads = [makePad({ axes: [-0.25, 0, 0, 0] })];
+    key(target, 'keydown', 'KeyW');
+    key(target, 'keydown', 'KeyF');
+    key(target, 'keydown', 'Digit1');
+    key(target, 'keydown', 'Space');
+    key(target, 'keydown', 'KeyE');
+    const poll = controller.poll();
+    expect(poll.actions).toEqual([
+      { type: 'acknowledge-step' }, { type: 'request-gear', gear: 'P' },
+      { type: 'toggle-parking-brake' }, { type: 'set-indicator', indicator: 'right' }]);
+    expect(poll.frame.source).toBe('gamepad');
+    expect(poll.frame.throttle).toBeCloseTo(0.5, 6);
+    expect(poll.frame.steering).toBeCloseTo(0.4898, 3);
+  });
+
+  it.each(['keyboard', 'gamepad'] as const)(
+    'ignores modified, repeated, editable and unfocused discrete keys in %s mode', (mode) => {
+      const { target, field, controller } = mode === 'keyboard' ? setup() : gamepadController();
+      key(target, 'keydown', 'KeyF', { ctrlKey: true });
+      key(target, 'keydown', 'Digit1', { repeat: true });
+      key(field, 'keydown', 'KeyF');
+      key(field, 'keydown', 'KeyE');
+      field.focus();
+      key(target, 'keydown', 'KeyF');
+      key(target, 'keydown', 'Space');
+      target.focus();
+      expect(controller.poll().actions).toEqual([]);
+    });
+});
+
 describe('gamepad source', () => {
   it('reads only the selected calibrated pad and ignores keyboard', () => {
     const { target, controller, world, getGamepads } = gamepadController();
@@ -329,7 +370,7 @@ describe('gamepad source', () => {
     const poll = controller.poll();
     expect(getGamepads).toHaveBeenCalledTimes(1);
     expect(poll.issue).toBeNull();
-    expect(poll.actions).toEqual([]);
+    expect(poll.actions).toEqual([{ type: 'set-indicator', indicator: 'left' }]);
     expect(poll.frame.source).toBe('gamepad');
     expect(poll.frame.steering).toBeCloseTo(0.4898, 3);
     expect(poll.frame.throttle).toBeCloseTo(0.5, 6);

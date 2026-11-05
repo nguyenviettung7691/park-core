@@ -92,13 +92,15 @@ export function createInputController(
       }
       return;
     }
-    if (source !== 'keyboard') return;
+    if (target.ownerDocument.activeElement !== target) return;
     const gear = gearKeys[code];
     const indicator = indicatorKeys[code];
-    if (code !== 'Space' && gear === undefined && indicator === undefined) return;
+    if (code !== 'Space' && code !== 'KeyF' && gear === undefined && indicator === undefined) return;
     event.preventDefault();
     if (event.repeat) return;
-    if (code === 'Space') {
+    if (code === 'KeyF') {
+      enqueue({ type: 'acknowledge-step' });
+    } else if (code === 'Space') {
       enqueue({ type: 'toggle-parking-brake' });
     } else if (gear !== undefined) {
       enqueue({ type: 'request-gear', gear });

@@ -197,5 +197,6 @@ export const vi = {
   sensorRearCenter: 'giữa',
   sensorRearRight: 'phải',
   sensorRearRightOuter: 'phải ngoài',
-  controlsHelp: 'W/↑: ga; S/↓: phanh (không phải lùi); A/D hoặc ←/→: lái. Giữ phanh rồi 1/2/3/4: P/R/N/D. Space: phanh tay; Q/E: xi-nhan; Escape: tạm dừng.',
+  controlsHelp: 'W/↑: ga; S/↓: phanh (không phải lùi); A/D hoặc ←/→: lái. Giữ phanh rồi 1/2/3/4: P/R/N/D. Space: phanh tay; Q/E: xi-nhan; F: xác nhận khi đã dừng hẳn; Escape: tạm dừng.',
+  acknowledgeHint: 'Khi xe đã dừng hẳn, nhấn F để xác nhận bước này.',
 } as const;

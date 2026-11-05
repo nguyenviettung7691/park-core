@@ -52,6 +52,18 @@ it('renders five stages, keeps locked stages disabled, and starts Stage 1 with t
   expect(element.children.length).toBe(0);
 });
 
+it('shows the F stopped hint only on the current acknowledgement step', () => {
+  const lesson = { stageId: 2 as const, stepIndex: 1, stepDwellS: 0, parkingDwellS: 0,
+    acknowledgedStepIds: [] };
+  const element = root();
+  mountScreen(element, { kind: 'playing', lesson }, context, vi.fn());
+  expect(element.textContent).toContain(messages.acknowledgeHint);
+  expect(messages.acknowledgeHint).toContain('F');
+  element.replaceChildren();
+  mountScreen(element, { kind: 'playing', lesson: { ...lesson, stepIndex: 0 } }, context, vi.fn());
+  expect(element.textContent).not.toContain(messages.acknowledgeHint);
+});
+
 it('offers lesson, free-drive, and history entry points from the main menu', () => {
   const element = root();
   mountScreen(element, { kind: 'menu' }, context, vi.fn());

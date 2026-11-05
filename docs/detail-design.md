@@ -313,10 +313,14 @@ validation and detailed driveline behavior are outside the first release.
 | Toggle 360 view | V | DOM button |
 | Look | Mouse while canvas pointer-locked | Mouse; controller-only camera mapping not required |
 | Help / pause | H / Escape | DOM buttons |
-| Recenter driver view | F | DOM button |
+| Recenter driver view | DOM button | DOM button |
+| Acknowledge lesson step (stopped only) | F, edge-triggered | Same keyboard key; shared discrete |
 
 S is always brake, never an implicit reverse gear. Movement keys act only
 while the driving canvas owns input and no editable DOM control is focused.
+Discrete keys (Digit1–4, Space, Q/E, F) are shared by both input sources: they
+require canvas focus, no modifier, no repeat and a non-editable target, while
+continuous throttle, brake and steering stay source-specific.
 Prevent page scrolling for relevant driving keys only. HUD controls remain
 operable without pointer lock; reacquiring it requires a deliberate canvas click.
 
