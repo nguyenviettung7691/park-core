@@ -1,10 +1,12 @@
 import { expect, test, type Browser } from '@playwright/test';
+import { enterLessonMenu } from '../ui-journey';
 
 async function checkFreshViewport(browser: Browser, url: string, width: number, height: number) {
   const context = await browser.newContext({ viewport: { width, height } });
   try {
     const page = await context.newPage();
     await page.goto(url);
+    await enterLessonMenu(page);
     await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
     const canvas = page.locator('#simulation');
     await expect(canvas).toHaveAttribute('data-engine', /three\.js/i);
@@ -27,6 +29,7 @@ test('menu, real rendering, resize, keyboard focus and repeated preview lifecycl
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto('/');
+  await enterLessonMenu(page);
   await expect(page.getByRole('heading', { name: 'Park-Core', exact: true })).toBeVisible();
   await expect(page.locator('canvas')).toHaveCount(0);
   const select = page.getByLabel('Chọn xe');
@@ -112,6 +115,7 @@ test('missing WebGL2 shows honest feedback with no retry or training controls', 
     });
   });
   await page.goto('/');
+  await enterLessonMenu(page);
   await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('không hỗ trợ WebGL2');
   await expect(page.getByRole('button')).toHaveText('Quay lại menu');
@@ -123,6 +127,7 @@ test('blur needs explicit resume and context loss returns to an honest recovery 
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
+  await enterLessonMenu(page);
   const open = page.getByRole('button', { name: 'Lái tự do', exact: true });
   await open.click();
   await expect(page.locator('#telemetry')).toBeVisible();

@@ -6,6 +6,7 @@
   --color-accent: #9b59b6;
   --color-accent-light: #d5b1e3;
   --color-border: #4a4252;
+  accent-color: var(--color-accent);
   --color-sensor-green: #66cc88;
   --color-sensor-yellow: #ffe066;
   --color-sensor-red: #ff6b6b;
@@ -45,6 +46,7 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  background: radial-gradient(ellipse at 18% 0%, #38243f 0, transparent 55%);
 }
 
 #simulation {
@@ -258,6 +260,137 @@ body {
   gap: var(--space-2);
   width: min(100%, 40rem);
   margin: auto;
+}
+
+.screen-brand,
+.action-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.screen-brand {
+  justify-content: space-between;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.screen-brand h1 {
+  font-size: 1rem;
+  letter-spacing: 0.12em;
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--color-accent-light);
+}
+
+.onboarding {
+  width: min(100%, 68rem);
+}
+
+.intro-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.intro-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) 0;
+}
+
+.intro-copy h2 {
+  font-size: clamp(1.75rem, 3.5vw, 3rem);
+  max-width: 14ch;
+  text-wrap: balance;
+}
+
+.lesson-art {
+  display: grid;
+  place-items: center;
+  margin: 0;
+  min-width: 0;
+  border-radius: 16px;
+  background: radial-gradient(ellipse, #50345b, #211d25 75%);
+}
+
+.parking-illustration {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.primary-action {
+  background: #75408c;
+  border-color: var(--color-accent-light);
+  color: #fff;
+  font-weight: 700;
+}
+
+.primary-action:hover {
+  background: #86499f;
+  border-color: #fff;
+}
+
+.quiet-action {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-secondary);
+}
+
+.control-card {
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+
+.safety-note {
+  font-size: 0.875rem;
+  border-left: 2px solid var(--color-accent);
+  padding-left: 12px;
+}
+
+.tutorial-progress {
+  display: flex;
+  gap: var(--space-2);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tutorial-progress li {
+  flex: 1;
+  border-top: 3px solid var(--color-border);
+  padding-top: var(--space-1);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.tutorial-progress [aria-current='step'] {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+button,
+select,
+input {
+  touch-action: manipulation;
+}
+
+@media (max-width: 768px) {
+  .intro-layout { grid-template-columns: minmax(0, 1fr); }
+  .onboarding .lesson-art { max-height: 220px; overflow: hidden; }
+  .onboarding .parking-illustration { max-height: 220px; }
 }
 
 .stage-list {

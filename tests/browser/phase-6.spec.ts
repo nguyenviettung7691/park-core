@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { enterLessonMenu } from '../ui-journey';
 
 async function openStageOne(page: Page) {
   await page.getByRole('button', { name: 'Bắt đầu bài học', exact: true }).click();
@@ -8,6 +9,7 @@ async function openStageOne(page: Page) {
 
 async function startStageOne(page: Page) {
   await page.goto('/');
+  await enterLessonMenu(page);
   await openStageOne(page);
   await page.getByRole('button', { name: 'Bắt đầu lái', exact: true }).click();
   await expect(page.locator('#simulation')).toBeFocused();

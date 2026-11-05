@@ -12,6 +12,8 @@ import { vi as messages } from '../messages';
 afterEach(() => document.body.replaceChildren());
 
 const context: ScreenContext = {
+  onboarding: { dismissed: true, status: 'persistent' },
+  onboardingResetRequested: false,
   progress: { version: 1, completedStages: [], lastVehicle: 'sedan' },
   settings: {
     version: 1, volume: 0.5, muted: false, driverFovDeg: 60,

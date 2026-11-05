@@ -126,6 +126,8 @@ export interface AttemptHistoryStore {
 }
 
 export interface ScreenContext {
+  readonly onboarding: OnboardingSnapshot;
+  readonly onboardingResetRequested: boolean;
   readonly progress: ProgressSaveV1;
   readonly settings: SettingsSaveV1;
   readonly selectedStageId: StageId;
@@ -136,6 +138,10 @@ export interface ScreenContext {
 }
 
 export type ScreenAction =
+  | { readonly type: 'tutorial-next' | 'tutorial-back' | 'dismiss-tutorial' |
+      'replay-tutorial' | 'open-help' | 'close-overlay' |
+      'request-onboarding-reset' | 'confirm-onboarding-reset' | 'cancel-onboarding-reset' }
+  | { readonly type: 'open-settings'; readonly tab: SettingsTab }
   | { readonly type: 'start'; readonly stageId: StageId; readonly vehicleId: VehicleId }
   | { readonly type: 'start-driving' }
   | { readonly type: 'free-drive' }
@@ -169,7 +175,18 @@ export type ScreenAction =
 export type PreviewPhase = 'closed' | 'running' | 'paused';
 export type PreviewPauseReason = 'user' | 'focus' | 'controller' | 'contact';
 
+export type ShellOrigin = 'menu' | 'paused';
+export type OnboardingStep = 0 | 1 | 2;
+export type SettingsTab = 'view' | 'audio' | 'input';
+export type OverlayReturn = { readonly kind: ShellOrigin }
+  | { readonly kind: 'onboarding'; readonly step: OnboardingStep; readonly origin: ShellOrigin };
+export type ShellOverlay =
+  | { readonly kind: 'onboarding'; readonly step: OnboardingStep; readonly origin: ShellOrigin }
+  | { readonly kind: 'settings'; readonly tab: SettingsTab; readonly returnTo: OverlayReturn }
+  | { readonly kind: 'help'; readonly origin: ShellOrigin };
+
 export interface ShellView {
+  readonly overlay?: ShellOverlay;
   readonly state: AppState;
   readonly preview: PreviewPhase;
   readonly calibrating?: boolean;

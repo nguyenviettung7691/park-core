@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { enterLessonMenu } from '../ui-journey';
 import type { StageId, VehicleId } from '../../src/contracts';
 import { vi } from '../../src/messages';
 import {
@@ -76,8 +77,10 @@ for (const vehicleId of ['sedan', 'cuv'] as const) {
     page.on('pageerror', (error) => errors.push(error.message));
     await installObservationAndPad(page);
     await page.goto('/');
+    await enterLessonMenu(page);
     await expect(page.locator('#start-stage')).toBeVisible();
-    expect(await page.evaluate(() => localStorage.length)).toBe(0);
+    expect(await page.evaluate(() => ['park-core.progress.v1', 'park-core.settings.v1',
+      'park-core.calibration.v1'].map((key) => localStorage.getItem(key)))).toEqual([null, null, null]);
     await calibrateThroughUi(page);
     await expect(page.locator('#start-stage')).toBeEnabled();
 

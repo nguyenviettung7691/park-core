@@ -98,6 +98,7 @@ export function mountScreen(
   const screen = document.createElement('main');
   const preview = view?.preview ?? 'closed';
   screen.className = preview === 'running' ? 'preview-shell panel' : 'screen panel';
+  screen.dataset.screen = state.kind;
   if (preview === 'paused') screen.classList.add('preview-paused');
   const listeners = new AbortController();
 
@@ -118,6 +119,11 @@ export function mountScreen(
   }
 
   function persistenceNotices() {
+    if (context.onboarding.status !== 'persistent') {
+      text('p', `${vi.tutorialRecord}: ${context.onboarding.status === 'reset-required'
+        ? vi.unreadableRecord : vi.sessionOnlyRecord}`).setAttribute('role',
+        context.onboarding.status === 'reset-required' ? 'alert' : 'status');
+    }
     const records: readonly PersistenceRecord[] = ['progress', 'settings', 'calibration'];
     for (const record of records) {
       const label = record === 'progress' ? vi.progressRecord
@@ -214,7 +220,29 @@ export function mountScreen(
     }
   }
 
-  if (state.kind === 'loading') {
+  if (view?.overlay) {
+    const overlay = view.overlay;
+    screen.dataset.screen = overlay.kind;
+    text('h1', overlay.kind === 'help' ? vi.help : vi.settingsTitle);
+    if (overlay.kind === 'help') {
+      text('p', vi.controlsHelp);
+      text('p', vi.sensorGuidance);
+      text('p', vi.menuNotice);
+      button(vi.replayTutorial, () => onAction({ type: 'replay-tutorial' }));
+      if (context.onboarding.status !== 'persistent') {
+        text('p', `${vi.tutorialRecord}: ${context.onboarding.status === 'reset-required'
+          ? vi.unreadableRecord : vi.sessionOnlyRecord}`).setAttribute('role', 'status');
+      }
+      if (context.onboardingResetRequested) {
+        button(vi.tutorialRecordConfirm, () => onAction({ type: 'confirm-onboarding-reset' }));
+        button(vi.cancel, () => onAction({ type: 'cancel-onboarding-reset' }));
+      } else button(vi.tutorialRecordReset, () => onAction({ type: 'request-onboarding-reset' }));
+    } else {
+      inputControls();
+      persistenceNotices();
+    }
+    button(vi.tutorialBack, () => onAction({ type: 'close-overlay' }));
+  } else if (state.kind === 'loading') {
     text('h1', vi.appTitle);
     const progressState = view?.assetLoadProgress ?? null;
     const status = text('p', progressState
@@ -283,6 +311,7 @@ export function mountScreen(
   } else if (state.kind === 'paused') {
     text('h1', vi.pausedNotice);
     button(vi.resumePreview, () => onAction({ type: 'resume' }));
+    button(vi.help, () => onAction({ type: 'open-help' }));
     inputControls();
     text('p', vi.controlsHelp);
     button(vi.retryLesson, () => onAction({ type: 'retry' }));
@@ -326,6 +355,7 @@ export function mountScreen(
       }
     }
     screen.append(controls);
+    if (preview === 'paused') button(vi.help, () => onAction({ type: 'open-help' }));
   } else if (state.kind === 'menu') {
     let selectedStageId = context.selectedStageId;
     let selectedVehicleId = context.selectedVehicleId;
@@ -388,6 +418,7 @@ export function mountScreen(
     const freeDrive = button(vi.freeDrive, () => onAction({ type: 'free-drive' }));
     freeDrive.disabled = input ? !input.ready : false;
     button(vi.openHistory, () => onAction({ type: 'open-history' }));
+    button(vi.help, () => onAction({ type: 'open-help' }));
   }
   root.append(screen);
   if (preview !== 'running') {

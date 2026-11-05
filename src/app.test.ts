@@ -13,6 +13,7 @@ import { profiles } from './vehicle/profiles';
 import { buildPrototypeScene } from './render/prototype';
 import { AssetLoadError } from './world/assets';
 import { createPersistence, type StoragePort } from './storage/persistence';
+import { createOnboarding } from './storage/onboarding';
 import type {
   AttemptHistorySnapshot, AttemptHistoryStore, PersistenceRecord,
 } from './runtime-types';
@@ -69,6 +70,11 @@ function fixture() {
     root, factory, previews, prototypes, modes,
     app(overrides: Parameters<typeof createApp>[1] = {}) {
       return createApp(root, {
+        createOnboarding: () => ({
+          snapshot: () => ({ dismissed: true, status: 'persistent' }),
+          dismiss: () => ({ dismissed: true, status: 'persistent' }),
+          reset: () => ({ dismissed: false, status: 'persistent' }),
+        }),
         createPreview: factory,
         loadSceneAssets: async () => makeSceneAssets(),
         ...overrides,
@@ -111,6 +117,55 @@ const attemptSummary: AttemptSummary = {
   acknowledgedStepIds: ['survey-space'],
   usedAids: [],
 };
+
+it('shows fresh onboarding without loading a simulation and remembers explicit skip', () => {
+  const f = fixture();
+  const store = createOnboarding(() => localStorage);
+  const app = f.app({ createOnboarding: () => store });
+  expect(f.root.querySelector('[data-screen="onboarding"]')).not.toBeNull();
+  expect(f.factory).not.toHaveBeenCalled();
+  f.click('Bỏ qua hướng dẫn');
+  expect(f.root.querySelector('#start-stage')).not.toBeNull();
+  app.dispose();
+  const again = f.app({ createOnboarding: () => createOnboarding(() => localStorage) });
+  expect(f.root.querySelector('#start-stage')).not.toBeNull();
+  again.dispose();
+});
+
+it('returns from replay and device setup to pause without resuming or changing progress', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  f.events.onPaused('user');
+  vi.mocked(f.previews[0]!.resume).mockClear();
+  f.click('Trợ giúp');
+  f.click('Xem lại hướng dẫn');
+  f.click('Tiếp theo');
+  f.click('Thiết lập điều khiển');
+  f.click('Quay lại');
+  expect(f.root.querySelector('[data-onboarding-step="1"]')).not.toBeNull();
+  f.click('Bỏ qua hướng dẫn');
+  expect(f.root.querySelector('[data-screen="menu"]')).not.toBeNull();
+  expect(f.previews[0]!.resume).not.toHaveBeenCalled();
+  expect(f.root.querySelector('#simulation')).not.toBeNull();
+  app.dispose();
+});
+
+it('retains corrupt tutorial data until confirmation and keeps its warning after skip', () => {
+  const f = fixture();
+  localStorage.setItem('park-core.onboarding.v1', '{');
+  const app = f.app({ createOnboarding: () => createOnboarding(() => localStorage) });
+  f.click('Bỏ qua hướng dẫn');
+  expect(f.root.querySelector('[role="alert"]')?.textContent).toContain('Hướng dẫn làm quen');
+  f.click('Trợ giúp');
+  f.click('Đặt lại hướng dẫn');
+  f.click('Hủy');
+  expect(localStorage.getItem('park-core.onboarding.v1')).toBe('{');
+  f.click('Đặt lại hướng dẫn');
+  f.click('Xác nhận đặt lại hướng dẫn');
+  expect(localStorage.getItem('park-core.onboarding.v1')).toBeNull();
+  app.dispose();
+});
 
 function appHistory(
   records: AttemptHistorySnapshot['records'] = [],

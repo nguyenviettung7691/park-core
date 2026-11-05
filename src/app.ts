@@ -3,7 +3,7 @@ import type {
   AttemptSummary, ControllerCalibration, EnvironmentId, LessonRuntime, MessageKey, StageId,
   VehicleId,
 } from './contracts';
-import type { ScreenAction, ScreenContext, ShellView } from './runtime-types';
+import type { OnboardingStore, ScreenAction, ScreenContext, ShellOrigin, ShellView } from './runtime-types';
 import type {
   AttemptHistorySnapshot, AttemptHistoryStatus, AttemptHistoryStore, PersistenceRecord,
   PersistenceResult,
@@ -15,12 +15,15 @@ import { AssetLoadError, loadSceneAssets } from './world/assets';
 import type { AssetLoadProgress, SceneAssets } from './runtime-types';
 import { mountHud } from './ui/hud';
 import { mountCalibration, mountScreen, type InputSetup } from './ui/screens';
+import { mountOnboarding } from './ui/onboarding';
+import { createOnboarding } from './storage/onboarding';
 import { createPersistence, unlockedStages, type PersistenceStore } from './storage/persistence';
 import { createAttemptHistoryStore } from './storage/attempt-history';
 import { scenarios } from './lessons/scenarios';
 import type { AppObservation, AppObservationPayload } from './app-observation';
 
 export interface AppDeps {
+  createOnboarding: () => OnboardingStore;
   createPreview: typeof createPreview;
   loadSceneAssets: typeof loadSceneAssets;
   createPersistence: () => PersistenceStore;
@@ -36,6 +39,8 @@ export interface AppHandle {
 
 export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): AppHandle {
   const deps: AppDeps = {
+    createOnboarding: () => createOnboarding(() =>
+      typeof localStorage === 'undefined' ? null : localStorage),
     createPreview,
     loadSceneAssets,
     createPersistence: () => createPersistence(() =>
@@ -47,9 +52,12 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     ...overrides,
   };
   const persistence = deps.createPersistence();
+  const onboarding = deps.createOnboarding();
   const attemptHistory = deps.createAttemptHistoryStore();
   const initial = persistence.snapshot();
   let context: ScreenContext = {
+    onboarding: onboarding.snapshot(),
+    onboardingResetRequested: false,
     progress: initial.progress,
     settings: initial.settings,
     selectedStageId: 1,
@@ -59,6 +67,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     resetRequested: null,
   };
   let view: ShellView = { state: { kind: 'menu' }, preview: 'closed' };
+  if (!context.onboarding.dismissed) {
+    view = { ...view, overlay: { kind: 'onboarding', step: 0, origin: 'menu' } };
+  }
   let preview: Preview | null = null;
   let retainedAssets: SceneAssets | null = null;
   let currentLesson: LessonRuntime | null = null;
@@ -170,6 +181,8 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         drawScreen();
         layer.querySelector<HTMLButtonElement>('#calibrate-device')?.focus();
       });
+    } else if (view.overlay?.kind === 'onboarding') {
+      unmountScreen = mountOnboarding(layer, view.overlay, context, inputSetup(), onAction);
     } else {
       unmountScreen = mountScreen(layer, view.state, context, onAction, view, inputSetup());
     }
@@ -521,6 +534,61 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   function onAction(action: ScreenAction) {
     if (disposed) return;
     switch (action.type) {
+      case 'tutorial-next':
+      case 'tutorial-back': {
+        const overlay = view.overlay;
+        if (overlay?.kind !== 'onboarding') return;
+        const step = overlay.step + (action.type === 'tutorial-next' ? 1 : -1);
+        if (step !== 0 && step !== 1 && step !== 2) return;
+        view = { ...view, overlay: { ...overlay, step } };
+        drawScreen();
+        break;
+      }
+      case 'dismiss-tutorial': {
+        if (view.overlay?.kind !== 'onboarding') return;
+        context = { ...context, onboarding: onboarding.dismiss() };
+        view = { ...view, overlay: undefined };
+        drawScreen();
+        break;
+      }
+      case 'open-help':
+      case 'replay-tutorial': {
+        if (view.preview === 'running' || view.calibrating) return;
+        const origin: ShellOrigin = view.preview === 'paused' ? 'paused' : 'menu';
+        view = { ...view, overlay: action.type === 'open-help'
+          ? { kind: 'help', origin } : { kind: 'onboarding', step: 0, origin } };
+        drawScreen();
+        break;
+      }
+      case 'open-settings': {
+        if (view.preview === 'running' || view.calibrating) return;
+        const overlay = view.overlay;
+        view = { ...view, overlay: { kind: 'settings', tab: action.tab,
+          returnTo: overlay?.kind === 'onboarding'
+            ? { kind: 'onboarding', step: overlay.step, origin: overlay.origin }
+            : { kind: view.preview === 'paused' ? 'paused' : 'menu' } } };
+        drawScreen();
+        break;
+      }
+      case 'close-overlay': {
+        const overlay = view.overlay;
+        view = { ...view, overlay: overlay?.kind === 'settings' &&
+          overlay.returnTo.kind === 'onboarding'
+          ? { kind: 'onboarding', step: overlay.returnTo.step, origin: overlay.returnTo.origin }
+          : undefined };
+        drawScreen();
+        break;
+      }
+      case 'request-onboarding-reset':
+      case 'cancel-onboarding-reset':
+        context = { ...context, onboardingResetRequested: action.type === 'request-onboarding-reset' };
+        drawScreen();
+        break;
+      case 'confirm-onboarding-reset':
+        if (!context.onboardingResetRequested) return;
+        context = { ...context, onboarding: onboarding.reset(), onboardingResetRequested: false };
+        drawScreen();
+        break;
       case 'select-vehicle':
         context = {
           ...context,

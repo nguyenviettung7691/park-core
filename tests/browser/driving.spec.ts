@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { enterLessonMenu } from '../ui-journey';
 
 interface TestPad {
   id: string; index: number; connected: boolean; mapping: string; timestamp: number;
@@ -15,6 +16,7 @@ declare global {
 
 async function open(page: Page) {
   await page.goto('/');
+  await enterLessonMenu(page);
   await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await expect(page.locator('#simulation')).toBeFocused();
   await expect(page.locator('#telemetry')).toBeVisible();
@@ -84,6 +86,7 @@ async function checkFreshViewport(browser: Browser, url: string, width: number, 
     const page = await context.newPage();
     await installAudioMock(page);
     await page.goto(url);
+    await enterLessonMenu(page);
     await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
     await waitForPointerLock(page);
     const canvas = page.locator('#simulation');
@@ -176,6 +179,7 @@ test('explicit calibration, physical brake and gamepad gear, disconnect and same
     Object.defineProperty(navigator, 'getGamepads', { value: () => [window.testPad] });
   });
   await page.goto('/');
+  await enterLessonMenu(page);
   await page.getByLabel('Nguồn điều khiển', { exact: true }).selectOption('gamepad');
   await page.getByLabel('Thiết bị', { exact: true }).selectOption('0');
   await expect(page.getByRole('button', { name: 'Lái tự do', exact: true })).toBeDisabled();
@@ -230,6 +234,7 @@ test('unlocks audio on start, pauses silently, and requires explicit pointer-loc
   page.on('pageerror', (error) => errors.push(error.message));
   await installAudioMock(page);
   await page.goto('/');
+  await enterLessonMenu(page);
   expect(await page.evaluate(() => window.testAudioStats.contexts)).toBe(0);
   await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await waitForPointerLock(page);
@@ -308,6 +313,7 @@ test('keeps visual proximity warnings when AudioContext is unavailable', async (
   page.on('pageerror', (error) => errors.push(error.message));
   await installAudioMock(page, true);
   await page.goto('/');
+  await enterLessonMenu(page);
   expect(await page.evaluate(() => window.testAudioStats.contexts)).toBe(0);
   await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
   await waitForPointerLock(page);
@@ -407,6 +413,7 @@ test('repeatedly opens and closes the preview without uncaught errors', async ({
   page.on('pageerror', (error) => errors.push(error.message));
   await installAudioMock(page);
   await page.goto('/');
+  await enterLessonMenu(page);
   for (let cycle = 0; cycle < 3; cycle++) {
     await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
     await waitForPointerLock(page);
