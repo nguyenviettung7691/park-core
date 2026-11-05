@@ -54,6 +54,10 @@ describe('phase 5 original GLB generator', () => {
     expect(first).toEqual(second);
     const json = readGlb(assetPath(firstRoot, assetId));
     expect(json.asset.version).toBe('2.0');
+    expect(json.asset.extras).toMatchObject({
+      license: 'CC-BY-NC-4.0',
+      copyright: '2026 Park-Core contributors',
+    });
     expect(json.scenes).toHaveLength(1);
     expect(json.nodes.length).toBeGreaterThan(0);
     expect(json.meshes.length).toBeGreaterThan(0);
@@ -66,7 +70,19 @@ describe('phase 5 original GLB generator', () => {
       sum + mesh.primitives.reduce((part, primitive) =>
         part + json.accessors[primitive.indices].count / 3, 0), 0);
     expect(triangles).toBeGreaterThan(0);
-    expect(triangles).toBeLessThanOrEqual(assetId === 'sedan' || assetId === 'cuv' ? 50_000 : 150_000);
+    expect(triangles).toBeLessThanOrEqual(assetId === 'sedan' || assetId === 'cuv' ? 10_000 : 30_000);
+  });
+
+  it('keeps every selected pair below the five MB payload budget', () => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-payload-'));
+    temporaryRoots.push(root);
+    generate(root);
+    for (const vehicle of ['sedan', 'cuv']) {
+      for (const environment of ['roadside', 'garage']) {
+        expect(readFileSync(assetPath(root, vehicle)).length +
+          readFileSync(assetPath(root, environment)).length).toBeLessThanOrEqual(5_000_000);
+      }
+    }
   });
 
   it.each(['sedan', 'cuv'])('includes named vehicle nodes and dimensions for %s', (assetId) => {

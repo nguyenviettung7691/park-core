@@ -10,9 +10,11 @@ Park-Core is a browser-based 3D parking simulator prototype for practicing
 low-speed maneuvers and spatial awareness. Its learner-facing interface is in
 Vietnamese.
 
-![Illustrated Vietnamese introduction explaining the parking goal](docs/images/phase-7/onboarding.png)
+![Current Park-Core lesson and vehicle selection screen](docs/images/phase-8/app-menu.png)
 
-*A skippable, replayable introduction teaches the goal before the first drive.*
+![Ivory CUV with original garage artwork in the actual chase view](docs/images/phase-8/app-driving.png)
+
+[Original asset pictures, measurements and licensing](docs/phase-8-asset-catalog.md).
 
 ## Features & Modules
 
@@ -20,8 +22,9 @@ Vietnamese.
   parking evaluation, attempt recaps, and success-only stage progression.
 - **Tutorial-first interface:** Illustrated lesson goals, a stable driving
   coach, paused settings, and constructive recaps with expandable metrics.
-- **Free drive:** A separate sandbox with Sedan and CUV prototypes in roadside
-  and garage environments.
+- **Vehicles and scenery:** Distinct original Sedan/CUV artwork, cockpits,
+  roadside and garage environments, and visible parked lesson vehicles.
+  Free drive remains a separate garage sandbox.
 - **Driving views:** Driver and chase cameras, mirrors, an overhead view, and
   trajectory guidance.
 - **Input:** Keyboard controls and calibrated Gamepad API / simulation-wheel
@@ -41,10 +44,12 @@ Vietnamese.
 
 ## Learning Experience
 
-![Running Stage 1 with a compact task panel, separate instruments and proximity warnings](docs/images/phase-7/lesson-hud.png)
+![Illustrated Vietnamese introduction explaining the parking goal](docs/images/phase-7/onboarding.png)
 
-*An actual Stage 1 drive. Chase and overhead views were explicitly enabled;
-settings stay out of the driving HUD.*
+*A skippable, replayable introduction teaches the goal before the first drive.
+The updated Stage 1 capture above shows original CUVs and garage artwork;
+chase and overhead views were explicitly enabled. Settings stay out of the
+driving HUD.*
 
 ![Completed Stage 1 recap with a clear next action and optional detailed metrics](docs/images/phase-7/lesson-recap.png)
 
@@ -132,12 +137,18 @@ for qualified instruction or supervised real-world practice.
 - [Detailed design](docs/detail-design.md)
 - [Implementation roadmap and phase documents](docs/implementation-plan.md)
 - [Phase 3 physics measurements](docs/phase-3-measurements.md)
-- [Prototype asset pipeline and provenance](docs/asset-pipeline.md)
+- [Asset pipeline and provenance](docs/asset-pipeline.md)
+- [Phase 8 illustrated asset catalog](docs/phase-8-asset-catalog.md)
 - [Phase 7 UI/UX design and verification](docs/phase-7-ui-ux-improve.md)
 - [Production-readiness change history](PRODUCTION-READINESS-REVIEW.md)
 
 ## License
 
-Project-owned source, original prototype assets, and documentation are
-available under the [MIT License](LICENSE). Third-party dependencies and tools
-remain under their respective licenses.
+Application code, functional tooling and documentation are
+[MIT-licensed](LICENSE). New Phase 8 3D artwork, its
+[creative source definitions](tools/asset-designs/LICENSE) and
+[artwork images](docs/images/phase-8/LICENSE) use
+[CC BY-NC 4.0](public/assets/LICENSE): free noncommercial sharing/adaptation
+with attribution, not commercial use. The artwork is source-available, not
+OSI-open-source. Earlier MIT grants remain valid; third-party dependencies
+and tools retain their own licenses.

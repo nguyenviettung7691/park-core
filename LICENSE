@@ -1,5 +1,12 @@
 MIT License
 
+Scope: application code, functional tooling and documentation, except
+new Phase 8 artwork in public/assets, creative source definitions in
+tools/asset-designs, and artwork-focused images in docs/images/phase-8.
+Those are CC BY-NC 4.0; see their accompanying LICENSE notices.
+This scope clarification does not revoke MIT permissions granted for
+earlier versions of any files.
+
 Copyright (c) 2026 Park-Core contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

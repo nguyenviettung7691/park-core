@@ -1,4 +1,5 @@
-import { BufferGeometry, Mesh } from 'three';
+import { Box3, BufferGeometry, Mesh, Raycaster, Vector3 } from 'three';
+import { profiles } from '../vehicle/profiles.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildGlb } from '../../tools/generate-assets.mjs';
 import { AssetLoadError, loadSceneAssets } from './assets.ts';
@@ -64,6 +65,117 @@ function disposalEvents(assets) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('phase 5 scene asset loading', () => {
+  it.each(['sedan', 'cuv'])('keeps %s forward cockpit sightlines open in the real exported shell', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const visibleMeshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) visibleMeshes.push(node); });
+      for (const x of [0, -0.35, 0.35]) {
+        const ray = new Raycaster(new Vector3(...profiles[id].driverEyeLocalM),
+          new Vector3(x, 0, -1).normalize(), 0.1, 3);
+        ray.layers.enable(1);
+        expect(ray.intersectObjects(visibleMeshes, false).map((hit) => hit.object.name)).toEqual([]);
+      }
+      expect(assets.vehicle.getObjectByName('Exterior')).toBeTruthy();
+      const bounds = new Box3().setFromObject(assets.vehicle.getObjectByName('Body'));
+      expect(bounds.max.y + profiles[id].centerOfMassHeightM).toBeCloseTo(profiles[id].bodySizeM[1], 4);
+      const hood = new Box3().setFromObject(assets.vehicle.getObjectByName('Hood'));
+      expect(hood.max.y).toBeLessThan(profiles[id].driverEyeLocalM[1]);
+      const down = new Raycaster(new Vector3(...profiles[id].driverEyeLocalM),
+        new Vector3(0, -0.35, -1).normalize(), 0.1, 2);
+      down.layers.enable(1);
+      expect(down.intersectObjects(visibleMeshes, false).map((hit) => hit.object.name)).toContain('SteeringWheel');
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('exports usable %s mirror UVs and outward-only window glazing', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      for (const name of ['Rear', 'Left', 'Right']) {
+        const surface = assets.vehicle.getObjectByName(`MirrorSurface${name}`);
+        const uv = surface.geometry.getAttribute('uv');
+        expect(uv, `${name} mirror needs texture coordinates`).toBeDefined();
+        expect(uv.count).toBe(surface.geometry.getAttribute('position').count);
+      }
+      assets.vehicle.updateMatrixWorld(true);
+      const ray = new Raycaster(new Vector3(0.3, 1.18 - profiles[id].centerOfMassHeightM, -4),
+        new Vector3(0, 0, 1), 0.1, 5);
+      ray.layers.enable(1);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      expect(ray.intersectObjects(meshes, false)[0]?.object.name).toBe('ExteriorWindowFaces');
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('encloses %s cockpit controls and rearview display behind the windshield', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      for (const name of ['Dashboard', 'SteeringWheel', 'MirrorSurfaceRear', 'MirrorHousingRear']) {
+        const bounds = new Box3().setFromObject(assets.vehicle.getObjectByName(name));
+        const point = bounds.getCenter(new Vector3());
+        point.y = bounds.max.y;
+        const ray = new Raycaster(new Vector3(point.x, point.y, -4), new Vector3(0, 0, 1));
+        ray.layers.enable(1);
+        expect(ray.intersectObjects(meshes, false)[0]?.object.name, name).toBe('ExteriorWindowFaces');
+      }
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('keeps both %s side-mirror faces visible from the fixed driver eye', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      const eye = new Vector3(...profiles[id].driverEyeLocalM);
+      for (const side of ['Left', 'Right']) {
+        const surface = assets.vehicle.getObjectByName(`MirrorSurface${side}`);
+        surface.geometry.computeBoundingBox();
+        const size = surface.geometry.boundingBox.getSize(new Vector3());
+        for (let x = -4; x <= 4; x++) {
+          for (let y = -4; y <= 4; y++) {
+            const point = new Vector3(x * size.x / 10, y * size.y / 10, 0).applyMatrix4(surface.matrixWorld);
+            const ray = new Raycaster(eye, point.clone().sub(eye).normalize(), 0, eye.distanceTo(point) + 0.001);
+            ray.layers.enable(1);
+            expect(ray.intersectObjects(meshes, false)[0]?.object.name, `${side} sample ${x},${y}`)
+              .toBe(surface.name);
+          }
+        }
+      }
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['garage', 'roadside'])('keeps %s details on the appropriate camera layers', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets(id, 'sedan', new AbortController().signal);
+    try {
+      if (id === 'garage') {
+        expect(assets.environment.getObjectByName('GarageWallDetails')).toBeTruthy();
+        const fixtures = assets.environment.getObjectByName('CeilingFixtures');
+        expect(fixtures).toBeTruthy();
+        assets.environment.getObjectByName('Ceiling').traverse((node) => {
+          expect(node.layers.isEnabled(2)).toBe(true);
+          expect(node.layers.isEnabled(0)).toBe(false);
+        });
+      } else {
+        expect(assets.environment.getObjectByName('RoadSurfaceDetails')).toBeTruthy();
+        expect(assets.environment.getObjectByName('FenceDetails')).toBeTruthy();
+      }
+      for (const name of ['Ground', 'WallsAndCurbs']) {
+        assets.environment.getObjectByName(name).traverse((node) =>
+          expect(node.layers.isEnabled(0)).toBe(true));
+      }
+    } finally { assets.dispose(); }
+  });
+
   it('loads only the selected vehicle/environment pair and disposes resources once', async () => {
     const calls = mockedFetch();
     const progress = [];

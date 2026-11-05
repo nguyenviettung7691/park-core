@@ -12,6 +12,13 @@
 
 **Status:** Approved by the project owner on 2026-11-02. Task 1 (technical-design Phase 2) was implemented with Native execution on 2026-11-03: 46 unit/DOM tests, typecheck, build and six Chromium/Firefox tests passed, then merged locally with owner approval. Tasks 2-3 (technical Phase 3) are implemented and merged into local `main` with owner approval: 167 unit/DOM/physics tests, typecheck/build and 12 Chromium/Firefox tests passed. Final independent review and its verified correction are complete; merged-tree tests, typecheck and build passed. Nothing pushed. Phase 4 prototype code and software gates (Tasks 4-5) are complete in the current branch: 221 unit/DOM tests, typecheck, build and 22 Chromium/Firefox browser tests passed. Phase 5 assets and progression foundation are implemented on the isolated `phase-5-assets-progression` branch; see [Phase 5 detail](phase-5-detail-design.md), [Phase 5 plan](phase-5-implementation-plan.md), and [asset measurements](asset-pipeline.md). Phase 6 implementation and software gates are merged into local `main` as `1f372bd` after owner approval; no push occurred. See [Phase 6 detail](phase-6-detail-design.md) and [Phase 6 plan](phase-6-implementation-plan.md). Runs to date used Node v24.13.1, below the declared v24.15.0 minimum; Firefox viewport bounds used fresh contexts because live `page.setViewportSize()` hangs. Labeled mirror landmarks, garage-wall occlusion, supported-Node, real wheel, reference-hardware, route and instructor validation remain pending.
 
+Phase 8 original artwork is implemented separately from the historical phases
+above; see the [approved design](superpowers/specs/2026-11-05-phase-8-3d-assets-design.md),
+[execution plan](superpowers/plans/2026-11-05-phase-8-3d-assets.md) and
+[illustrated catalog](phase-8-asset-catalog.md). It preserves vehicle physics,
+lesson coordinates and progression. Reference-hardware, supported-Node and
+training-readiness validation remain separate from software acceptance.
+
 ## Global Constraints
 
 - Learner-facing instructions and controls are in Vietnamese; technical documentation and code identifiers are in English.

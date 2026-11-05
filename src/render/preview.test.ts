@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as CANNON from 'cannon-es';
-import { BufferGeometry, Color, MeshBasicMaterial, PerspectiveCamera, Vector4 } from 'three';
+import { BufferGeometry, Color, Group, MeshBasicMaterial, PerspectiveCamera, Vector4 } from 'three';
 import * as clockModule from '../clock';
 import { collidersForEnvironment, createWorld } from '../world/colliders';
 import { profiles } from '../vehicle/profiles';
@@ -35,7 +35,14 @@ function options() {
   const sceneAssets = buildPrototypeScene(
     profiles.sedan, collidersForEnvironment('garage'),
   ).assets;
-  for (const wheel of sceneAssets.wheelNodes) sceneAssets.vehicle.add(wheel);
+  sceneAssets.vehicle.getObjectByName('chassis')!.name = 'Exterior';
+  const markings = new Group();
+  markings.name = 'ParkingMarkings';
+  sceneAssets.environment.add(markings);
+  sceneAssets.wheelNodes.forEach((wheel, index) => {
+    wheel.name = ['WheelFL', 'WheelFR', 'WheelRL', 'WheelRR'][index]!;
+    sceneAssets.vehicle.add(wheel);
+  });
   return {
     environmentId: 'garage' as const, vehicleId: 'sedan' as const,
     sceneAssets, source: 'keyboard' as const, gamepadIndex: null,
@@ -416,6 +423,20 @@ describe('preview lifecycle', () => {
     expect(body.position.x).toBeCloseTo(scenario.spawnByVehicle.sedan.positionM[0], 5);
     expect(body.position.z).toBeCloseTo(scenario.spawnByVehicle.sedan.positionM[2], 5);
 
+    p.dispose();
+  });
+
+  it.each(['sandbox', 'lesson'] as const)('keeps only appropriate bay markings in %s', (kind) => {
+    const f = fixture();
+    const config = options();
+    const p = startPreview(f.canvas, f.container, f.events, config, f.deps,
+      kind === 'lesson' ? { kind, scenario: scenarios[1] } : { kind });
+    expect(config.sceneAssets.environment.getObjectByName('ParkingMarkings')!.visible).toBe(kind === 'sandbox');
+    const scene = config.sceneAssets.vehicle.parent!;
+    if (kind === 'lesson') {
+      expect(scene.getObjectByName('lesson-target')!.visible).toBe(true);
+      expect(scene.getObjectByName('lesson-current-step')!.visible).toBe(true);
+    }
     p.dispose();
   });
 

@@ -45,10 +45,10 @@ The simulator restricts the drivetrain to automatic transmissions (P, R, N, D), 
 
 ## 5. Environments & Progression
 
-The product target uses static lighting and five sequential parking lessons. Phase 5 delivered the asset-loading and progression foundation: four original prototype GLBs, validated asynchronous loading, versioned local records, and a stage selector. Phase 6 adds the five lesson runtimes and measured outcomes: Stage 1 is the Garage forward-bay lesson, and only confirmed success unlocks the next stage. `Lái tự do` retains the separate Garage sandbox without lesson completion. These prototype assets do not claim production art, image-based light bakes, dynamically driveable routes, or validated training readiness.
+The product target uses static lighting and five sequential parking lessons. Phase 5 delivered the asset-loading and progression foundation: four original prototype GLBs, validated asynchronous loading, versioned local records, and a stage selector. Phase 6 adds the five lesson runtimes and measured outcomes: Stage 1 is the Garage forward-bay lesson, and only confirmed success unlocks the next stage. `Lái tự do` retains the separate Garage sandbox without lesson completion. [Phase 8](phase-8-asset-catalog.md) replaces the blank artwork with original shaped vehicles, cockpits, environments and visible parked lesson cars. This does not claim production art, image-based light bakes, dynamically driveable routes, or validated training readiness.
 
 * **Environment 1: Urban Roadside.** Static daylight. Focuses on parallel parking between low-poly vehicles and navigating standard curbs.
-* **Environment 2: Underground Garage.** Baked ambient occlusion and point lights. Focuses on reverse-perpendicular parking, tight concrete pillars, and spatial alignment using the 360-degree camera.
+* **Environment 2: Underground Garage.** Static unlit concrete artwork with fixed vertex-color shading; no image bake or new lights. Focuses on reverse-perpendicular parking, tight concrete pillars, and spatial alignment using the 360-degree camera.
 * **Failure State:** In lessons, collision and other failure boundaries stop the attempt and show its recap; Retry starts a fresh attempt. Sandbox contact stops driving until Reset or Menu.
 
 **Delivery:** The prototype is a static Vite build (`dist`) hosted at the root of `https://park-core.nguyenviettung.id.vn/` through GitHub Pages and Actions. Pull requests and `main` pushes are validated (unit, typecheck, build, Chromium browser tests and a production-preview smoke test of built JS/CSS/GLBs); only a passing `main` run deploys, with manual reruns. Firefox automated coverage is excluded by owner decision (2026-11-05), not a timing fix or compatibility certification. Setup, domain/DNS/HTTPS and recovery steps are in the README. Live availability remains unverified until the owner enables Pages and a deployment is observed.
@@ -109,7 +109,7 @@ Here is the detailed task breakdown mapped to the optimal AI model tiers.
 **Phase 5: Assets & Progression Foundation — Implemented**
 
 * **Delivered:** Original deterministic Sedan, CUV, Roadside and Garage GLBs; named anchor/dimension validation; explicit collider metadata; cancellable selected-pair loading and disposal; versioned progress/settings/calibration storage; contiguous stage locks; Stage 1 Garage sandbox.
-* **Asset fidelity:** These are small low-poly vertex-color prototypes, not production vehicles or image-based light bakes. See [the Phase 5 detail design](phase-5-detail-design.md), [implementation plan](phase-5-implementation-plan.md), and [asset pipeline measurements](asset-pipeline.md).
+* **Asset fidelity:** Phase 8 replaces the original box prototypes with shaped, original vertex-color vehicles and environments. See the [illustrated asset catalog](phase-8-asset-catalog.md) and [current pipeline](asset-pipeline.md). These remain generic game artwork, not validated manufacturer models or image-based light bakes.
 * **Validation status:** Software checks are recorded in the Phase 5 implementation plan. Mirror sightlines, environment clearance, route feasibility, real-wheel behavior, supported-Node execution, reference-PC performance, production art and instructor review remain pending.
 
 **Phase 6: Lessons & Parking Evaluation — Implemented and Merged Locally**
