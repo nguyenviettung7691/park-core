@@ -75,6 +75,7 @@ describe('phase 5 scene asset loading', () => {
       for (const x of [0, -0.35, 0.35]) {
         const ray = new Raycaster(new Vector3(...profiles[id].driverEyeLocalM),
           new Vector3(x, 0, -1).normalize(), 0.1, 3);
+        ray.layers.enable(1);
         expect(ray.intersectObjects(visibleMeshes, false).map((hit) => hit.object.name)).toEqual([]);
       }
       expect(assets.vehicle.getObjectByName('Exterior')).toBeTruthy();
@@ -82,6 +83,48 @@ describe('phase 5 scene asset loading', () => {
       expect(bounds.max.y + profiles[id].centerOfMassHeightM).toBeCloseTo(profiles[id].bodySizeM[1], 4);
       const hood = new Box3().setFromObject(assets.vehicle.getObjectByName('Hood'));
       expect(hood.max.y).toBeLessThan(profiles[id].driverEyeLocalM[1]);
+      const down = new Raycaster(new Vector3(...profiles[id].driverEyeLocalM),
+        new Vector3(0, -0.35, -1).normalize(), 0.1, 2);
+      down.layers.enable(1);
+      expect(down.intersectObjects(visibleMeshes, false).map((hit) => hit.object.name)).toContain('SteeringWheel');
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('exports usable %s mirror UVs and outward-only window glazing', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      for (const name of ['Rear', 'Left', 'Right']) {
+        const surface = assets.vehicle.getObjectByName(`MirrorSurface${name}`);
+        const uv = surface.geometry.getAttribute('uv');
+        expect(uv, `${name} mirror needs texture coordinates`).toBeDefined();
+        expect(uv.count).toBe(surface.geometry.getAttribute('position').count);
+      }
+      assets.vehicle.updateMatrixWorld(true);
+      const ray = new Raycaster(new Vector3(0.3, 1.18 - profiles[id].centerOfMassHeightM, -4),
+        new Vector3(0, 0, 1), 0.1, 5);
+      ray.layers.enable(1);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      expect(ray.intersectObjects(meshes, false)[0]?.object.name).toBe('ExteriorWindowFaces');
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('encloses %s cockpit controls and rearview display behind the windshield', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      for (const name of ['Dashboard', 'SteeringWheel', 'MirrorSurfaceRear', 'MirrorHousingRear']) {
+        const bounds = new Box3().setFromObject(assets.vehicle.getObjectByName(name));
+        const point = bounds.getCenter(new Vector3());
+        point.y = bounds.max.y;
+        const ray = new Raycaster(new Vector3(point.x, point.y, -4), new Vector3(0, 0, 1));
+        ray.layers.enable(1);
+        expect(ray.intersectObjects(meshes, false)[0]?.object.name, name).toBe('ExteriorWindowFaces');
+      }
     } finally { assets.dispose(); }
   });
 

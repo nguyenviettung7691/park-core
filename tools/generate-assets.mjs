@@ -66,7 +66,7 @@ function createGltf(assetId, dimensionsM, origin) {
 
   function addFloatAccessor(values, type, target, withBounds = false) {
     const view = pushBinary(floatBuffer(values), target);
-    const count = values.length / (type === 'VEC3' ? 3 : 1);
+    const count = values.length / (type === 'VEC3' ? 3 : type === 'VEC2' ? 2 : 1);
     const accessor = { bufferView: view, componentType: 5126, count, type };
     if (withBounds) {
       const triples = Array.from({ length: count }, (_, index) =>
@@ -109,12 +109,14 @@ function createGltf(assetId, dimensionsM, origin) {
     materials.push({
       name: `${name} vertex-color`,
       pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1 },
-      doubleSided: true,
+      doubleSided: !geometry.singleSided,
       extensions: { KHR_materials_unlit: {} },
     });
     const meshIndex = meshes.length;
+    const attributes = { POSITION: positionAccessor, NORMAL: normalAccessor, COLOR_0: colorAccessor };
+    if (geometry.uvs) attributes.TEXCOORD_0 = addFloatAccessor(geometry.uvs, 'VEC2', 34962);
     meshes.push({ name, primitives: [{
-      attributes: { POSITION: positionAccessor, NORMAL: normalAccessor, COLOR_0: colorAccessor },
+      attributes,
       indices: indexAccessor, material: materialIndex, mode: 4,
     }] });
     return addNode(name, parent, { mesh: meshIndex, translation });

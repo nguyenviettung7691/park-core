@@ -11,8 +11,9 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   const half = length / 2, belt = cuv ? 0.99 : 0.83;
   const frontZ = -(1 - data.frontWeightFraction) * data.wheelbaseM;
   const rearZ = data.frontWeightFraction * data.wheelbaseM;
-  const roofFront = -0.48, roofRear = cuv ? 1.15 : 0.62;
-  const frontFoot = -1.27, rearFoot = cuv ? half - 0.2 : 1.37;
+  const eyeZ = frontZ + 0.25;
+  const roofFront = eyeZ - 0.25, roofRear = cuv ? 1.15 : 0.62;
+  const frontFoot = eyeZ - 0.9, rearFoot = cuv ? half - 0.2 : 1.37;
   const exterior = addNode('Exterior', root);
   const part = (size, center, color, rotation) =>
     transformGeometry(boxGeometry(size, color), center, rotation);
@@ -27,12 +28,14 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   const lowerAt = (z) => Math.max(data.clearanceM, ...[frontZ, rearZ].map((axle) =>
     Math.abs(z - axle) <= archRadius
       ? data.tireRadiusM + Math.sqrt(Math.max(0, archRadius ** 2 - (z - axle) ** 2)) : 0));
+  const upperAt = (z) => z < frontFoot
+    ? belt - 0.15 + Math.min(1, (z + half) / 0.5) * 0.11 : belt;
   const faces = [];
   for (const side of [-1, 1]) {
     for (let i = 0; i < zValues.length - 1; i++) {
       const a = zValues[i], b = zValues[i + 1];
       faces.push({ color: paint, points: [[side * widthAt(a), lowerAt(a), a],
-        [side * widthAt(b), lowerAt(b), b], [side * widthAt(b), belt, b], [side * widthAt(a), belt, a]] });
+        [side * widthAt(b), lowerAt(b), b], [side * widthAt(b), upperAt(b), b], [side * widthAt(a), upperAt(a), a]] });
     }
   }
   faces.push({ color: palette.trim, points: [[-0.7, data.clearanceM, -half], [0.7, data.clearanceM, -half],
@@ -85,6 +88,12 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
       [s * 0.69, roofY - 0.04, roofRear], [s * 0.69, roofY - 0.04, roofFront]], color: palette.glass })),
   ];
   addMesh('StaticWindowFaces', glazing, facesGeometry(glassFaces), palette.glass);
+  const exteriorGlass = addNode('ExteriorGlazing', body);
+  const outerGlass = facesGeometry(glassFaces.map((face, index) => ({
+    ...face, points: index === 0 || index === 3 ? [...face.points].reverse() : face.points,
+  })));
+  outerGlass.singleSided = true;
+  addMesh('ExteriorWindowFaces', exteriorGlass, outerGlass, palette.glass);
   const rearDeck = cuv
     ? part([1.66, 0.1, half - rearFoot], [0, belt - 0.04, (half + rearFoot) / 2], paint)
     : part([1.72, 0.09, half - rearFoot], [0, belt - 0.07, (half + rearFoot) / 2], paint);
@@ -101,10 +110,11 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     if (cuv) {
       for (const axle of [frontZ, rearZ]) {
         for (let i = 0; i < 12; i++) {
-          const angle = (i + 0.5) * Math.PI / 12;
-          detail.push(part([0.026, 0.035, archRadius * Math.PI / 12],
-            [side * 0.901, data.tireRadiusM + archRadius * Math.sin(angle), axle + archRadius * Math.cos(angle)],
-            palette.trim, [angle - Math.PI / 2, 0, 0]));
+          const a = i * Math.PI / 12, b = (i + 1) * Math.PI / 12;
+          const point = (angle, radius) => [side * 0.903,
+            data.tireRadiusM + radius * Math.sin(angle), axle + radius * Math.cos(angle)];
+          detail.push(facesGeometry([{ color: palette.trim, points: [point(a, archRadius - 0.02),
+            point(b, archRadius - 0.02), point(b, archRadius + 0.02), point(a, archRadius + 0.02)] }]));
         }
       }
     }
@@ -116,7 +126,7 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   }
   addMesh('ExteriorDetails', body, mergeGeometry(detail), paint);
   const cockpit = addNode('Cockpit', root, { translation: [0, -data.comHeightM, 0] });
-  box('Dashboard', cockpit, [0, belt - 0.06, frontFoot + 0.17], [1.46, 0.16, 0.26], palette.trim);
+  box('Dashboard', cockpit, [0, belt - 0.06, eyeZ - 0.52], [1.46, 0.16, 0.26], palette.trim);
   const cabinParts = [part([1.42, 0.07, roofRear - roofFront], [0, roofY - 0.075, (roofRear + roofFront) / 2], palette.trim)];
   for (const x of [-0.36, 0.36]) {
     cabinParts.push(part([0.49, 0.12, 0.58], [x, 0.43, 0.14], [0.19, 0.17, 0.2]));
@@ -125,11 +135,16 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   }
   cabinParts.push(part([1.35, 0.42, 0.16], [0, 0.65, roofRear - 0.05], palette.trim));
   cabinParts.push(part([0.19, 0.28, 0.64], [0, 0.44, -0.2], palette.trim));
-  cabinParts.push(part([0.3, 0.09, 0.025], [-0.36, belt + 0.02, frontFoot + 0.31], [0.08, 0.08, 0.1]));
+  cabinParts.push(part([0.3, 0.09, 0.025], [-0.36, belt + 0.02, eyeZ - 0.4], [0.08, 0.08, 0.1]));
+  for (const x of [-0.43, -0.29]) {
+    cabinParts.push(transformGeometry(torusGeometry(0.035, 0.004, [0.75, 0.72, 0.69], 12, 4),
+      [x, belt + 0.02, eyeZ - 0.38]));
+    cabinParts.push(part([0.003, 0.025, 0.006], [x, belt + 0.025, eyeZ - 0.375], palette.marking));
+  }
   addMesh('SeatsAndInterior', cockpit, mergeGeometry(cabinParts), palette.trim);
   addMesh('SteeringWheel', cockpit, mergeGeometry([torusGeometry(0.17, 0.024, palette.trim),
     boxGeometry([0.29, 0.035, 0.045], palette.metal), boxGeometry([0.075, 0.09, 0.06], palette.trim)]),
-  palette.trim, [-0.36, belt + 0.015, frontFoot + 0.5]);
+  palette.trim, [-0.36, belt + 0.015, eyeZ - 0.35]);
 
   const wheel = mergeGeometry([cylinderXGeometry(data.tireRadiusM, 0.19, palette.tire, 24),
     cylinderXGeometry(data.tireRadiusM * 0.86, 0.205, [0.105, 0.1, 0.11], 24),
@@ -142,7 +157,7 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     ['WheelRL', -1, rearZ], ['WheelRR', 1, rearZ]]) {
     addMesh(name, root, wheel, palette.tire, [side * data.trackM / 2, data.tireRadiusM - data.comHeightM, z]);
   }
-  const eye = [-0.36, data.eyeHeightM - data.comHeightM, frontZ + 0.25];
+  const eye = [-0.36, data.eyeHeightM - data.comHeightM, eyeZ];
   addNode('DriverEye', root, { translation: eye });
   const yawQuaternion = (yaw) => [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)];
   const mirrors = [['Rear', [0, eye[1] + 0.12, eye[2] - 0.75], Math.PI],
@@ -151,9 +166,17 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
       (side < 0 ? 105 : -105) * Math.PI / 180])];
   for (const [name, position, yaw] of mirrors) {
     addNode(`Mirror${name}`, root, { translation: position, rotation: yawQuaternion(yaw) });
-    const size = name === 'Rear' ? [0.24, 0.1, 0.025] : [0.18, 0.1, 0.035];
-    box(`MirrorSurface${name}`, root, position, size, palette.metal);
+    const display = name === 'Rear'
+      ? [-0.25, position[1] - 0.075, position[2] + 0.52] : position;
+    const size = name === 'Rear' ? [0.12, 0.05, 0.025] : [0.18, 0.1, 0.035];
+    const surface = {
+      positions: [-size[0] / 2, -size[1] / 2, 0, size[0] / 2, -size[1] / 2, 0,
+        size[0] / 2, size[1] / 2, 0, -size[0] / 2, size[1] / 2, 0],
+      normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+      colors: Array(12).fill(1), indices: [0, 1, 2, 0, 2, 3], uvs: [0, 0, 1, 0, 1, 1, 0, 1],
+    };
+    addMesh(`MirrorSurface${name}`, root, surface, [1, 1, 1], display);
     addMesh(`MirrorHousing${name}`, exterior, boxGeometry(size.map((v) => v + 0.025), palette.trim),
-      palette.trim, [position[0], position[1], position[2] - 0.04]);
+      palette.trim, [display[0], display[1], display[2] - 0.04]);
   }
 }

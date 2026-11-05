@@ -32,6 +32,8 @@ export function createParkedVehicle(template: Object3D, collider: ColliderBox): 
   }
   const glazing = shape.getObjectByName('ParkedGlazing');
   if (glazing) glazing.visible = true;
+  const exteriorGlazing = shape.getObjectByName('ExteriorGlazing');
+  if (exteriorGlazing) exteriorGlazing.visible = false;
   const bounds = new Box3().setFromObject(shape);
   const size = bounds.getSize(new Vector3());
   if ([size.x, size.y, size.z].some((value) => !Number.isFinite(value) || value <= 0)) {
