@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { mountCalibration, mountScreen } from './screens';
 import { mountHud } from './hud';
+import { mountViewSettings } from './view-settings';
 import type { ScreenContext, ShellView } from '../runtime-types';
 import type {
   AttemptSummary, CompletedAttemptRecord, SensorSnapshot, VehicleTelemetry,
@@ -282,9 +283,9 @@ it('qualifies green and no-hit sensor readings and clears the note without a sna
   hud.updateSensors(snapshot);
   expect(front.textContent).toContain('PHÁT HIỆN XA');
   expect(front.textContent).not.toContain('XANH — an toàn');
-  expect(front.textContent).toContain('Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.');
+  expect(front.textContent).toContain('Cảm biến có thể bỏ sót vật cản.');
   expect(rear.textContent).toContain('Không phát hiện bằng cảm biến trong phạm vi 2,5 m');
-  expect(rear.textContent).toContain('Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.');
+  expect(rear.textContent).toContain('Cảm biến có thể bỏ sót vật cản.');
 
   const guidance = front.querySelector('.sensor-guidance');
   expect(guidance).not.toBeNull();
@@ -297,7 +298,7 @@ it('qualifies green and no-hit sensor readings and clears the note without a sna
   });
   expect(front.querySelector('.sensor-guidance')).toBe(guidance);
   expect(front.textContent).toContain('0,40 m');
-  expect(front.textContent).toContain('Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.');
+  expect(front.textContent).toContain('Cảm biến có thể bỏ sót vật cản.');
 
   hud.updateSensors(null);
   expect(front.hidden).toBe(true);
@@ -333,15 +334,12 @@ it('shows only real telemetry and sends semantic driving actions from the gamepa
   hud.dispose();
 });
 
-it('provides labeled view settings and emits settings and recenter actions', () => {
+it('keeps moved settings labeled and preserves edits across view and audio tabs', () => {
   const element = root();
   const action = vi.fn();
-  const hud = mountHud(element, action);
-  hud.updateSettings(context.settings);
+  const unmountView = mountViewSettings(element, context.settings, 'view', action);
   const controls = element.querySelector<HTMLElement>('#view-controls')!;
-  expect(controls.hidden).toBe(true);
   expect(controls.getAttribute('role')).toBe('group');
-  hud.setSession('running');
   expect(controls.hidden).toBe(false);
 
   const mode = element.querySelector<HTMLSelectElement>('#camera-mode')!;
@@ -375,6 +373,11 @@ it('provides labeled view settings and emits settings and recenter actions', () 
     settings: { ...context.settings, cameraMode: 'chase', overhead: true, trajectory: true, driverFovDeg: 75 },
   });
 
+  element.querySelector<HTMLButtonElement>('#recenter-view')!.click();
+  expect(action).toHaveBeenLastCalledWith({ type: 'recenter-view' });
+  unmountView();
+  const unmountAudio = mountViewSettings(element, { ...context.settings, cameraMode: 'chase',
+    overhead: true, trajectory: true, driverFovDeg: 75 }, 'audio', action);
   const volume = element.querySelector<HTMLInputElement>('#volume')!;
   volume.value = '0.25';
   volume.dispatchEvent(new Event('change'));
@@ -392,11 +395,26 @@ it('provides labeled view settings and emits settings and recenter actions', () 
     settings: { ...context.settings, cameraMode: 'chase', overhead: true, trajectory: true,
       driverFovDeg: 75, volume: 0.25, muted: true },
   });
-  element.querySelector<HTMLButtonElement>('#recenter-view')!.click();
-  expect(action).toHaveBeenLastCalledWith({ type: 'recenter-view' });
+  unmountAudio();
+  expect(element.children.length).toBe(0);
+});
 
-  hud.setSession('closed');
-  expect(controls.hidden).toBe(true);
+it('updates a stable coach without stealing driving focus or showing running settings', () => {
+  const element = root();
+  const focus = document.createElement('canvas');
+  focus.tabIndex = 0;
+  element.append(focus);
+  const action = vi.fn();
+  const hud = mountHud(element, action);
+  focus.focus();
+  const coach = element.querySelector('#lesson-strip');
+  hud.setSession('running');
+  hud.updateLesson({ stageId: 1, stepIndex: 1, stepDwellS: 0, parkingDwellS: 0, acknowledgedStepIds: [] });
+  expect(element.querySelector('#lesson-strip')).toBe(coach);
+  expect(coach?.textContent).toContain(messages.lessonApproachForward);
+  expect(document.activeElement).toBe(focus);
+  expect(element.querySelector('#camera-mode')).toBeNull();
+  expect(action).not.toHaveBeenCalled();
   hud.dispose();
 });
 

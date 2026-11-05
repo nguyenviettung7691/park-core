@@ -22,6 +22,7 @@ import type { ColliderBox, RenderFrame, SceneAssets } from '../runtime-types';
 import { MIRROR_EXCLUDED_LAYER, OVERHEAD_EXCLUDED_LAYER } from '../runtime-types';
 import { sampleTrajectory, type TrajectorySample } from './trajectory';
 import { renderAuxiliaryPass, type RendererPort } from './auxiliary';
+import { getOverheadInset } from './layout';
 
 const MIRROR_INTERVAL_MS = 1000 / 15;
 const OVERHEAD_INTERVAL_MS = 1000 / 30;
@@ -456,7 +457,7 @@ export function createViews(
       chaseCamera.aspect = widthCss / heightCss;
       driverCamera.updateProjectionMatrix();
       chaseCamera.updateProjectionMatrix();
-      const insetCss = Math.min(320, Math.max(0, widthCss - 32), Math.max(0, heightCss - 32));
+      const { x: insetX, size: insetCss } = getOverheadInset(widthCss, heightCss);
       if (insetCss < 1) {
         insetViewport = [0, 0, 0, 0];
         return;
@@ -464,7 +465,7 @@ export function createViews(
       const insetPx = Math.round(insetCss * pixelRatio);
       const marginPx = Math.round(16 * pixelRatio);
       const bufferHeight = Math.round(heightCss * pixelRatio);
-      const x = Math.round((widthCss - insetCss - 16) * pixelRatio);
+      const x = Math.round(insetX * pixelRatio);
       const y = marginPx;
       insetViewport = [x, y, insetPx, insetPx];
     },

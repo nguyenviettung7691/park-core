@@ -63,16 +63,15 @@ body {
   inset: 0;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 32rem) minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   grid-template-areas:
-    'lesson lesson lesson'
-    '. front .'
-    '. status .'
-    '. rear .'
-    'telemetry view-controls driving-controls';
+    'lesson . .'
+    '. . .'
+    'front . rear'
+    'telemetry status driving-controls';
   gap: var(--space-1);
-  padding: var(--space-1);
+  padding: var(--space-2);
   pointer-events: none;
 }
 
@@ -103,6 +102,33 @@ body {
 
 #lesson-strip {
   grid-area: lesson;
+  align-self: start;
+  max-width: 24rem;
+  padding: 14px 18px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius);
+  background: var(--color-panel);
+  white-space: pre-line;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+#hud[data-overhead='true'] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--overhead-inset-size, 320px);
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  grid-template-areas: 'lesson . .' '. . .' 'front . .' 'rear . .' 'telemetry driving-controls .';
+}
+
+#hud[data-overhead='true'] #status-message {
+  position: absolute;
+  left: 16px;
+  top: 140px;
+  max-width: 24rem;
+}
+
+#hud[data-session='paused'] > :not(#status-message) {
+  visibility: hidden;
 }
 
 #proximity-front {
@@ -115,7 +141,8 @@ body {
 
 .proximity-warning {
   align-self: center;
-  justify-self: center;
+  justify-self: stretch;
+  max-width: 28rem;
   padding: var(--space-1);
   background: var(--color-panel);
   border: 1px solid var(--color-border);
@@ -126,7 +153,7 @@ body {
 
 .sensor-guidance {
   display: block;
-  font-size: inherit;
+  font-size: 0.75rem;
   font-weight: 400;
 }
 
@@ -159,20 +186,49 @@ body {
   background: var(--color-panel);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-telemetry='speed'] {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+[data-telemetry='gear'] {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-accent-light);
+  padding: 0 8px;
+  border: 1px solid var(--color-accent);
+  border-radius: 6px;
+}
+
+[data-telemetry='brake'] {
+  width: 4rem;
+  height: 10px;
+}
+
+meter::-webkit-meter-optimum-value {
+  background: var(--color-accent);
 }
 
 @media (max-width: 768px) {
-  #hud {
-    grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto;
+  #hud,
+  #hud[data-overhead='true'] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto auto auto;
     grid-template-areas:
-      'lesson lesson lesson'
-      '. front .'
-      '. status .'
-      '. rear .'
-      'telemetry telemetry telemetry'
-      'view-controls view-controls view-controls'
-      'driving-controls driving-controls driving-controls';
+      'lesson' '.' 'status' 'front' 'rear' 'telemetry' 'driving-controls';
   }
+  #hud[data-overhead='true'] { padding-bottom: calc(var(--overhead-inset-size, 320px) + 32px); }
+  #hud[data-overhead='true'] #status-message { position: static; }
+  #session-controls { top: auto; bottom: 8px; right: 8px; }
+  #session-controls button:not(:first-child) { display: none; }
 }
 
 @media (min-width: 769px) and (max-height: 800px) {
@@ -196,36 +252,36 @@ body {
 }
 
 #view-controls {
-  grid-area: view-controls;
-  align-self: end;
-  justify-self: center;
-  max-width: min(100%, 32rem);
-  padding: var(--space-1);
-  background: var(--color-panel);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  width: 100%;
 }
 
-.view-controls {
+.settings-controls {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-1);
   pointer-events: auto;
 }
 
-.view-controls label,
-.view-controls button,
-.view-controls select,
-.view-controls input {
+.settings-controls label,
+.settings-controls button,
+.settings-controls select,
+.settings-controls input {
   min-height: 44px;
 }
 
-.view-controls label {
+.settings-controls label {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
+  justify-content: space-between;
+}
+
+.settings-controls input[type='checkbox'] {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
 }
 
 #overhead-frame {
@@ -243,6 +299,7 @@ body {
   padding: var(--space-2);
   overflow-y: auto;
   pointer-events: none;
+  overscroll-behavior: contain;
 }
 
 #screen-layer:empty {

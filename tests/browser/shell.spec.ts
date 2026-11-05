@@ -1,5 +1,6 @@
 import { expect, test, type Browser } from '@playwright/test';
 import { enterLessonMenu } from '../ui-journey';
+import { vi } from '../../src/messages';
 
 async function checkFreshViewport(browser: Browser, url: string, width: number, height: number) {
   const context = await browser.newContext({ viewport: { width, height } });
@@ -34,24 +35,19 @@ test('menu, real rendering, resize, keyboard focus and repeated preview lifecycl
   await expect(page.locator('canvas')).toHaveCount(0);
   const select = page.getByLabel('Chọn xe');
   await select.selectOption('cuv');
-  await page.getByLabel('Nguồn điều khiển', { exact: true }).focus();
-  await page.keyboard.press('Tab');
-  await expect(page.locator('#start-stage')).toBeFocused();
+  await page.getByText(vi.fullControls, { exact: true }).focus();
   await page.keyboard.press('Tab');
   const open = page.getByRole('button', { name: 'Lái tự do', exact: true });
   await expect(open).toBeFocused();
   expect(await open.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Bản thử vật lý — chưa có bài học', exact: true })).toBeVisible();
   const canvas = page.locator('canvas#simulation');
   await expect(canvas).toBeVisible();
   await expect(page.locator('#telemetry')).toBeVisible();
-  await expect(page.locator('#view-controls')).toBeVisible();
+  await expect(page.locator('#view-controls')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => {
     const telemetry = document.querySelector('#telemetry')!.getBoundingClientRect();
-    const controls = document.querySelector('#view-controls')!.getBoundingClientRect();
-    return telemetry.width >= 200 && telemetry.top >= 0 && telemetry.bottom <= innerHeight &&
-      controls.top >= 0 && controls.bottom <= innerHeight;
+    return telemetry.width >= 200 && telemetry.top >= 0 && telemetry.bottom <= innerHeight;
   })).toBe(true);
   const screenshot = await canvas.screenshot();
   const colors = await page.evaluate(async (base64) => {
@@ -64,10 +60,7 @@ test('menu, real rendering, resize, keyboard focus and repeated preview lifecycl
     const context = surface.getContext('2d');
     if (!context) throw new Error('Screenshot decode context unavailable');
     context.drawImage(image, 0, 0);
-    const pixels = context.getImageData(
-      Math.floor(image.width * 0.4), Math.floor(image.height * 0.25),
-      Math.floor(image.width * 0.4), Math.floor(image.height * 0.35),
-    ).data;
+    const pixels = context.getImageData(0, 0, image.width, image.height).data;
     const distinct = new Set<number>();
     for (let i = 0; i < pixels.length; i += 4) {
       distinct.add((pixels[i] << 16) | (pixels[i + 1] << 8) | pixels[i + 2]);

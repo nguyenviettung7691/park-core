@@ -7,6 +7,7 @@ import type {
 } from '../runtime-types';
 import { scenarios } from '../lessons/scenarios';
 import { createParkingIllustration } from './illustrations';
+import { mountViewSettings } from './view-settings';
 export { mountCalibration } from './calibration';
 
 export interface InputSetup {
@@ -102,6 +103,7 @@ export function mountScreen(
   screen.dataset.screen = state.kind;
   if (preview === 'paused') screen.classList.add('preview-paused');
   const listeners = new AbortController();
+  let unmountSettings: (() => void) | undefined;
 
   function text(tag: 'h1' | 'h2' | 'p', value: string, parent: HTMLElement = screen) {
     const element = document.createElement(tag);
@@ -224,6 +226,9 @@ export function mountScreen(
   if (view?.overlay) {
     const overlay = view.overlay;
     screen.dataset.screen = overlay.kind;
+    screen.setAttribute('role', 'dialog');
+    screen.setAttribute('aria-modal', 'true');
+    screen.setAttribute('aria-label', overlay.kind === 'help' ? vi.help : vi.settingsTitle);
     text('h1', overlay.kind === 'help' ? vi.help : vi.settingsTitle);
     if (overlay.kind === 'help') {
       text('p', vi.controlsHelp);
@@ -238,11 +243,35 @@ export function mountScreen(
         button(vi.tutorialRecordConfirm, () => onAction({ type: 'confirm-onboarding-reset' }));
         button(vi.cancel, () => onAction({ type: 'cancel-onboarding-reset' }));
       } else button(vi.tutorialRecordReset, () => onAction({ type: 'request-onboarding-reset' }));
-    } else {
-      inputControls();
+    } else if (overlay.kind === 'settings') {
+      const tabs = document.createElement('nav');
+      tabs.className = 'action-row';
+      for (const [tab, label] of [['view', vi.viewTab], ['audio', vi.audioTab], ['input', vi.inputTab]] as const) {
+        const choice = button(label, () => onAction({ type: 'open-settings', tab }), tabs);
+        choice.setAttribute('aria-pressed', String(overlay.tab === tab));
+      }
+      screen.append(tabs);
+      if (overlay.tab === 'input') inputControls();
+      else unmountSettings = mountViewSettings(screen, context.settings, overlay.tab, onAction);
       persistenceNotices();
     }
     button(vi.tutorialBack, () => onAction({ type: 'close-overlay' }));
+    screen.addEventListener('keydown', (event) => {
+      if (event.code === 'Escape') {
+        event.preventDefault(); event.stopPropagation();
+        onAction({ type: 'close-overlay' });
+      } else if (event.key === 'Tab') {
+        const focusable = [...screen.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), summary',
+        )];
+        const first = focusable[0]; const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault(); last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); first?.focus();
+        }
+      }
+    }, { signal: listeners.signal });
   } else if (state.kind === 'loading') {
     text('h1', vi.appTitle);
     const progressState = view?.assetLoadProgress ?? null;
@@ -315,6 +344,7 @@ export function mountScreen(
   } else if (state.kind === 'paused') {
     text('h1', vi.pausedNotice);
     button(vi.resumePreview, () => onAction({ type: 'resume' }));
+    button(vi.settingsTitle, () => onAction({ type: 'open-settings', tab: 'view' }));
     button(vi.help, () => onAction({ type: 'open-help' }));
     inputControls();
     text('p', vi.controlsHelp);
@@ -359,7 +389,12 @@ export function mountScreen(
       }
     }
     screen.append(controls);
-    if (preview === 'paused') button(vi.help, () => onAction({ type: 'open-help' }));
+    if (preview === 'paused') {
+      button(vi.settingsTitle, () => onAction({ type: 'open-settings', tab: 'view' }));
+      button(vi.help, () => onAction({ type: 'open-help' }));
+      button(vi.resetPreview, () => onAction({ type: 'reset-preview' }));
+      button(vi.closePreview, () => onAction({ type: 'menu' }));
+    }
   } else if (state.kind === 'menu') {
     screen.classList.add('lesson-hub');
     let selectedStageId = context.selectedStageId;
@@ -447,6 +482,7 @@ export function mountScreen(
     freeDrive.disabled = input ? !input.ready : false;
     button(vi.openHistory, () => onAction({ type: 'open-history' }));
     button(vi.help, () => onAction({ type: 'open-help' }));
+    button(vi.settingsTitle, () => onAction({ type: 'open-settings', tab: 'view' }));
     text('p', vi.sandboxLabel).className = 'safety-note';
     text('p', vi.menuNotice).className = 'safety-note';
   }
@@ -460,6 +496,7 @@ export function mountScreen(
     (target ?? screen.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();
   }
   return () => {
+    unmountSettings?.();
     listeners.abort();
     screen.remove();
   };

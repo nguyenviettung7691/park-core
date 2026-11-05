@@ -167,6 +167,16 @@ it('retains corrupt tutorial data until confirmation and keeps its warning after
   app.dispose();
 });
 
+it('does not replace an unresolved audio warning with a routine shift notice', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  f.events.onNotice('audioUnavailable');
+  f.events.onNotice('gearRejected');
+  expect(f.root.querySelector('#status-message')?.textContent).toContain('Âm thanh cảnh báo không khả dụng');
+  app.dispose();
+});
+
 function appHistory(
   records: AttemptHistorySnapshot['records'] = [],
   appendStatus: 'persistent' | 'session-only' | 'reset-required' = 'persistent',
@@ -428,6 +438,8 @@ it('persists vehicle and setting changes through only their matching records', a
   expect(persistence.saveSettings).not.toHaveBeenCalled();
 
   await f.openPreview();
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
   const camera = f.root.querySelector<HTMLSelectElement>('#camera-mode')!;
   camera.value = 'chase';
   camera.dispatchEvent(new Event('change'));
@@ -697,7 +709,7 @@ it('keeps the selected vehicle when leaving the preview', async () => {
   select.value = 'cuv';
   select.dispatchEvent(new Event('change'));
   await f.openPreview();
-  expect(f.root.textContent).toContain('CUV');
+  expect(f.prototypes[0]).toMatchObject({ vehicleId: 'cuv' });
   f.click('Quay lại menu');
   expect(f.root.querySelector<HTMLSelectElement>('#vehicle')?.value).toBe('cuv');
   app.dispose();
@@ -888,6 +900,8 @@ it('passes initial settings and persists HUD changes through settings only', asy
       inputSource: 'keyboard', resolutionScale: 1,
     },
   });
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
   const mode = f.root.querySelector<HTMLSelectElement>('#camera-mode')!;
   mode.value = 'chase';
   mode.dispatchEvent(new Event('change'));
@@ -912,6 +926,7 @@ it('preserves the selected input source when later HUD settings change', async (
   const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
   source.value = 'gamepad';
   source.dispatchEvent(new Event('change'));
+  f.click('Cài đặt');
   const mode = f.root.querySelector<HTMLSelectElement>('#camera-mode')!;
   mode.value = 'chase';
   mode.dispatchEvent(new Event('change'));

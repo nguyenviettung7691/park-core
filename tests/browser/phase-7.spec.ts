@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { vi } from '../../src/messages';
-import { enterLessonMenu } from '../ui-journey';
+import { enterLessonMenu, openSettings, closeSettings } from '../ui-journey';
 
 test('first visit teaches the goal before driving and remains skippable and replayable', async ({ page }) => {
   await page.goto('/');
@@ -33,3 +33,59 @@ test('visual lesson goal remains a briefing until the learner explicitly starts'
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: vi.resumePreview, exact: true })).toBeVisible();
 });
+
+test('pause help and settings contain focus and never resume driving on close', async ({ page }) => {
+  await page.goto('/');
+  await enterLessonMenu(page);
+  await page.locator('#start-stage').click();
+  await page.getByRole('button', { name: vi.startDriving, exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Boolean(document.pointerLockElement))).toBe(true);
+  await expect(page.locator('#view-controls')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: vi.help, exact: true }).focus();
+  await page.keyboard.press('Enter');
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  const first = dialog.getByRole('button').first();
+  const last = dialog.getByRole('button').last();
+  await first.focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(last).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(first).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: vi.help, exact: true })).toBeFocused();
+  await openSettings(page, 'view');
+  await expect(page.locator('#simulation')).toHaveJSProperty('inert', true);
+  await page.locator('#camera-mode').selectOption('chase');
+  await closeSettings(page);
+  await expect(page.getByRole('button', { name: vi.settingsTitle, exact: true })).toBeFocused();
+  expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
+  await openSettings(page, 'view');
+  await expect(page.locator('#camera-mode')).toHaveValue('chase');
+});
+
+for (const [width, height] of [[1440, 900], [390, 844]]) {
+  test(`HUD reserves the real overhead inset at ${width}×${height}`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await page.goto('/');
+    await enterLessonMenu(page);
+    await openSettings(page, 'view');
+    await page.locator('#overhead-view').check();
+    await closeSettings(page);
+    await page.locator('#start-stage').click();
+    await page.getByRole('button', { name: vi.startDriving, exact: true }).click();
+    await expect(page.locator('#hud')).toHaveAttribute('data-overhead', 'true');
+    await expect(page.locator('#lesson-strip')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => {
+      const size = Number.parseFloat(document.querySelector<HTMLElement>('#app')!.style.getPropertyValue('--overhead-inset-size'));
+      const inset = { x: innerWidth - size - 16, y: innerHeight - size - 16 };
+      return [...document.querySelectorAll<HTMLElement>('#lesson-strip, #telemetry, .proximity-warning')]
+        .every((node) => {
+          const b = node.getBoundingClientRect();
+          return b.left >= 0 && b.top >= 0 && b.right <= innerWidth && b.bottom <= innerHeight &&
+            (b.right <= inset.x || b.bottom <= inset.y);
+        });
+    })).toBe(true);
+  });
+}
