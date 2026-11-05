@@ -6,6 +6,15 @@ Status: Approved by the project owner on 2026-11-02; not an implementation or va
 
 Scope: Phase 0 of [the technical design](tech-design.md)
 
+Implementation evidence (2026-11-05): Finding 3's ten-case software completion
+gap is closed by [Pages run 41981753519](https://github.com/nguyenviettung7691/park-core/actions/runs/41981753519)
+at `c921766` on Node 24.15.0. All five lessons completed with both vehicles
+through calibrated fake-Gamepad and keyboard UI journeys, with persisted recaps
+and progression. This is DEV-served, software-rendered Chromium evidence;
+production smoke/deployment passed separately. Runtime lesson tolerances and
+physics were unchanged. Instructor, learner, real-wheel and hardware validation
+remain pending; see the Phase 6 implementation plan for exact results.
+
 ## 1. Intent and decision ownership
 
 Park-Core teaches a learner what to do when parking: observe the space, choose

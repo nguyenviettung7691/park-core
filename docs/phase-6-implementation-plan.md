@@ -61,7 +61,7 @@ not supported-Node validation.
 The declared supported-Node range is `^22.22.2 || ^24.15.0 || >=26.0.0`;
 supported-Node validation remains pending.
 
-## Dynamic ten-case browser evidence (lesson-completion branch)
+## Dynamic ten-case browser evidence
 
 `tests/browser/lesson-completion.spec.ts` (two Playwright tests, five
 `test.step` stages each, 10-minute test timeout, 90-second active drive per
@@ -75,26 +75,37 @@ it cannot write poses, inputs, outcomes or storage. Each stage asserts the
 success recap, reload persistence of the unlock, history identity/recap and no
 Stage 6. Production builds emit no observation events (existing smoke test).
 
-Latest local run (all ten passed, wall seconds per stage S1/S2/S3/S4/S5):
+Initial local run (all ten passed, wall seconds per stage S1/S2/S3/S4/S5):
 Sedan 22.7/30.3/18.3/28.1/20.1; CUV 22.9/30.1/18.1/27.9/20.0. This is
 software-rendered Chromium evidence from the dev-served app; the geometric
 witnesses above remain separate. Hosted CI run 41969029953 FAILED on Sedan Stage 4 (parked 0.045 m outside the
 target inset after arriving at ~0.75 m/s). A Stage 4-only approach-speed taper in
 the test driver now passes both journeys locally (Stage 4 final z -6.92/-6.90,
-inside the helper-verified interval); the fix is pending hosted CI re-verification.
-Hosted supported-Node CI is not yet confirmed, and manual walkthrough,
-instructor review and real-wheel testing are also pending.
-Final local counts: 427 unit tests (27 files), typecheck/build, 16 browser
+inside the helper-verified interval). The subsequent hosted evidence below
+supersedes the pending CI status, not manual walkthrough, instructor review
+or real-wheel testing.
+Initial full local counts: 427 unit tests (27 files), typecheck/build, 16 browser
 tests (14 existing plus the two journeys) and 5 production smoke tests.
+
+Owner-approved recovery merge `c921766` passed
+[Pages run 41981753519](https://github.com/nguyenviettung7691/park-core/actions/runs/41981753519)
+on Node 24.15.0: 427 unit tests, typecheck/build, 19 Chromium browser tests
+(14 existing, two five-stage journeys and three driver regressions), and five
+production smoke tests; no retries or skips. Stage 4 final body z was -6.98 m
+(Sedan) and -6.93 m (CUV). All ten cases passed; wall seconds S1/S2/S3/S4/S5
+were Sedan 24.1/31.1/19.3/30.1/21.0 and CUV 24.3/30.9/19.0/32.5/20.7.
+Pages deployed successfully; live app, benchmark and built assets returned
+HTTPS 200 with correct MIME types. Finding 3 is Done for software completion
+evidence only; no production-build ten-case run or physical-device proof.
 
 ## Limits and pending validation
 
 The scenario route witnesses are geometry/curvature checks, not proof of
 dynamic drivability. Manual learner walkthrough, instructor review, real-wheel
-compatibility, supported-Node validation, reference-PC performance, production
+compatibility, reference-PC performance, production
 assets and sightline validation remain pending unless later recorded as
 completed. Passing software checks does not establish driver competence or
 training readiness.
 
-The local merge was explicitly approved. Do not push without separate owner
-approval.
+Both merges and pushes were explicitly approved by the owner. Supported-Node
+software validation is recorded above; other pending validation is unchanged.
