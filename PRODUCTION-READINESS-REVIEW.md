@@ -58,6 +58,8 @@ The independent reviewer initially could not start a second browser suite becaus
 
 ### 2. High — Performance on the stated upper-mid PC target is unverified
 
+**Current automation scope (2026-11-05):** The owner selected immediate fallback instead of a quantized-clock compatibility change: Firefox is removed from both learner acceptance and production test projects and from CI installation/probing. Chromium checks and manual benchmark implementation are retained unchanged. Firefox timing is not fixed; its automated compatibility coverage is no longer maintained. Previous Chromium/Firefox run results below remain historical evidence. Finding 2 remains open.
+
 **Confidence:** High as an evidence gap
 
 **Evidence:** `docs/detail-design.md:978-1003` requires selecting a named reference PC, measuring the worst garage view with all aids, targeting p95 frame interval ≤6.94 ms at 2560×1440, and retaining 60 rendered FPS on a declared minimum PC. The design says no reference hardware was supplied. The user target “most upper-mid PCs” does not name a machine or define a measurable threshold. No performance benchmark is recorded; the Vite bundle-size warning is not one.

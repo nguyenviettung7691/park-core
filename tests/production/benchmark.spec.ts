@@ -46,8 +46,6 @@ test('built benchmark page serves its assets and blocks start without metadata',
 });
 
 test('resizing during warm-up interrupts the case instead of measuring', async ({ page, browserName }) => {
-  // Playwright's Firefox setViewportSize stalls while pointer lock is held; jsdom page tests cover resize invalidation.
-  test.skip(browserName === 'firefox', 'setViewportSize hangs under Firefox pointer lock');
   test.setTimeout(90000);
   await page.goto('/benchmark.html');
   await fillCiMetadata(page, browserName);

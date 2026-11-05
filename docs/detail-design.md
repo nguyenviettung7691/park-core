@@ -1012,7 +1012,7 @@ no learner save data.
 **Automation boundary (2026-11-05).** Full-duration benchmark measurements and
 JSON downloads are manual checks, excluded from the production test suite and
 Pages CI. Automated validation retains setup/asset smoke checks, short Chromium
-resize interruption (Firefox remains skipped), and unit-tested measurement and
+resize interruption, and unit-tested measurement and
 report behavior. The manual workload, thresholds and strict timestamp validation
 are unchanged; excluding a long test is not a Firefox timing fix or hardware
 certification.
@@ -1021,7 +1021,10 @@ Offer a lower-resolution quality option if the target is missed. Do not silently
 reduce physics frequency or hide mirrors to claim the full-feature benchmark.
 The first release must remain usable at 60 rendered FPS on its eventual declared
 minimum PC; that minimum is a validation outcome, not invented here.
-Initially test desktop Chromium and Firefox on Windows 11 and Linux with
+Automated browser validation is Chromium-only by owner decision (2026-11-05);
+Firefox is excluded from both learner and production suites, not repaired.
+Manual Firefox benchmark timing remains unresolved. Test desktop Chromium on
+Windows 11 and Linux with
 WebGL2 available. Serve production over HTTPS and use localhost for development.
 Feature-detect graphics, Gamepad API and storage; browser/device compatibility
 claims require results from real hardware.

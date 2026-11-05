@@ -27,13 +27,13 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
-      - run: npx playwright install --with-deps chromium firefox
+      - run: npx playwright install --with-deps chromium
       - name: Probe WebGL2 support (headed, Xvfb)
         shell: bash
         run: |
           xvfb-run --auto-servernum -- node --input-type=module <<'EOF'
-          import { chromium, firefox } from '@playwright/test';
-          for (const type of [chromium, firefox]) {
+          import { chromium } from '@playwright/test';
+          for (const type of [chromium]) {
             const browser = await type.launch({ headless: false });
             try {
               const page = await browser.newPage();
