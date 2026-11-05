@@ -2,7 +2,9 @@
 
 Date: 2026-11-05
 
-Status: Owner approved 2026-11-05 after builder check. Implementation-plan review pending.
+Status: Owner approved 2026-11-05 after builder check. Implementation and software
+gates completed under the approved plan; see the [illustrated delivery and
+remaining validation limits](../../phase-8-asset-catalog.md).
 
 Implementation plan: `docs\superpowers\plans\2026-11-05-phase-8-3d-assets.md`.
 
