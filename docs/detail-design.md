@@ -1054,6 +1054,7 @@ plan instead of adding it during Phase 0.
 | Sensors | Exact band boundaries, no-hit null, self exclusion, hysteresis, mute and directional audio prioritization are correct |
 | Visibility | Mirror landmark orientation, front/rear sweep and cockpit sightlines reviewed on both vehicle profiles; ceiling excluded only from overhead visuals |
 | Lesson flow | A learner can start, pause, request help, retry and finish all five stages without being trapped by an advisory checkpoint |
+| Dynamic lesson completion | `tests/browser/lesson-completion.spec.ts` drives all five lessons for Sedan and CUV (ten cases) from empty storage in the Vite-served Chromium app: real UI calibration, fake Gamepad axis/pedals, real keyboard gear/brake/indicator/F, feedback from a DEV-only read-only observation transport, success recap, reload persistence and history. It is not a production-build run, real-wheel evidence, instructor review or learner walkthrough |
 | Parking | Rotated targets, mirror/body overhang, heading wrap, curb gap and continuous dwell tested; failure overrides same-step success |
 | Failure | Obstacle/curb/wheel-clearance/bounds/speed/tip cases produce one durable reason and clean retry |
 | Persistence | New, malformed, unsupported and blocked/quota storage paths have honest visible outcomes; unlocks cannot skip the sequential prefix |
