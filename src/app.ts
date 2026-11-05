@@ -3,7 +3,7 @@ import type {
   AttemptSummary, ControllerCalibration, EnvironmentId, LessonRuntime, MessageKey, StageId,
   VehicleId,
 } from './contracts';
-import type { ScreenAction, ScreenContext, ShellView } from './runtime-types';
+import type { OnboardingStore, ScreenAction, ScreenContext, ShellOrigin, ShellView } from './runtime-types';
 import type {
   AttemptHistorySnapshot, AttemptHistoryStatus, AttemptHistoryStore, PersistenceRecord,
   PersistenceResult,
@@ -15,12 +15,15 @@ import { AssetLoadError, loadSceneAssets } from './world/assets';
 import type { AssetLoadProgress, SceneAssets } from './runtime-types';
 import { mountHud } from './ui/hud';
 import { mountCalibration, mountScreen, type InputSetup } from './ui/screens';
+import { mountOnboarding } from './ui/onboarding';
+import { createOnboarding } from './storage/onboarding';
 import { createPersistence, unlockedStages, type PersistenceStore } from './storage/persistence';
 import { createAttemptHistoryStore } from './storage/attempt-history';
 import { scenarios } from './lessons/scenarios';
 import type { AppObservation, AppObservationPayload } from './app-observation';
 
 export interface AppDeps {
+  createOnboarding: () => OnboardingStore;
   createPreview: typeof createPreview;
   loadSceneAssets: typeof loadSceneAssets;
   createPersistence: () => PersistenceStore;
@@ -36,6 +39,8 @@ export interface AppHandle {
 
 export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): AppHandle {
   const deps: AppDeps = {
+    createOnboarding: () => createOnboarding(() =>
+      typeof localStorage === 'undefined' ? null : localStorage),
     createPreview,
     loadSceneAssets,
     createPersistence: () => createPersistence(() =>
@@ -47,18 +52,25 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     ...overrides,
   };
   const persistence = deps.createPersistence();
+  const onboarding = deps.createOnboarding();
   const attemptHistory = deps.createAttemptHistoryStore();
   const initial = persistence.snapshot();
   let context: ScreenContext = {
+    onboarding: onboarding.snapshot(),
+    onboardingResetRequested: false,
     progress: initial.progress,
     settings: initial.settings,
-    selectedStageId: 1,
+    selectedStageId: unlockedStages(initial.progress)
+      .find((stage) => !initial.progress.completedStages.includes(stage)) ?? 5,
     selectedVehicleId: initial.progress.lastVehicle,
     unlockedStageIds: unlockedStages(initial.progress),
     recordStatus: initial.recordStatus,
     resetRequested: null,
   };
   let view: ShellView = { state: { kind: 'menu' }, preview: 'closed' };
+  if (!context.onboarding.dismissed) {
+    view = { ...view, overlay: { kind: 'onboarding', step: 0, origin: 'menu' } };
+  }
   let preview: Preview | null = null;
   let retainedAssets: SceneAssets | null = null;
   let currentLesson: LessonRuntime | null = null;
@@ -88,23 +100,41 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   root.append(layer);
   const status = root.querySelector<HTMLElement>('#status-message')!;
   let audioUnavailable = false;
+  let persistenceNotice = '';
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  let overlayFocusLabel: string | null = null;
+  let settingsFocusLabel: string | null = null;
 
   function notice(key: MessageKey) {
+    if (key === 'gearRejected' && (audioUnavailable || persistenceNotice)) return;
+    clearTimeout(noticeTimer);
     if (key === 'audioUnavailable') audioUnavailable = true;
-    status.textContent = vi[key];
+    status.setAttribute('aria-live', key === 'gearRejected' ? 'off' : 'polite');
+    if (status.textContent !== vi[key]) status.textContent = vi[key];
+    if (key === 'gearRejected') noticeTimer = setTimeout(clearStatus, 5000);
   }
   function clearStatus() {
-    status.textContent = audioUnavailable ? vi.audioUnavailable : '';
+    clearTimeout(noticeTimer);
+    status.textContent = persistenceNotice || (audioUnavailable ? vi.audioUnavailable : '');
   }
   function recordLabel(record: PersistenceRecord) {
     return record === 'progress' ? vi.progressRecord
       : record === 'settings' ? vi.settingsRecord : vi.calibrationRecord;
   }
   function reportPersistence(result: PersistenceResult) {
-    if (result.status === 'persistent') return;
-    status.textContent = `${recordLabel(result.record)}: ${
+    if (result.status === 'persistent') {
+      if (persistenceNotice.startsWith(`${recordLabel(result.record)}:`)) {
+        persistenceNotice = '';
+        clearStatus();
+      }
+      return;
+    }
+    clearTimeout(noticeTimer);
+    persistenceNotice = `${recordLabel(result.record)}: ${
       result.status === 'session-only' ? vi.sessionOnlyNotice : vi.resetRequiredNotice
     }`;
+    status.setAttribute('aria-live', 'polite');
+    status.textContent = persistenceNotice;
   }
   function refreshPersistence() {
     const saved = persistence.snapshot();
@@ -151,6 +181,11 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   }
   function drawScreen() {
     hud.setSession(view.calibrating ? 'closed' : view.preview);
+    hud.updateLesson(currentLesson);
+    root.querySelector<HTMLElement>('#hud')!.inert = Boolean(view.overlay || view.calibrating);
+    const sessionControls = root.querySelector<HTMLElement>('#session-controls')!;
+    sessionControls.inert = Boolean(view.overlay || view.calibrating);
+    if (canvas) canvas.inert = view.preview !== 'running' || Boolean(view.overlay || view.calibrating);
     unmountScreen?.();
     if (view.calibrating && gamepadIndex !== null) {
       const index = gamepadIndex;
@@ -170,9 +205,18 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         drawScreen();
         layer.querySelector<HTMLButtonElement>('#calibrate-device')?.focus();
       });
+    } else if (view.overlay?.kind === 'onboarding') {
+      unmountScreen = mountOnboarding(layer, view.overlay, context, inputSetup(), onAction);
+    } else if (view.preview === 'running') {
+      unmountScreen = undefined;
     } else {
       unmountScreen = mountScreen(layer, view.state, context, onAction, view, inputSetup());
     }
+  }
+  function restoreOverlayFocus(label: string | null) {
+    if (!label) return;
+    [...layer.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
+      .find((button) => button.textContent === label)?.focus();
   }
   function buildObservation(token: number, payload: AppObservationPayload): AppObservation {
     return structuredClone({
@@ -192,6 +236,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     }
   }
   function closePreview() {
+    clearTimeout(noticeTimer);
     const closing = observedGeneration;
     const closedEvent = deps.onObservation && closing !== null
       ? buildObservation(closing, { kind: 'closed' }) : null;
@@ -236,7 +281,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     const current = preview;
     const token = generation;
     if (!current || resumePending || !ready() || view.pauseReason === 'contact') return;
-    canvas?.focus();
+    if (canvas) { canvas.inert = false; canvas.focus(); }
     current.unlockAudio();
     resumePending = true;
     const attempt = ++resumeAttempt;
@@ -279,7 +324,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     canvas = document.createElement('canvas');
     canvas.id = 'simulation';
     canvas.tabIndex = 0;
-    canvas.setAttribute('aria-label', vi.previewBadge);
+    canvas.setAttribute('aria-label', mode.kind === 'lesson' ? vi[mode.scenario.titleKey] : vi.previewBadge);
     root.prepend(canvas);
     currentLesson = mode.kind === 'lesson' ? {
       stageId: mode.scenario.stageId,
@@ -354,7 +399,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
           currentLesson = runtime;
           view = { ...view, state: { kind: 'playing', lesson: runtime } };
           observe(token, { kind: 'lesson', lesson: runtime });
-          drawScreen();
+          hud.updateLesson(runtime);
         },
         onAttemptOutcome(summary) {
           if (disposed || token !== generation || mode.kind !== 'lesson' || attemptRecorded) return;
@@ -521,6 +566,67 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   function onAction(action: ScreenAction) {
     if (disposed) return;
     switch (action.type) {
+      case 'tutorial-next':
+      case 'tutorial-back': {
+        const overlay = view.overlay;
+        if (overlay?.kind !== 'onboarding') return;
+        const step = overlay.step + (action.type === 'tutorial-next' ? 1 : -1);
+        if (step !== 0 && step !== 1 && step !== 2) return;
+        view = { ...view, overlay: { ...overlay, step } };
+        drawScreen();
+        break;
+      }
+      case 'dismiss-tutorial': {
+        if (view.overlay?.kind !== 'onboarding') return;
+        context = { ...context, onboarding: onboarding.dismiss() };
+        view = { ...view, overlay: undefined };
+        drawScreen();
+        restoreOverlayFocus(overlayFocusLabel);
+        break;
+      }
+      case 'open-help':
+      case 'replay-tutorial': {
+        if (view.preview === 'running' || view.calibrating) return;
+        const origin: ShellOrigin = view.preview === 'paused' ? 'paused' : 'menu';
+        if (!view.overlay) overlayFocusLabel = document.activeElement?.textContent ?? null;
+        view = { ...view, overlay: action.type === 'open-help'
+          ? { kind: 'help', origin } : { kind: 'onboarding', step: 0, origin } };
+        drawScreen();
+        break;
+      }
+      case 'open-settings': {
+        if (view.preview === 'running' || view.calibrating) return;
+        const overlay = view.overlay;
+        if (overlay?.kind !== 'settings') settingsFocusLabel = document.activeElement?.textContent ?? null;
+        if (!overlay) overlayFocusLabel = settingsFocusLabel;
+        view = { ...view, overlay: { kind: 'settings', tab: action.tab,
+          returnTo: overlay?.kind === 'settings' ? overlay.returnTo : overlay?.kind === 'onboarding'
+            ? { kind: 'onboarding', step: overlay.step, origin: overlay.origin }
+            : { kind: view.preview === 'paused' ? 'paused' : 'menu' } } };
+        drawScreen();
+        break;
+      }
+      case 'close-overlay': {
+        const overlay = view.overlay;
+        view = { ...view, overlay: overlay?.kind === 'settings' &&
+          overlay.returnTo.kind === 'onboarding'
+          ? { kind: 'onboarding', step: overlay.returnTo.step, origin: overlay.returnTo.origin }
+          : undefined };
+        drawScreen();
+        restoreOverlayFocus(overlay?.kind === 'settings' &&
+          overlay.returnTo.kind === 'onboarding' ? settingsFocusLabel : overlayFocusLabel);
+        break;
+      }
+      case 'request-onboarding-reset':
+      case 'cancel-onboarding-reset':
+        context = { ...context, onboardingResetRequested: action.type === 'request-onboarding-reset' };
+        drawScreen();
+        break;
+      case 'confirm-onboarding-reset':
+        if (!context.onboardingResetRequested) return;
+        context = { ...context, onboarding: onboarding.reset(), onboardingResetRequested: false };
+        drawScreen();
+        break;
       case 'select-vehicle':
         context = {
           ...context,
@@ -658,6 +764,10 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         else openPreview('sandbox');
         break;
       case 'continue':
+        if (view.state.kind === 'success') {
+          context = { ...context, selectedStageId: context.unlockedStageIds
+            .find((stage) => !context.progress.completedStages.includes(stage)) ?? 5 };
+        }
         closePreview();
         view = { state: { kind: 'menu' }, preview: 'closed' };
         drawScreen();
@@ -670,6 +780,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         drawScreen();
         break;
       case 'resume':
+        if (view.overlay || view.calibrating) return;
         resumePreview();
         break;
       case 'pause':
@@ -696,13 +807,20 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         }
         drawScreen();
         break;
-      case 'update-settings':
+      case 'update-settings': {
+        const previousStatus = context.recordStatus.settings;
+        const focusedId = document.activeElement?.id;
         context = { ...context, settings: action.settings };
         reportPersistence(persistence.saveSettings(action.settings));
         refreshPersistence();
         preview?.updateSettings(context.settings);
         hud.updateSettings(context.settings);
+        if (previousStatus !== context.recordStatus.settings) {
+          drawScreen();
+          if (focusedId) root.querySelector<HTMLElement>(`#${focusedId}`)?.focus();
+        }
         break;
+      }
       case 'recenter-view':
         preview?.recenterView();
         break;

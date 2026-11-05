@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { vi } from '../../src/messages';
+import { closeSettings, enterLessonMenu, openSettings } from '../ui-journey';
 import type {} from './fixtures/phase-8';
 
 test.use({ viewport: { width: 1280, height: 720 } });
@@ -55,12 +57,16 @@ for (const stage of [1, 2, 3, 4, 5]) {
 test('captures the real updated menu and chase view', async ({ page }, info) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto('/');
-  await expect(page.locator('#start-stage')).toBeVisible();
+  await enterLessonMenu(page);
   await page.screenshot({ path: info.outputPath('app-menu.png') });
   await page.getByLabel('Chọn xe').selectOption('cuv');
-  await page.getByRole('button', { name: 'Lái tự do', exact: true }).click();
-  await expect(page.locator('#simulation')).toBeVisible();
+  await openSettings(page, 'view');
   await page.locator('#camera-mode').selectOption('chase');
+  await page.locator('#overhead-view').check();
+  await closeSettings(page);
+  await page.locator('#start-stage').click();
+  await page.getByRole('button', { name: vi.startDriving, exact: true }).click();
+  await expect(page.locator('#simulation')).toBeVisible();
   await page.evaluate(() => new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await page.screenshot({ path: info.outputPath('app-driving.png') });

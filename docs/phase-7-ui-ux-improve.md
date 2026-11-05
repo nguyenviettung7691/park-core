@@ -2,9 +2,8 @@
 
 Date: 2026-11-05
 
-Status: Approved by the owner on 2026-11-05, including the proposed defaults.
-Product changes and README screenshots are not implemented. This document will
-also record implementation evidence once the approved work is built.
+Status: Implemented on branch `phase-7-ui-ux`; not merged or published.
+Design and implementation plan approved by the owner on 2026-11-05.
 
 ## Intent and decisions
 
@@ -68,13 +67,13 @@ Anti-goals:
 Both use the same lightweight DOM/CSS foundation and authored local graphics.
 The owner selected B after seeing both browser mockups.
 
-## Current-state review
+## Original prototype review
 
 Reviewed `src/ui/screens.ts`, `src/ui/hud.ts`, `src/ui/calibration.ts`,
 `src/style.css`, app orchestration, typed input/storage contracts, lesson
 metadata, and sensor audio. Inspected live menu, briefing, driving, and pause
 states at 1440 x 900 in an isolated browser context. Other states were inspected
-in source; this is not yet a full rendered-state acceptance pass.
+in source during the initial audit. Implementation evidence is recorded below.
 
 Representative findings:
 
@@ -342,9 +341,8 @@ fixtures; do not present mockups or fabricated progress as product screenshots.
 Set useful alt text, avoid personal controller identifiers, and ensure the
 README no longer leads with an obsolete pre-Phase-7 screen.
 
-Update this document with actual changed screens, verification results,
-screenshot paths, and remaining limitations after implementation. Until then,
-no implementation, test pass, learner-validation, or performance claim is made.
+The implementation evidence below records software checks, not learner
+validation or measured reference-hardware performance.
 
 ## Approval
 
@@ -354,6 +352,86 @@ onboarding uses the separate record and reload behavior above; routine tutorial
 cues are visual-only initially; narrow layouts do not add touch driving.
 The owner subsequently approved these proposals with this document.
 
-The owner approved this document and requested the implementation plan on
-2026-11-05. No product implementation is authorized by this document's status
-alone; review the implementation plan and confirm its execution approach first.
+The owner approved this document, the implementation plan, and native execution
+on 2026-11-05.
+
+## Implementation evidence — 2026-11-05
+
+| Area | Implemented change |
+|---|---|
+| Introduction | Three illustrated steps, Skip/Back, replay from Help, input-specific controls and explicit readiness. |
+| Storage | Separate `park-core.onboarding.v1` record; invalid data retained until scoped confirmation; session-only failures remain visible. Original saved formats are unchanged. |
+| Lesson hub and briefing | Illustrated selected goal and dominant Start; five-stage curriculum, secondary vehicle/input setup, explicit briefing/start boundary. |
+| Driving | Stable current-task and telemetry nodes, brake meter, compact front/rear warnings and limitations reminder; no tutorial-generated pauses or added chimes. |
+| Pause, Help, settings | Explicit view/audio/input tabs; background controls inert beneath dialogs, contained focus and focus return; closing an overlay never resumes. |
+| Device setup and recovery | Four semantic capture groups, visible captured states, disabled Save until valid, collapsed raw diagnostics, retained disconnect/replacement/reset/retry safeguards. |
+| Recaps and history | Recorded outcome and reason-specific practice tip; full metrics in native details; structured newest-first history in batches of 20, with every saved record reachable. |
+
+### Software acceptance
+
+Executed using supported Node 24.15.0; no package or dependency changes.
+The repository defines no separate lint command.
+
+| Command | Result |
+|---|---|
+| `npm test` | 30 files, 465 tests passed after review fixes. |
+| `npm run build` | Typecheck and production build passed. Existing large shared-asset chunk warning remains. |
+| `npm run test:browser` | 30 Chromium checks passed, including all five lessons for both Sedan and CUV through real physics and calibrated fake-gamepad/keyboard input. |
+| `npm run test:production` | 5 checks passed, including asset failure and absence of DEV observation events. |
+
+Additional targeted checks exercised settings persistence, focus containment,
+onboarding storage failures, sensor/audio coexistence, full 45-record history
+access, reset cancellation, and retry after an asset failure.
+
+The independent whole-branch review found two accessibility issues, both fixed
+with observed failing regression tests: severity/direction-only sensor
+announcements now avoid distance-sample repetition; denied settings saves
+refresh the active dialog while preserving control focus and cannot expire
+behind a routine-notice timer. The full unit suite, build, 19 affected
+driving/Phase 7 browser checks and 5 production checks passed after these fixes.
+No critical findings were reported. Real-wheel, learner and performance
+validation were explicitly outside the software review's evidence.
+
+Responsive browser cases cover 2560 x 1440, 1440 x 900, 1280 x 720 and
+390 x 844, with reduced motion and fully populated coach/sensor/instrument
+panels. Bounding-box checks cover panel separation and the renderer's real
+overhead inset at desktop and narrow sizes.
+
+Genuine 200% browser zoom was inspected in full Chromium using its native
+default-zoom setting in a disposable profile, not CSS zoom or pinch scaling.
+A 1440 x 900 viewport became 720 x 450 CSS pixels with devicePixelRatio 2
+and computed CSS zoom 1. Introduction/menu/briefing navigation, fully populated
+default HUD, paused settings, keyboard focus and horizontal reflow were checked.
+This does not certify every combination of zoom, view aids and input hardware.
+
+Driver-view captures at supported FOV 50, default 60 and maximum 80 degrees
+were inspected at 1440 x 900: the HUD does not cover the visible prototype
+mirror surface. The original opaque interior geometry still limits the view;
+this is not evidence that the underlying prototype assets are training-ready.
+
+### Screenshot provenance
+
+All three README images are 1440 x 900 captures of the implemented app:
+
+- `docs/images/phase-7/onboarding.png`: a fresh-context first introduction.
+- `docs/images/phase-7/lesson-hud.png`: actual Stage 1 keyboard driving, with
+  chase and overhead views enabled through settings before starting.
+- `docs/images/phase-7/lesson-recap.png`: the same lesson completed by actual
+  braking, securing the vehicle and evaluator success, after history persisted.
+
+No lesson result was injected. Captures contain no controller identifiers.
+The existing full five-stage test driver also produced independent successful
+recaps for both vehicle profiles.
+README image paths, 1440 x 900 dimensions, alt text and captions were checked,
+and its three screenshot sections were rendered locally with all images loaded.
+
+### Remaining limitations
+
+The original prototype vehicles/environments and driver-view geometry remain
+unchanged. Static SVG diagrams are explanatory, not scale-accurate maneuver
+paths. Software checks do not establish training readiness, real-wheel
+compatibility, screen-reader usability, learner encouragement or comprehension,
+or reference-PC performance. Real learners, instructors and hardware still
+require separate validation. The 1440p/60 Hz benchmark remains a target.
+These changes are local to the feature branch until explicitly integrated
+and published.

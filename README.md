@@ -20,6 +20,8 @@ Vietnamese.
 
 - **Guided lessons:** Five authored parking lessons with checkpoint guidance,
   parking evaluation, attempt recaps, and success-only stage progression.
+- **Tutorial-first interface:** Illustrated lesson goals, a stable driving
+  coach, paused settings, and constructive recaps with expandable metrics.
 - **Vehicles and scenery:** Distinct original Sedan/CUV artwork, cockpits,
   roadside and garage environments, and visible parked lesson vehicles.
   Free drive remains a separate garage sandbox.
@@ -39,6 +41,20 @@ Vietnamese.
   fixed vehicle/view cases and JSON report export. The approved target is
   1440p at 60 Hz (p95 frame time <=17.5 ms, mean >=57 FPS, and zero loss);
   this is a benchmark target, not a measured performance guarantee.
+
+## Learning Experience
+
+![Illustrated Vietnamese introduction explaining the parking goal](docs/images/phase-7/onboarding.png)
+
+*A skippable, replayable introduction teaches the goal before the first drive.
+The updated Stage 1 capture above shows original CUVs and garage artwork;
+chase and overhead views were explicitly enabled. Settings stay out of the
+driving HUD.*
+
+![Completed Stage 1 recap with a clear next action and optional detailed metrics](docs/images/phase-7/lesson-recap.png)
+
+*A real completed attempt: the outcome leads, detailed metrics remain available,
+and returning to the journey recommends the next unlocked lesson.*
 
 ## Tech Stack
 
@@ -123,6 +139,7 @@ for qualified instruction or supervised real-world practice.
 - [Phase 3 physics measurements](docs/phase-3-measurements.md)
 - [Asset pipeline and provenance](docs/asset-pipeline.md)
 - [Phase 8 illustrated asset catalog](docs/phase-8-asset-catalog.md)
+- [Phase 7 UI/UX design and verification](docs/phase-7-ui-ux-improve.md)
 - [Production-readiness change history](PRODUCTION-READINESS-REVIEW.md)
 
 ## License

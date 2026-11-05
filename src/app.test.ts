@@ -13,6 +13,7 @@ import { profiles } from './vehicle/profiles';
 import { buildPrototypeScene } from './render/prototype';
 import { AssetLoadError } from './world/assets';
 import { createPersistence, type StoragePort } from './storage/persistence';
+import { createOnboarding } from './storage/onboarding';
 import type {
   AttemptHistorySnapshot, AttemptHistoryStore, PersistenceRecord,
 } from './runtime-types';
@@ -69,6 +70,11 @@ function fixture() {
     root, factory, previews, prototypes, modes,
     app(overrides: Parameters<typeof createApp>[1] = {}) {
       return createApp(root, {
+        createOnboarding: () => ({
+          snapshot: () => ({ dismissed: true, status: 'persistent' }),
+          dismiss: () => ({ dismissed: true, status: 'persistent' }),
+          reset: () => ({ dismissed: false, status: 'persistent' }),
+        }),
         createPreview: factory,
         loadSceneAssets: async () => makeSceneAssets(),
         ...overrides,
@@ -111,6 +117,65 @@ const attemptSummary: AttemptSummary = {
   acknowledgedStepIds: ['survey-space'],
   usedAids: [],
 };
+
+it('shows fresh onboarding without loading a simulation and remembers explicit skip', () => {
+  const f = fixture();
+  const store = createOnboarding(() => localStorage);
+  const app = f.app({ createOnboarding: () => store });
+  expect(f.root.querySelector('[data-screen="onboarding"]')).not.toBeNull();
+  expect(f.factory).not.toHaveBeenCalled();
+  f.click('Bỏ qua hướng dẫn');
+  expect(f.root.querySelector('#start-stage')).not.toBeNull();
+  app.dispose();
+  const again = f.app({ createOnboarding: () => createOnboarding(() => localStorage) });
+  expect(f.root.querySelector('#start-stage')).not.toBeNull();
+  again.dispose();
+});
+
+it('returns from replay and device setup to pause without resuming or changing progress', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  f.events.onPaused('user');
+  vi.mocked(f.previews[0]!.resume).mockClear();
+  f.click('Trợ giúp');
+  f.click('Xem lại hướng dẫn');
+  f.click('Tiếp theo');
+  f.click('Thiết lập điều khiển');
+  f.click('Quay lại');
+  expect(f.root.querySelector('[data-onboarding-step="1"]')).not.toBeNull();
+  f.click('Bỏ qua hướng dẫn');
+  expect(f.root.querySelector('[data-screen="menu"]')).not.toBeNull();
+  expect(f.previews[0]!.resume).not.toHaveBeenCalled();
+  expect(f.root.querySelector('#simulation')).not.toBeNull();
+  app.dispose();
+});
+
+it('retains corrupt tutorial data until confirmation and keeps its warning after skip', () => {
+  const f = fixture();
+  localStorage.setItem('park-core.onboarding.v1', '{');
+  const app = f.app({ createOnboarding: () => createOnboarding(() => localStorage) });
+  f.click('Bỏ qua hướng dẫn');
+  expect(f.root.querySelector('[role="alert"]')?.textContent).toContain('Hướng dẫn làm quen');
+  f.click('Trợ giúp');
+  f.click('Đặt lại hướng dẫn');
+  f.click('Hủy');
+  expect(localStorage.getItem('park-core.onboarding.v1')).toBe('{');
+  f.click('Đặt lại hướng dẫn');
+  f.click('Xác nhận đặt lại hướng dẫn');
+  expect(localStorage.getItem('park-core.onboarding.v1')).toBeNull();
+  app.dispose();
+});
+
+it('does not replace an unresolved audio warning with a routine shift notice', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  f.events.onNotice('audioUnavailable');
+  f.events.onNotice('gearRejected');
+  expect(f.root.querySelector('#status-message')?.textContent).toContain('Âm thanh cảnh báo không khả dụng');
+  app.dispose();
+});
 
 function appHistory(
   records: AttemptHistorySnapshot['records'] = [],
@@ -179,6 +244,7 @@ it('hydrates persisted progress, vehicle and settings before showing the stage m
   const app = f.app({ createPersistence: () => persistence.store });
 
   expect(f.root.querySelector<HTMLSelectElement>('#vehicle')?.value).toBe('cuv');
+  expect(f.root.querySelector('[data-stage-id="2"]')?.getAttribute('aria-pressed')).toBe('true');
   expect(f.root.querySelector<HTMLButtonElement>('[data-stage-id="2"]')?.disabled).toBe(false);
   f.click('Lái tự do');
   await f.flush();
@@ -228,6 +294,20 @@ it('records each lesson outcome once and awards progression only on success', as
   expect(history.append).toHaveBeenCalledWith(attemptSummary);
   expect(f.root.textContent).toContain('Hoàn thành bài học');
   expect(f.root.textContent).toContain('Lịch sử được lưu');
+  f.click('Về hành trình');
+  expect(f.root.querySelector('[data-stage-id="2"]')?.getAttribute('aria-pressed')).toBe('true');
+  app.dispose();
+});
+
+it('recommends Stage 5 for replay after completing the full curriculum', () => {
+  const f = fixture();
+  const persistence = appPersistence({
+    progress: JSON.stringify({ version: 1, completedStages: [1, 2, 3, 4, 5], lastVehicle: 'sedan' }),
+  });
+  const app = f.app({ createPersistence: () => persistence.store });
+  expect(f.root.querySelector('[data-stage-id="5"]')?.getAttribute('aria-pressed')).toBe('true');
+  f.root.querySelector<HTMLButtonElement>('[data-stage-id="1"]')!.click();
+  expect(f.root.querySelector('[data-stage-id="1"]')?.getAttribute('aria-pressed')).toBe('true');
   app.dispose();
 });
 
@@ -358,6 +438,8 @@ it('persists vehicle and setting changes through only their matching records', a
   expect(persistence.saveSettings).not.toHaveBeenCalled();
 
   await f.openPreview();
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
   const camera = f.root.querySelector<HTMLSelectElement>('#camera-mode')!;
   camera.value = 'chase';
   camera.dispatchEvent(new Event('change'));
@@ -473,6 +555,29 @@ it('shows a session-only notice when a persistence write fails', () => {
   expect(f.root.querySelector('#status-message')?.textContent?.toLocaleLowerCase('vi'))
     .toContain('chỉ lưu trong phiên này');
   app.dispose();
+});
+
+it('exposes denied settings saves inside the active overlay without losing focus or expiring', async () => {
+  const f = fixture();
+  const persistence = appPersistence({}, true);
+  const app = f.app({ createPersistence: () => persistence.store });
+  await f.openPreview();
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
+  vi.useFakeTimers();
+  try {
+    f.events.onNotice('gearRejected');
+    const camera = f.root.querySelector<HTMLSelectElement>('#camera-mode')!;
+    camera.focus();
+    camera.value = 'chase';
+    camera.dispatchEvent(new Event('change'));
+    expect(f.root.querySelector('[role="dialog"]')?.textContent).toContain('Chỉ lưu trong phiên này');
+    expect(document.activeElement?.id).toBe('camera-mode');
+    vi.advanceTimersByTime(6000);
+    expect(f.root.querySelector('#status-message')?.textContent).toContain('chỉ lưu trong phiên này');
+    f.events.onNotice('gearRejected');
+    expect(f.root.querySelector('#status-message')?.textContent).toContain('chỉ lưu trong phiên này');
+  } finally { app.dispose(); vi.useRealTimers(); }
 });
 
 it('loads the selected vehicle and Garage before creating a preview and releases its assets on close', async () => {
@@ -607,7 +712,7 @@ it('ten open/close cycles keep at most one canvas and release all previews', asy
     expect(canvas).not.toBe(previous);
     expect(f.root.querySelectorAll('canvas').length).toBe(1);
     expect(f.live).toBe(1);
-    expect(f.root.textContent).toContain('Bản thử vật lý — chưa có bài học');
+    expect(f.root.textContent).toContain('Lái tự do · Không tính tiến độ bài học');
     previous = canvas;
     f.click('Quay lại menu');
     expect(f.live).toBe(0);
@@ -627,7 +732,7 @@ it('keeps the selected vehicle when leaving the preview', async () => {
   select.value = 'cuv';
   select.dispatchEvent(new Event('change'));
   await f.openPreview();
-  expect(f.root.textContent).toContain('CUV');
+  expect(f.prototypes[0]).toMatchObject({ vehicleId: 'cuv' });
   f.click('Quay lại menu');
   expect(f.root.querySelector<HTMLSelectElement>('#vehicle')?.value).toBe('cuv');
   app.dispose();
@@ -818,6 +923,8 @@ it('passes initial settings and persists HUD changes through settings only', asy
       inputSource: 'keyboard', resolutionScale: 1,
     },
   });
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
   const mode = f.root.querySelector<HTMLSelectElement>('#camera-mode')!;
   mode.value = 'chase';
   mode.dispatchEvent(new Event('change'));
@@ -842,6 +949,7 @@ it('preserves the selected input source when later HUD settings change', async (
   const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
   source.value = 'gamepad';
   source.dispatchEvent(new Event('change'));
+  f.click('Cài đặt');
   const mode = f.root.querySelector<HTMLSelectElement>('#camera-mode')!;
   mode.value = 'chase';
   mode.dispatchEvent(new Event('change'));

@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { mountCalibration, mountScreen } from './screens';
 import { mountHud } from './hud';
+import { mountViewSettings } from './view-settings';
 import type { ScreenContext, ShellView } from '../runtime-types';
 import type {
   AttemptSummary, CompletedAttemptRecord, SensorSnapshot, VehicleTelemetry,
@@ -12,6 +13,8 @@ import { vi as messages } from '../messages';
 afterEach(() => document.body.replaceChildren());
 
 const context: ScreenContext = {
+  onboarding: { dismissed: true, status: 'persistent' },
+  onboardingResetRequested: false,
   progress: { version: 1, completedStages: [], lastVehicle: 'sedan' },
   settings: {
     version: 1, volume: 0.5, muted: false, driverFovDeg: 60,
@@ -74,6 +77,15 @@ it('offers lesson, free-drive, and history entry points from the main menu', () 
   expect(labels).toContain('Lịch sử lượt lái');
 });
 
+it('explains the parking goal visually before accepting an explicit lesson start', () => {
+  const element = root();
+  const action = vi.fn();
+  mountScreen(element, { kind: 'briefing', stageId: 3 }, context, action);
+  expect(element.querySelector('svg[role="img"]')?.getAttribute('aria-label')).toContain('minh họa');
+  expect(element.textContent).toContain('song song');
+  expect(action).not.toHaveBeenCalled();
+});
+
 it('localizes acknowledged steps and obstacle labels in history details', () => {
   const element = root();
   const summary: AttemptSummary = {
@@ -102,6 +114,57 @@ it('localizes acknowledged steps and obstacle labels in history details', () => 
   expect(element.textContent).toContain('Xe đỗ bên trái');
   expect(element.textContent).not.toContain('survey-space');
   expect(element.textContent).not.toContain('stage1-parked-left');
+});
+
+const recap: AttemptSummary = {
+  stageId: 5, vehicleId: 'sedan', outcome: 'success', failureReason: null, obstacleId: null,
+  elapsedSimulationS: 40, closestSampledClearanceM: null, peakSpeedMps: 0.4,
+  directionChanges: 2, acknowledgedStepIds: [], usedAids: [],
+};
+
+it.each([
+  ['collision', 'Va chạm', 'hai đầu xe'],
+  ['curb-contact', 'Chạm lề', 'lề đường'],
+  ['out-of-bounds', 'Ra khỏi khu vực lái', 'ranh giới'],
+  ['tipped', 'Xe nghiêng quá giới hạn', 'giảm tốc'],
+  ['speed-envelope', 'Vượt tốc độ an toàn kéo dài', 'chân phanh'],
+] as const)('offers a specific practice tip for %s without hiding the recorded metrics', (failureReason, reason, tip) => {
+  const element = root();
+  mountScreen(element, { kind: 'fail', summary: { ...recap, outcome: 'fail', failureReason },
+    historyStatus: 'persistent' }, context, vi.fn());
+  expect(element.querySelector('[data-practice-tip]')?.textContent).toContain(tip);
+  expect(element.textContent).toContain(reason);
+  expect(element.querySelector('details')?.open).toBe(false);
+  expect(element.querySelector('details dl')?.textContent).toContain(messages.historyPeakSpeed);
+  expect(element.querySelector('.primary-action')?.textContent).toBe(messages.retryLesson);
+});
+
+it('pages all history records in batches without dropping older attempts', () => {
+  const element = root();
+  const records = Array.from({ length: 45 }, (_, index): CompletedAttemptRecord => ({
+    id: `attempt-${index}`, completedAt: '2026-11-04T10:00:00.000Z', summary: recap,
+  }));
+  const action = vi.fn();
+  mountScreen(element, { kind: 'history-list', records, status: 'persistent', resetRequested: false }, context, action);
+  expect(element.querySelectorAll('[data-attempt-id]')).toHaveLength(20);
+  const more = [...element.querySelectorAll('button')].find((node) => node.textContent === 'Xem thêm lượt lái')!;
+  more.click();
+  expect(element.querySelectorAll('[data-attempt-id]')).toHaveLength(40);
+  more.click();
+  expect(element.querySelectorAll('[data-attempt-id]')).toHaveLength(45);
+  expect(more.hidden).toBe(true);
+  element.querySelector<HTMLButtonElement>('[data-attempt-id="attempt-44"]')!.click();
+  expect(action).toHaveBeenLastCalledWith({ type: 'select-attempt', id: 'attempt-44' });
+});
+
+it('returns from Stage 5 to the journey without suggesting a sixth lesson', () => {
+  const element = root();
+  const action = vi.fn();
+  mountScreen(element, { kind: 'success', summary: recap, historyStatus: 'persistent' }, context, action);
+  expect(element.querySelector('[data-recap-outcome]')?.textContent).toContain('mục tiêu');
+  element.querySelector<HTMLButtonElement>('.primary-action')!.click();
+  expect(action).toHaveBeenCalledWith({ type: 'continue' });
+  expect(element.textContent).not.toContain('Giai đoạn 6');
 });
 
 it('enables only stages derived from the unlocked context and lets the learner select them', () => {
@@ -249,10 +312,30 @@ it('shows the most severe warning band rather than the nearest lower-severity se
       { id: 'front-left', distanceM: 0.3, obstacleId: 'latched', band: 'stop' },
     ],
   });
+
   const front = element.querySelector<HTMLElement>('#proximity-front')!;
   expect(front.textContent).toContain('DỪNG');
   expect(front.className).toContain('sensor-stop');
   hud.dispose();
+});
+
+it('announces sensor severity and direction changes without repeating distance samples', () => {
+    const element = root();
+    const hud = mountHud(element, vi.fn());
+    const update = (distanceM: number, id: 'front-center' | 'front-left' = 'front-center') =>
+      hud.updateSensors({ sampledAtS: 1, readings: [{ id, distanceM, obstacleId: 'wall', band: 'red' }] });
+    update(0.55);
+    const announcement = element.querySelector<HTMLElement>('#sensor-announcement')!;
+    expect(announcement?.getAttribute('aria-live')).toBe('polite');
+    expect(announcement?.textContent).toContain('ĐỎ');
+    const original = announcement.firstChild;
+    update(0.54);
+    expect(announcement.firstChild).toBe(original);
+    update(0.53, 'front-left');
+    expect(announcement.firstChild).not.toBe(original);
+    hud.updateSensors(null);
+    expect(announcement.textContent).toBe('');
+    hud.dispose();
 });
 
 it('qualifies green and no-hit sensor readings and clears the note without a snapshot', () => {
@@ -271,9 +354,9 @@ it('qualifies green and no-hit sensor readings and clears the note without a sna
   hud.updateSensors(snapshot);
   expect(front.textContent).toContain('PHÁT HIỆN XA');
   expect(front.textContent).not.toContain('XANH — an toàn');
-  expect(front.textContent).toContain('Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.');
+  expect(front.textContent).toContain('Cảm biến có thể bỏ sót vật cản.');
   expect(rear.textContent).toContain('Không phát hiện bằng cảm biến trong phạm vi 2,5 m');
-  expect(rear.textContent).toContain('Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.');
+  expect(rear.textContent).toContain('Cảm biến có thể bỏ sót vật cản.');
 
   const guidance = front.querySelector('.sensor-guidance');
   expect(guidance).not.toBeNull();
@@ -286,7 +369,7 @@ it('qualifies green and no-hit sensor readings and clears the note without a sna
   });
   expect(front.querySelector('.sensor-guidance')).toBe(guidance);
   expect(front.textContent).toContain('0,40 m');
-  expect(front.textContent).toContain('Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.');
+  expect(front.textContent).toContain('Cảm biến có thể bỏ sót vật cản.');
 
   hud.updateSensors(null);
   expect(front.hidden).toBe(true);
@@ -322,15 +405,12 @@ it('shows only real telemetry and sends semantic driving actions from the gamepa
   hud.dispose();
 });
 
-it('provides labeled view settings and emits settings and recenter actions', () => {
+it('keeps moved settings labeled and preserves edits across view and audio tabs', () => {
   const element = root();
   const action = vi.fn();
-  const hud = mountHud(element, action);
-  hud.updateSettings(context.settings);
+  const unmountView = mountViewSettings(element, context.settings, 'view', action);
   const controls = element.querySelector<HTMLElement>('#view-controls')!;
-  expect(controls.hidden).toBe(true);
   expect(controls.getAttribute('role')).toBe('group');
-  hud.setSession('running');
   expect(controls.hidden).toBe(false);
 
   const mode = element.querySelector<HTMLSelectElement>('#camera-mode')!;
@@ -364,6 +444,11 @@ it('provides labeled view settings and emits settings and recenter actions', () 
     settings: { ...context.settings, cameraMode: 'chase', overhead: true, trajectory: true, driverFovDeg: 75 },
   });
 
+  element.querySelector<HTMLButtonElement>('#recenter-view')!.click();
+  expect(action).toHaveBeenLastCalledWith({ type: 'recenter-view' });
+  unmountView();
+  const unmountAudio = mountViewSettings(element, { ...context.settings, cameraMode: 'chase',
+    overhead: true, trajectory: true, driverFovDeg: 75 }, 'audio', action);
   const volume = element.querySelector<HTMLInputElement>('#volume')!;
   volume.value = '0.25';
   volume.dispatchEvent(new Event('change'));
@@ -381,11 +466,26 @@ it('provides labeled view settings and emits settings and recenter actions', () 
     settings: { ...context.settings, cameraMode: 'chase', overhead: true, trajectory: true,
       driverFovDeg: 75, volume: 0.25, muted: true },
   });
-  element.querySelector<HTMLButtonElement>('#recenter-view')!.click();
-  expect(action).toHaveBeenLastCalledWith({ type: 'recenter-view' });
+  unmountAudio();
+  expect(element.children.length).toBe(0);
+});
 
-  hud.setSession('closed');
-  expect(controls.hidden).toBe(true);
+it('updates a stable coach without stealing driving focus or showing running settings', () => {
+  const element = root();
+  const focus = document.createElement('canvas');
+  focus.tabIndex = 0;
+  element.append(focus);
+  const action = vi.fn();
+  const hud = mountHud(element, action);
+  focus.focus();
+  const coach = element.querySelector('#lesson-strip');
+  hud.setSession('running');
+  hud.updateLesson({ stageId: 1, stepIndex: 1, stepDwellS: 0, parkingDwellS: 0, acknowledgedStepIds: [] });
+  expect(element.querySelector('#lesson-strip')).toBe(coach);
+  expect(coach?.textContent).toContain(messages.lessonApproachForward);
+  expect(document.activeElement).toBe(focus);
+  expect(element.querySelector('#camera-mode')).toBeNull();
+  expect(action).not.toHaveBeenCalled();
   hud.dispose();
 });
 
@@ -410,6 +510,32 @@ it('keeps calibration captures invalid until verified and cancels its polling wi
   unmount();
   expect(frames.size).toBe(0);
   expect(request).toHaveBeenCalled();
+  vi.restoreAllMocks();
+});
+
+it('groups device setup, keeps diagnostics optional, and contains keyboard focus', () => {
+  vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+  const element = root();
+  const pad = testGamepad();
+  pad.id = 'Long wheel device '.repeat(24);
+  const cancel = vi.fn();
+  const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), cancel);
+  expect([...element.querySelectorAll('legend')].map((node) => node.textContent))
+    .toEqual(['Vô lăng', 'Chân ga', 'Phanh chân', 'Chuyển số']);
+  expect(element.querySelector('details')?.open).toBe(false);
+  expect(element.querySelector('details pre')).not.toBeNull();
+  expect(element.querySelector('[data-calibration-device]')?.textContent).toBe(pad.id);
+  const buttons = [...element.querySelectorAll('button')];
+  buttons.find((node) => node.textContent === 'Ghi chính giữa')!.click();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('1 / 9');
+  const last = element.querySelector<HTMLElement>('summary')!;
+  last.focus();
+  last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+  expect(document.activeElement).toBe(element.querySelector('input'));
+  last.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', bubbles: true }));
+  expect(cancel).toHaveBeenCalledOnce();
+  unmount();
   vi.restoreAllMocks();
 });
 
