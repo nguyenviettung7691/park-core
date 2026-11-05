@@ -78,8 +78,12 @@ Stage 6. Production builds emit no observation events (existing smoke test).
 Latest local run (all ten passed, wall seconds per stage S1/S2/S3/S4/S5):
 Sedan 22.7/30.3/18.3/28.1/20.1; CUV 22.9/30.1/18.1/27.9/20.0. This is
 software-rendered Chromium evidence from the dev-served app; the geometric
-witnesses above remain separate. Hosted supported-Node CI after merge is
-pending, as are manual walkthrough, instructor review and real-wheel testing.
+witnesses above remain separate. Hosted CI run 41969029953 FAILED on Sedan Stage 4 (parked 0.045 m outside the
+target inset after arriving at ~0.75 m/s). A Stage 4-only approach-speed taper in
+the test driver now passes both journeys locally (Stage 4 final z -6.92/-6.90,
+inside the helper-verified interval); the fix is pending hosted CI re-verification.
+Hosted supported-Node CI is not yet confirmed, and manual walkthrough,
+instructor review and real-wheel testing are also pending.
 Final local counts: 427 unit tests (27 files), typecheck/build, 16 browser
 tests (14 existing plus the two journeys) and 5 production smoke tests.
 
