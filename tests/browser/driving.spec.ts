@@ -279,9 +279,24 @@ test('keeps front and rear distance labels visible while warnings are muted', as
   await page.keyboard.down('w');
   await expect(page.locator('#proximity-front')).toContainText(/\d,\d{2} m/, { timeout: 25000 });
   await page.keyboard.up('w');
-  await expect(page.locator('#proximity-front')).toContainText('Trước:');
-  await expect(page.locator('#proximity-rear')).toContainText('Sau:');
-  await expect(page.locator('#proximity-rear')).toContainText('không có cảnh báo');
+  const front = page.locator('#proximity-front');
+  const rear = page.locator('#proximity-rear');
+  const guidance = 'Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.';
+  await expect(front).toContainText('Trước:');
+  await expect(front.locator('.sensor-guidance')).toHaveText(guidance);
+  await expect(rear).toContainText('Sau:');
+  await expect(rear).toContainText('Không phát hiện bằng cảm biến trong phạm vi 2,5 m');
+  await expect(rear.locator('.sensor-guidance')).toHaveText(guidance);
+  await page.setViewportSize({ width: 640, height: 900 });
+  for (const locator of [front, front.locator('.sensor-guidance'), rear, rear.locator('.sensor-guidance')]) {
+    await expect(locator).toBeVisible();
+    const box = await locator.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(640);
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(900);
+  }
   expect(await page.evaluate(() =>
     window.testAudioStats.gainValues.some((value) => value > 0))).toBe(false);
   expect(errors).toEqual([]);

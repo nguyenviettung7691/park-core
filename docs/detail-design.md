@@ -455,6 +455,13 @@ Ray coverage has gaps, misses some low obstacles and does not cover the
 vehicle's full side sweep. Explain these limitations; sensors never authorize
 a maneuver or replace observation. Targets remain non-colliding.
 
+The front and rear HUD readings show the green band as `PHÁT HIỆN XA` and
+describe no-hit as “Không phát hiện bằng cảm biến trong phạm vi 2,5 m”.
+Whenever a snapshot is present, each reading also displays: “Chỉ hỗ trợ quan
+sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.” A null
+snapshot hides the readings. Neither color nor no-hit is evidence that a path
+is clear.
+
 | Measured distance | Sensor indication | Beep interval |
 |---|---|---|
 | No hit within 2.5 m | Neutral/no warning | Silent |

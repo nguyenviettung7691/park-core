@@ -106,6 +106,8 @@ The independent reviewer initially could not start a second browser suite becaus
 
 **Closure evidence:** Replace assurance wording with a neutral proximity description and show a concise visible explanation that the sensor is limited guidance, can miss obstacles, and never confirms clearance.
 
+**Implementation status (2026-11-05, pending review and publication):** the local HUD now uses neutral green/no-hit wording and displays the limitation beneath each active front/rear reading, including no-hit snapshots. Sensor sampling, bands, distances, colors, and audio are unchanged. Focused unit and real-browser checks pass; Finding 4 remains open until independent review, owner sign-off, merge/push, and supported CI pass.
+
 ### 5. Low — The technical design overstates the 144 Hz performance evidence
 
 **Confidence:** High
