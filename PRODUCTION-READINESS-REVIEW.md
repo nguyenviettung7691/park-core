@@ -64,6 +64,8 @@ The independent reviewer initially could not start a second browser suite becaus
 
 **Impact:** “Runs comfortably” cannot be verified or responsibly claimed without an agreed reference/minimum machine and measurements.
 
+**Status update (2026-11-04):** Benchmark tooling was delivered (`/benchmark.html`, workload v1, JSON export; criteria p95 <=17.5 ms, mean >=57 FPS, zero loss at 2560x1440/60 Hz). No real reference-PC or minimum-PC evidence exists yet, so this finding remains open.
+
 **Closure evidence:** Select and record the representative upper-mid/reference and minimum machines, OS, browser, resolution, refresh rate, and quality settings. Benchmark the worst garage view with mirrors, sensors, and overhead enabled; report frame-time percentiles and physics overruns against the design's target.
 
 ### 3. Medium — Dynamic completion of all five lessons is not demonstrated

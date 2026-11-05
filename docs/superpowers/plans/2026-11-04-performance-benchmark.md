@@ -125,7 +125,7 @@
   "reference hardware validated". Test-only output is ineligible for a
   workload-version-1 performance verdict.
 
-- [ ] **Step 1: Add failing page/lifecycle and export tests.**
+- [x] **Step 1: Add failing page/lifecycle and export tests.** (written; RED history unrecorded)
   Assert missing actual-machine fields/60Hz/zoom confirmation prevents start;
   wrong drawing buffer reports invalid, not pass. Use injected observers to
   complete four cases and validate exported metrics/case order/settings,
@@ -136,10 +136,10 @@
   learner app instantiated. Test metadata entered as reference does not grant
   reference-validation status.
 
-- [ ] **Step 2: Run focused RED page tests.**
+- [ ] **Step 2: Run focused RED page tests.** (not evidenced; recovered session, only GREEN observed)
   `npm test -- src\benchmark\page.test.ts`; expect missing page behavior.
 
-- [ ] **Step 3: Implement page, runtime wiring and production entry.**
+- [x] **Step 3: Implement page, runtime wiring and production entry.**
   Keep setup/results outside the measured canvas workload, with full-viewport
   canvas while running. Fixed driver FOV 60 degrees, centered look, existing
   Garage sandbox spawn, no lesson runtime. Load selected vehicle/Garage
@@ -155,7 +155,7 @@
   `GITHUB_SHA` or an explicit unavailable value; do not pretend tool version
   alone identifies a built revision.
 
-- [ ] **Step 4: Add real production browser proof.**
+- [ ] **Step 4: Add real production browser proof.** (spec written; browser run pending)
   In `tests\production\benchmark.spec.ts`, verify built `/benchmark.html`
   loads setup/validation and references production assets. At 2560x1440
   viewport/DPR 1 in Chromium/Firefox, fill explicit CI machine metadata and
@@ -166,7 +166,7 @@
   targets on CI. In a separate short browser case, resize during warm-up and
   assert interruption, not success. No screenshots as performance evidence.
 
-- [ ] **Step 5: Reconcile performance contract and run instructions.**
+- [x] **Step 5: Reconcile performance contract and run instructions.**
   Update master reference target to approved 1440p/60FPS criteria, retaining
   144Hz as optional aspiration and minimum PC as undetermined. Document
   workload version/settings, fixed samples versus unknown worst-case view,
@@ -176,7 +176,7 @@
   tooling delivered, no real reference/minimum-PC evidence, remains open.
   Do not silently close Finding 5 or alter other findings.
 
-- [ ] **Step 6: Verify and commit integrated tooling.**
+- [ ] **Step 6: Verify and commit integrated tooling.** (unit/typecheck/build passed; browser suites pending)
   Run `npm test`, `npm run typecheck`, `npm run build`,
   `npm run test:browser -- --reporter=line`,
   `npm run test:production -- --reporter=line`, `git diff --check`.

@@ -7,7 +7,7 @@
 
 **Tech Stack:**
 
-* **Core Engine:** Three.js (WebGL rendering), optimized for 1440p at 144Hz refresh rates.
+* **Core Engine:** Three.js (WebGL rendering), targeting 1440p at 60 Hz (p95 <=17.5 ms, mean >=57 FPS, zero loss; 144 Hz is optional). The target is not yet measured on reference hardware; see the benchmark page `/benchmark.html` and `docs/detail-design.md`.
 * **Physics Engine:** Cannon-es (lightweight 3D physics) for rigid body dynamics, raycast vehicle physics, and bounding box collisions.
 * **Language & Tooling:** TypeScript and Vite for strict typing and rapid prototyping within VS Code/Cursor AI environments.
 * **UI Framework:** Vanilla DOM elements overlaying the WebGL canvas to minimize framework overhead.
