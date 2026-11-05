@@ -19,7 +19,7 @@
 
 ### Rendering (Three.js)
 
-- Prioritize performance (1440p @ 144Hz target).
+- Treat 1440p at 60 Hz as the approved benchmark target (p95 <=17.5 ms, mean >=57 FPS, zero loss), not a verified compatibility guarantee; 144 Hz remains optional and unverified.
 - **Lighting:** Use static baked lighting, `MeshBasicMaterial`, or simple uncast Ambient/Point lights. No dynamic shadows, weather, or day/night cycles.
 - **Mirrors:** Implement rearview and side mirrors using RenderTargets, but cap their update rate to 15 FPS to conserve draw calls.
 - **360 Camera:** Simulate via a single high-altitude orthographic camera facing downward, composited on top of the UI.

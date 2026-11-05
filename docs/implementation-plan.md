@@ -27,7 +27,7 @@
 - Roadside success also requires a 0.15-0.30 m curb-side body gap.
 - Failure wins over success in the same fixed step; retain recap until Retry/Menu.
 - Either vehicle can unlock the next stage; no timers, star ratings or penalties for normal corrections.
-- Physics values are tuning seeds, not validated manufacturer data. 1440p/144Hz remains a measured reference-PC target.
+- Physics values are tuning seeds, not validated manufacturer data. The approved performance target is 2560x1440 at 60 Hz (p95 <=17.5 ms, mean >=57 FPS, zero loss); 144 Hz is optional and unverified. Reference/minimum-PC measurements remain pending.
 - Never install packages, create application files or execute this plan merely because the plan was approved as documentation; obtain execution approval.
 
 ## Review Focus

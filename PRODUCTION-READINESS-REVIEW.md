@@ -12,7 +12,7 @@
 
 The owner confirmed manual verification of `https://park-core.nguyenviettung.id.vn/` passed. Independent live checks returned HTTPS 200 for the app, built JavaScript/CSS with correct MIME types, and all four GLBs with valid binary headers. Pages settings confirm `cname: park-core.nguyenviettung.id.vn`. Together with successful [deployment run 41841460826](https://github.com/nguyenviettung7691/park-core/actions/runs/41841460826) at `4ae956e` (356 unit tests, 28 browser tests, four production smoke tests, typecheck/build on supported Node 24.15.0), this closes Finding 1.
 
-Pages currently reports `https_enforced: false`; public HTTPS is verified through Cloudflare with HSTS, not claimed as origin-side Pages enforcement. Repository settings and DNS were owner-managed. Finding 3 is also closed by the software evidence below; Findings 2, 4 and 5 remain open. This is not whole-product production approval.
+Pages currently reports `https_enforced: false`; public HTTPS is verified through Cloudflare with HSTS, not claimed as origin-side Pages enforcement. Repository settings and DNS were owner-managed. Findings 3 and 4 are closed by the software evidence below. Finding 2 remains open pending reference/minimum-PC performance evidence. Finding 5 is Done (2026-11-05) for wording alignment only; it does not establish hardware performance. This is not whole-product production approval.
 
 ## Historical remediation record
 
@@ -108,15 +108,15 @@ The independent reviewer initially could not start a second browser suite becaus
 
 **Status: Done (2026-11-05), HUD wording/disclosure only.** After owner sign-off, commit `65d4e5c` was merged and pushed at `e47112a`. [Pages run 41988083375](https://github.com/nguyenviettung7691/park-core/actions/runs/41988083375) passed on Node 24.15.0: 428 unit tests, typecheck/build, 19 Chromium browser tests, and five production smoke tests, with no retries or skips; deployment succeeded. The green wording is now neutral, no-hit is scoped to what the sensor detected, and each active front/rear panel shows the visible limitation, including no-hit snapshots. Sensor readings, classification, ray coverage, colors and audio were not changed. The deployed app, `/benchmark.html`, and generated JS/CSS returned HTTPS 200 with correct MIME types; the deployed app bundle contains the guidance copy. This closes the user-facing assurance wording gap, not the underlying sensor coverage, obstacle-clearance, real-wheel, instructor, learner or hardware validation.
 
-### 5. Low — The technical design overstates the 144 Hz performance evidence
+### 5. Low — Top-level performance guidance overstated the 144 Hz evidence
 
 **Confidence:** High
 
-**Evidence:** `docs/tech-design.md:10` says the engine is “optimized for 1440p at 144Hz”; `docs/detail-design.md:978-987` calls 1440p/144 Hz an aspiration, requires a named reference PC, and says none has been supplied.
+**Evidence:** The approved benchmark contract in `docs/detail-design.md` sets 2560x1440 at 60 Hz as its measured target and leaves 144 Hz optional and unverified. The technical design already reflects that contract; `.github/copilot-instructions.md` and `docs/implementation-plan.md` still described 144 Hz as the target.
 
-**Impact:** Internal project documentation states a performance claim more strongly than the validation evidence supports.
+**Impact:** Top-level project guidance overstated the performance target despite the absence of reference/minimum-PC results.
 
-**Closure evidence:** Qualify the technical-design wording as an unverified aspiration, or support the claim with a recorded benchmark on a named reference PC.
+**Status: Done (2026-11-05), documentation wording only.** The stale top-level guidance now identifies the approved 2560x1440/60 Hz criteria (p95 frame interval <=17.5 ms, mean >=57 FPS and zero loss) and describes 144 Hz as optional and unverified. This aligns wording; it does not establish that the criteria have passed on any hardware, validate a minimum PC, or close Finding 2. Reference/minimum-PC measurements remain pending.
 
 ## External and environment evidence still outstanding
 
