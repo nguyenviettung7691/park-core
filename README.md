@@ -52,11 +52,11 @@ npm run typecheck
 npm run build
 ```
 
-Browser acceptance tests run in Chromium and Firefox. Install their browsers
+Browser acceptance and production tests run in Chromium only. Install the browser
 once if needed, then run the suite:
 
 ```powershell
-npx playwright install chromium firefox
+npx playwright install chromium
 npm run test:browser
 ```
 
@@ -69,9 +69,13 @@ The app is served from the root of `https://park-core.nguyenviettung.id.vn/`
 (`public/CNAME` is kept in the artifact; the Pages setting below is what
 configures the domain for Actions deployments); repository-subpath hosting is not supported.
 `.github/workflows/pages.yml` runs on pull requests, pushes to `main` and manual
-dispatch: Node 24.15.0, `npm ci`, unit tests, typecheck, build, Chromium/Firefox
+dispatch: Node 24.15.0, `npm ci`, unit tests, typecheck, build, Chromium
 browser tests and the production smoke suite. Only a passing run on `main`
 uploads `dist` and deploys it; pull requests and other branches never publish.
+
+Firefox is excluded from automated coverage by owner decision; its manual
+benchmark timing limitation is unresolved. This is not a runtime compatibility
+fix or evidence that Firefox is unsupported by every feature.
 
 One-time external setup by the repository owner (not done by the workflow):
 

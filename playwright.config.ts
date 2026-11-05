@@ -13,7 +13,6 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
   ],
   webServer: {
     command: 'npm run dev -- --port 4173',
