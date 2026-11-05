@@ -176,7 +176,14 @@
   tooling delivered, no real reference/minimum-PC evidence, remains open.
   Do not silently close Finding 5 or alter other findings.
 
-- [ ] **Step 6: Verify and commit integrated tooling.** (unit/typecheck/build passed; browser suites pending)
+- [ ] **Step 6: Verify and commit integrated tooling.** (committed; unit/typecheck/build passed; production benchmark 4 passed, 1 failed, 1 skipped; full browser suites pending)
+  Recovery evidence (2026-11-05): Task 2 committed as `ad162bf`;
+  integration review found no Critical/Important issues. Per owner direction,
+  one background run only, capped at five minutes, was performed. Chromium's
+  full case passed; Firefox invalidated on non-increasing frame timestamps
+  and then timed out awaiting completion. Root cause remains unresolved.
+  Do not retry long benchmarks automatically or weaken timestamp validation.
+  The remaining checks and supported-Node CI evidence are not claimed.
   Run `npm test`, `npm run typecheck`, `npm run build`,
   `npm run test:browser -- --reporter=line`,
   `npm run test:production -- --reporter=line`, `git diff --check`.

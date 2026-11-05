@@ -66,6 +66,8 @@ The independent reviewer initially could not start a second browser suite becaus
 
 **Status update (2026-11-04):** Benchmark tooling was delivered (`/benchmark.html`, workload v1, JSON export; criteria p95 <=17.5 ms, mean >=57 FPS, zero loss at 2560x1440/60 Hz). No real reference-PC or minimum-PC evidence exists yet, so this finding remains open.
 
+**Local software validation (2026-11-05, branch `performance-benchmark`):** 416 unit tests and typecheck/build passed on unsupported local Node 24.13.1. A single bounded production benchmark run returned four passed, one failed and one skipped: Chromium completed the real 10-second warm-up/60-second measurement and JSON export; Firefox setup passed, but its full case was invalidated with `Frame timestamps are not strictly increasing`. Firefox resize is skipped because Playwright viewport resizing stalls under pointer lock. The timeout is a consequence of invalidation, not evidence of poor FPS. The timestamp failure's cause is unresolved; no repeated benchmark run was attempted. Integration review found no Critical/Important defects before this run. Merge/push and supported-Node/hosted validation remain pending; this is not reference-hardware evidence.
+
 **Closure evidence:** Select and record the representative upper-mid/reference and minimum machines, OS, browser, resolution, refresh rate, and quality settings. Benchmark the worst garage view with mirrors, sensors, and overhead enabled; report frame-time percentiles and physics overruns against the design's target.
 
 ### 3. Medium — Dynamic completion of all five lessons is not demonstrated
