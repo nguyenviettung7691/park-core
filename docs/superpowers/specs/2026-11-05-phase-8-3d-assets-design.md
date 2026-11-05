@@ -2,7 +2,9 @@
 
 Date: 2026-11-05
 
-Status: Builder check complete; awaiting owner approval. No implementation authorized yet.
+Status: Owner approved 2026-11-05 after builder check. Implementation-plan review pending.
+
+Implementation plan: `docs\superpowers\plans\2026-11-05-phase-8-3d-assets.md`.
 
 ## Intent
 
