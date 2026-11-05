@@ -19,18 +19,6 @@ async function startStageOne(page: Page) {
   await page.goto('/');
   await enterLessonMenu(page);
   await openStageOne(page);
-  // Exercise the fixed-step cap on a slow renderer without changing physics or lesson rules.
-  await page.evaluate(() => {
-    const requestFrame = window.requestAnimationFrame.bind(window);
-    window.requestAnimationFrame = (callback) => {
-      const requestedAt = performance.now();
-      const wait: FrameRequestCallback = (now) => {
-        if (now - requestedAt >= 100) callback(now);
-        else requestFrame(wait);
-      };
-      return requestFrame(wait);
-    };
-  });
   await page.getByRole('button', { name: 'Bắt đầu lái', exact: true }).click();
   await expect(page.locator('#simulation')).toBeFocused();
   await expect(page.locator('#telemetry')).toBeVisible();
@@ -84,7 +72,8 @@ test('lesson outcomes, persistence, progression and free drive pass browser acce
   await expect(page.getByRole('button', { name: /ghi nhận thành công/i })).toHaveCount(0);
   await shiftToDrive(page);
   await page.keyboard.down('d');
-  await page.waitForTimeout(2000);
+  await page.waitForFunction(() => window.phase6Telemetry !== null &&
+    Math.abs(window.phase6Telemetry.headingRad) >= 0.25, undefined, { timeout: 10000 });
   await page.keyboard.up('d');
   await expect(page.getByRole('heading', { name: 'Lượt lái chưa đạt', exact: true }))
     .toBeVisible({ timeout: 30000 });
@@ -94,6 +83,18 @@ test('lesson outcomes, persistence, progression and free drive pass browser acce
   await page.getByRole('button', { name: 'Quay lại menu', exact: true }).click();
 
   await openStageOne(page);
+  // Exercise the fixed-step cap on the successful drive without changing physics or lesson rules.
+  await page.evaluate(() => {
+    const requestFrame = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback) => {
+      const requestedAt = performance.now();
+      const wait: FrameRequestCallback = (now) => {
+        if (now - requestedAt >= 100) callback(now);
+        else requestFrame(wait);
+      };
+      return requestFrame(wait);
+    };
+  });
   await page.getByRole('button', { name: 'Bắt đầu lái', exact: true }).click();
   await expect(page.locator('#simulation')).toBeFocused();
   await expect.poll(() => page.evaluate(() =>
