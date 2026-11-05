@@ -1006,3 +1006,67 @@ describe('preview lifecycle', () => {
     }
   });
 });
+
+describe('preview frame observer', () => {
+  it('runs without an observer and does not emit for the initial static render', () => {
+    const f = fixture();
+    const onFrame = vi.fn();
+    const p = startPreview(f.canvas, f.container, { ...f.events, onFrame }, options(), f.deps);
+    expect(onFrame).not.toHaveBeenCalled();
+    p.dispose();
+    const g = fixture();
+    const q = createPreview(g.canvas, g.container, g.events, g.deps);
+    expect(() => g.frame(8)).not.toThrow();
+    q.dispose();
+  });
+
+  it('emits completed-render time and actual drawing size after a successful render', () => {
+    const f = fixture();
+    f.setSize(5120, 1440);
+    const onFrame = vi.fn();
+    const p = startPreview(f.canvas, f.container, { ...f.events, onFrame }, options(), f.deps);
+    f.canvas.focus();
+    void p.requestPointerLock();
+    p.resume();
+    const rendersBefore = f.renderer.render.mock.calls.length;
+    f.renderer.render.mockImplementation(() => { f.setTime(25); });
+    f.frame(16);
+    expect(f.renderer.render.mock.calls.length).toBeGreaterThan(rendersBefore);
+    expect(onFrame).toHaveBeenCalledOnce();
+    expect(onFrame.mock.calls[0]![0]).toMatchObject({
+      completedAtMs: 25, drawingWidthPx: 2560, drawingHeightPx: 720,
+    });
+    p.dispose();
+  });
+
+  it('reports 0.1 s clamp loss separately from catch-up loss without changing steps', () => {
+    const f = fixture();
+    const onFrame = vi.fn();
+    const steps = vi.spyOn(f.world, 'step');
+    const p = startPreview(f.canvas, f.container, { ...f.events, onFrame }, options(), f.deps);
+    f.canvas.focus();
+    void p.requestPointerLock();
+    p.resume();
+    steps.mockClear();
+    f.frame(200);
+    const sample = onFrame.mock.calls[0]![0];
+    expect(sample.elapsedS).toBeCloseTo(0.2);
+    expect(sample.clampedTimeS).toBeCloseTo(0.1);
+    expect(sample.droppedTimeS).toBeCloseTo(0.1 - 8 / 120);
+    expect(steps).toHaveBeenCalledTimes(8);
+    p.dispose();
+  });
+
+  it('does not emit after pause or dispose', () => {
+    const f = fixture();
+    const onFrame = vi.fn();
+    const p = startPreview(f.canvas, f.container, { ...f.events, onFrame }, options(), f.deps);
+    f.canvas.focus();
+    void p.requestPointerLock();
+    p.resume();
+    p.pause();
+    expect(f.frames.size).toBe(0);
+    p.dispose();
+    expect(onFrame).not.toHaveBeenCalled();
+  });
+});

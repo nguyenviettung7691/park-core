@@ -24,6 +24,13 @@ Vietnamese.
 - Progress, settings, and completed-attempt history saved locally in the
   browser.
 
+## Performance benchmark
+
+`/benchmark.html` is a separate entry (not the learner app) that runs four fixed
+cases (Sedan/CUV, driver/chase; 10 s warm-up + 60 s each) and exports JSON. Use a
+focused 100%-zoom window on a 60 Hz display at a 2560x1440 drawing buffer. Target:
+p95 <=17.5 ms, mean >=57 FPS, zero loss. Reference-hardware results are pending.
+
 ## Run locally
 
 **Prerequisite:** Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.

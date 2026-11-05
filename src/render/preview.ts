@@ -54,7 +54,16 @@ export interface PrototypeOptions {
   readonly getGamepads: () => readonly (Gamepad | null)[];
   readonly settings: SettingsSaveV1;
 }
+export interface PreviewFrameSample {
+  readonly completedAtMs: number;
+  readonly elapsedS: number;
+  readonly droppedTimeS: number;
+  readonly clampedTimeS: number;
+  readonly drawingWidthPx: number;
+  readonly drawingHeightPx: number;
+}
 export interface PreviewEvents {
+  onFrame?(sample: PreviewFrameSample): void;
   onPaused(reason: PreviewPauseReason): void;
   onFault(kind: 'context-lost' | 'runtime-error', error?: unknown): void;
   onTelemetry(telemetry: VehicleTelemetry): void;
@@ -154,6 +163,7 @@ export function createPreview(
   }
   const cleanups: (() => void)[] = [];
   let disposed = false;
+  let drawingSize: { width: number; height: number } | null = null;
   let faulted = false;
   let lost = false;
   let running = false;
@@ -286,6 +296,7 @@ export function createPreview(
         return;
       }
       renderer.setSize(size.width, size.height, false);
+      drawingSize = { width: size.width, height: size.height };
       views.resize(rect.width, rect.height, size.width / rect.width);
     }
     function onResize() {
@@ -314,7 +325,8 @@ export function createPreview(
           readonly speedMps: number;
           readonly simulationTimeS: number;
         }[] = [];
-        const { alpha } = clock.advance((time - lastTime) / 1000, () => {
+        const elapsedS = (time - lastTime) / 1000;
+        const { alpha, droppedTimeS } = clock.advance(elapsedS, () => {
           if (!running || disposed || faulted) return;
           const actions = pending;
           pending = [];
@@ -420,6 +432,14 @@ export function createPreview(
         if (!running || disposed || faulted) return;
         sceneContent.apply({ previous, current, alpha });
         views.render({ previous, current, alpha }, time);
+        events.onFrame?.({
+          completedAtMs: deps.now(),
+          elapsedS,
+          droppedTimeS,
+          clampedTimeS: Math.max(0, elapsedS - 0.1),
+          drawingWidthPx: drawingSize?.width ?? canvas.width,
+          drawingHeightPx: drawingSize?.height ?? canvas.height,
+        });
         if (time - lastTelemetry >= 50) {
           lastTelemetry = time;
           events.onTelemetry(current.telemetry);

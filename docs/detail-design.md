@@ -986,6 +986,29 @@ rate and quality settings. Target a 95th-percentile frame interval <=6.94 ms
 on a named reference PC; select and record that PC before making a performance
 claim. No reference hardware has been supplied yet.
 
+**Approved benchmark criteria (master target).** The measured target is 2560x1440
+at 60 Hz: p95 frame interval <=17.5 ms, mean >=57 FPS and zero loss. 144 Hz stays
+an optional aspiration. The minimum PC is undetermined and is never inferred from
+a reference result.
+
+**Workload v1.** Four fixed cases (Sedan and CUV, each in driver and chase view),
+10 s warm-up plus 60 s measurement each (about 5 minutes per browser). Garage
+environment, all mirrors, sensors, overhead and trajectory aids on, full
+resolution, audio muted, gear P with parking brake, driver FOV 60. Mirrors and
+the overhead camera render at their capped rates, so frame intervals sample
+those views only on frames where they update.
+
+**Running it.** Open `/benchmark.html` (a separate production entry, not the
+learner app) in a focused window at 100% zoom on a 60 Hz display with a
+2560x1440 drawing buffer. Enter CPU, GPU, RAM, OS, graphics driver, browser and
+refresh rate, confirm zoom, then click to load assets and click again to lock
+the pointer. Keep mouse and keyboard still; mouse-look, driving keys, focus or
+visibility loss, pointer-lock loss, resize and DPR changes invalidate the case
+and it can be retried (at most 20 invalid attempts). Export JSON is available
+after any outcome; partial reports are marked incomplete and test-only timing
+cannot certify. The page stores nothing in localStorage or IndexedDB and uses
+no learner save data.
+
 Offer a lower-resolution quality option if the target is missed. Do not silently
 reduce physics frequency or hide mirrors to claim the full-feature benchmark.
 The first release must remain usable at 60 rendered FPS on its eventual declared
