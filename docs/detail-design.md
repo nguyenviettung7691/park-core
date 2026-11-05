@@ -462,6 +462,12 @@ sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an to
 snapshot hides the readings. Neither color nor no-hit is evidence that a path
 is clear.
 
+Finding 4 closure evidence (2026-11-05): the HUD wording/disclosure shipped at
+`e47112a`; [Pages run 41988083375](https://github.com/nguyenviettung7691/park-core/actions/runs/41988083375)
+passed supported Node 24.15.0 unit, build, 19 Chromium browser and five
+production smoke tests and deployed successfully. This validates presentation,
+not sensor coverage or clearance.
+
 | Measured distance | Sensor indication | Beep interval |
 |---|---|---|
 | No hit within 2.5 m | Neutral/no warning | Silent |

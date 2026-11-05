@@ -106,7 +106,7 @@ The independent reviewer initially could not start a second browser suite becaus
 
 **Closure evidence:** Replace assurance wording with a neutral proximity description and show a concise visible explanation that the sensor is limited guidance, can miss obstacles, and never confirms clearance.
 
-**Implementation status (2026-11-05, pending review and publication):** the local HUD now uses neutral green/no-hit wording and displays the limitation beneath each active front/rear reading, including no-hit snapshots. Sensor sampling, bands, distances, colors, and audio are unchanged. Focused unit and real-browser checks pass; Finding 4 remains open until independent review, owner sign-off, merge/push, and supported CI pass.
+**Status: Done (2026-11-05), HUD wording/disclosure only.** After owner sign-off, commit `65d4e5c` was merged and pushed at `e47112a`. [Pages run 41988083375](https://github.com/nguyenviettung7691/park-core/actions/runs/41988083375) passed on Node 24.15.0: 428 unit tests, typecheck/build, 19 Chromium browser tests, and five production smoke tests, with no retries or skips; deployment succeeded. The green wording is now neutral, no-hit is scoped to what the sensor detected, and each active front/rear panel shows the visible limitation, including no-hit snapshots. Sensor readings, classification, ray coverage, colors and audio were not changed. The deployed app, `/benchmark.html`, and generated JS/CSS returned HTTPS 200 with correct MIME types; the deployed app bundle contains the guidance copy. This closes the user-facing assurance wording gap, not the underlying sensor coverage, obstacle-clearance, real-wheel, instructor, learner or hardware validation.
 
 ### 5. Low — The technical design overstates the 144 Hz performance evidence
 
