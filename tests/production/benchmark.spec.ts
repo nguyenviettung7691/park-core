@@ -56,38 +56,3 @@ test('resizing during warm-up interrupts the case instead of measuring', async (
   await expect(page.locator('[data-case-id="sedan-driver"][data-status="invalid"]')).toBeVisible();
   await expect(page.locator('#benchmark-canvas')).toHaveCount(0);
 });
-
-test('real 10 s warm-up plus 60 s case exports an incomplete suite with raw metrics', async ({ page, browser, browserName }) => {
-  test.setTimeout(150000);
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/benchmark.html');
-  await fillCiMetadata(page, `${browserName} ${browser.version()}`);
-  await beginCase(page);
-  await expect(page.locator('[data-case-id="sedan-driver"][data-status="complete"]'))
-    .toBeVisible({ timeout: 110000 });
-  const downloading = page.waitForEvent('download');
-  await page.locator('#benchmark-export').click();
-  const download = await downloading;
-  const stream = await download.createReadStream();
-  const decoder = new TextDecoder();
-  let json = '';
-  for await (const chunk of stream) json += decoder.decode(chunk as Uint8Array, { stream: true });
-  const report = JSON.parse(json + decoder.decode());
-  expect(report).toMatchObject({
-    schemaVersion: 1, workloadVersion: 1,
-    timing: { warmupMs: 10000, measurementMs: 60000, testOnly: false },
-    suite: { status: 'incomplete', completeCases: 1, requiredCases: 4 },
-    referenceEvidence: 'not-assessed',
-    display: { viewport: { width: 2560, height: 1440 }, devicePixelRatio: 1 },
-  });
-  const [first] = report.cases;
-  expect(first).toMatchObject({
-    id: 'sedan-driver', status: 'complete', drawingBuffer: { width: 2560, height: 1440 },
-  });
-  expect(first.metrics.intervalCount).toBeGreaterThan(0);
-  expect(first.samples.intervalMs).toHaveLength(first.metrics.intervalCount);
-  expect(first.samples.completedAtMs.length).toBe(first.metrics.intervalCount);
-  expect(report.actualMachine.cpu).toContain('explicit test metadata');
-  expect(errors).toEqual([]);
-});

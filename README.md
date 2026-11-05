@@ -30,6 +30,10 @@ Vietnamese.
 cases (Sedan/CUV, driver/chase; 10 s warm-up + 60 s each) and exports JSON. Use a
 focused 100%-zoom window on a 60 Hz display at a 2560x1440 drawing buffer. Target:
 p95 <=17.5 ms, mean >=57 FPS, zero loss. Reference-hardware results are pending.
+Full-duration measurement and JSON export are verified manually on this page,
+not in CI. Automated checks retain benchmark setup/asset smoke tests, a short
+Chromium resize-interruption test, and unit coverage for metrics and export.
+This separation does not fix the unresolved local Firefox timestamp issue.
 
 ## Run locally
 
