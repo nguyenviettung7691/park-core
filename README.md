@@ -12,39 +12,50 @@ Vietnamese.
 
 ![Park-Core lesson and vehicle selection screen](docs/images/park-core-main.png)
 
-## What it includes
+## Features & Modules
 
-- Five guided parking lessons with measured outcomes, attempt recaps, and
-  success-only stage progression.
-- A separate free-drive sandbox, Sedan and CUV prototypes, and roadside and
-  garage environments.
-- First- and third-person views, mirrors, an overhead view, and proximity
-  sensors.
-- Keyboard and calibrated Gamepad API / simulation-wheel input.
-- Progress, settings, and completed-attempt history saved locally in the
-  browser.
+- **Guided lessons:** Five authored parking lessons with checkpoint guidance,
+  parking evaluation, attempt recaps, and success-only stage progression.
+- **Free drive:** A separate sandbox with Sedan and CUV prototypes in roadside
+  and garage environments.
+- **Driving views:** Driver and chase cameras, mirrors, an overhead view, and
+  trajectory guidance.
+- **Input:** Keyboard controls and calibrated Gamepad API / simulation-wheel
+  input.
+- **Parking sensors:** Front and rear proximity readings presented in the HUD.
+- **Local progress:** Settings, stage progress, and completed-attempt history
+  persist in the browser.
+- **Source areas:** `src/app.ts` and `src/contracts.ts` coordinate typed runtime
+  state; `src/vehicle` implements vehicle physics; `src/world` defines
+  environments; `src/render` and `src/views` handle rendering and cameras;
+  `src/input`, `src/lessons`, `src/sensors`, `src/storage`, and `src/ui`
+  implement controls, lesson logic, proximity data, persistence, and interface.
+- **Performance benchmark:** `/benchmark.html` is a standalone page with four
+  fixed vehicle/view cases and JSON report export. The approved target is
+  1440p at 60 Hz (p95 frame time <=17.5 ms, mean >=57 FPS, and zero loss);
+  this is a benchmark target, not a measured performance guarantee.
 
-## Performance benchmark
+## Tech Stack
 
-`/benchmark.html` is a separate entry (not the learner app) that runs four fixed
-cases (Sedan/CUV, driver/chase; 10 s warm-up + 60 s each) and exports JSON. Use a
-focused 100%-zoom window on a 60 Hz display at a 2560x1440 drawing buffer. Target:
-p95 <=17.5 ms, mean >=57 FPS, zero loss. Reference-hardware results are pending.
-Full-duration measurement and JSON export are verified manually on this page,
-not in CI. Automated checks retain benchmark setup/asset smoke tests, a short
-Chromium resize-interruption test, and unit coverage for metrics and export.
-This separation does not fix the unresolved local Firefox timestamp issue.
+- **TypeScript** for application logic and typed contracts.
+- **Vite** for development and production builds.
+- **Three.js** for 3D rendering and **Cannon-es** for vehicle physics.
+- **Vanilla HTML/CSS DOM** for the learner-facing interface.
+- **Vitest** for unit tests and **Playwright** for Chromium browser and
+  production checks.
 
-## Run locally
+## Developer Setup
 
 **Prerequisite:** Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.
+
+Install dependencies and start the local development server:
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. To run checks:
+Run the unit tests, type check, and production build:
 
 ```powershell
 npm test
@@ -52,43 +63,15 @@ npm run typecheck
 npm run build
 ```
 
-Browser acceptance and production tests run in Chromium only. Install the browser
-once if needed, then run the suite:
+Browser automation uses Chromium. Install it once, then run browser checks:
 
 ```powershell
 npx playwright install chromium
 npm run test:browser
 ```
 
-After `npm run build`, `npm run test:production` serves `dist` with Vite
-preview on port 4174 and checks the built JS/CSS, the four GLBs and Stage 1.
-
-## Deployment (GitHub Pages)
-
-The app is served from the root of `https://park-core.nguyenviettung.id.vn/`
-(`public/CNAME` is kept in the artifact; the Pages setting below is what
-configures the domain for Actions deployments); repository-subpath hosting is not supported.
-`.github/workflows/pages.yml` runs on pull requests, pushes to `main` and manual
-dispatch: Node 24.15.0, `npm ci`, unit tests, typecheck, build, Chromium
-browser tests and the production smoke suite. Only a passing run on `main`
-uploads `dist` and deploys it; pull requests and other branches never publish.
-
-Firefox is excluded from automated coverage by owner decision; its manual
-benchmark timing limitation is unresolved. This is not a runtime compatibility
-fix or evidence that Firefox is unsupported by every feature.
-
-One-time external setup by the repository owner (not done by the workflow):
-
-1. Settings → Pages → Source: **GitHub Actions**.
-2. Verify the domain for the account/organization and add the DNS record for
-   `park-core.nguyenviettung.id.vn` pointing to the owner's GitHub Pages host.
-3. Set the custom domain, wait for the certificate, then enable **Enforce HTTPS**.
-
-Release: merge to `main` (automatic) or run the workflow manually on `main`.
-Check the Actions run log, then load the live URL over HTTPS and confirm the
-menu, Stage 1 and the `/assets/` JS, CSS and GLB responses succeed.
-Recovery: restore a known-good change through `main` so it passes the same
-validation and redeploys; do not hand-edit the published artifact.
+After building, run `npm run test:production` to serve and check the production
+bundle. Use `npm run preview` to preview a build locally.
 
 ## Controls
 
@@ -101,29 +84,40 @@ Keyboard is selected by default:
 - `Space`: parking brake; `Q` / `E`: indicators; `F`: acknowledge the current
   lesson step (only accepted while stopped); `Escape`: pause.
 - `1`-`4`, `Space`, `Q` / `E` and `F` work in both Keyboard and Gamepad input
-  modes while the simulation canvas is focused; throttle, brake and steering
+  modes while the simulation canvas is focused. Throttle, brake, and steering
   stay source-specific.
 
 For a gamepad or simulation wheel, select the Gamepad input source and complete
 the in-app calibration before starting or resuming a session.
 
-## Prototype limits
+## Deployment
+
+The app is published at [park-core.nguyenviettung.id.vn](https://park-core.nguyenviettung.id.vn/)
+through GitHub Pages. The Pages workflow validates pull requests and pushes to
+`main`; a passing run on `main` deploys the production build. It can also be
+started manually from GitHub Actions on `main`.
+
+The repository owner configures GitHub Pages to use GitHub Actions and manages
+the custom-domain verification, DNS record, and HTTPS certificate. For a
+release, merge to `main` or run the workflow manually, then verify the Actions
+run and load the deployed app. To recover a deployment, restore a known-good
+change through `main` so it passes the same checks and redeploys.
+
+## Prototype Limits
 
 The simulator, scenarios, and generated 3D assets are prototypes. Software
-acceptance does not establish instructor approval, supported-hardware
-compatibility, learner competence, or training readiness. The simulator is
-not a substitute for qualified instruction or supervised real-world practice.
+checks do not establish instructor approval, supported-hardware compatibility,
+learner competence, or training readiness. The simulator is not a substitute
+for qualified instruction or supervised real-world practice.
 
-## Project documentation
+## Project Documentation
 
 - [Technical design](docs/tech-design.md)
 - [Detailed design](docs/detail-design.md)
-- [Implementation roadmap](docs/implementation-plan.md)
-- [Phase 5 design](docs/phase-5-detail-design.md) ·
-  [Phase 5 implementation plan](docs/phase-5-implementation-plan.md)
-- [Phase 6 design](docs/phase-6-detail-design.md) ·
-  [Phase 6 implementation plan](docs/phase-6-implementation-plan.md)
+- [Implementation roadmap and phase documents](docs/implementation-plan.md)
+- [Phase 3 physics measurements](docs/phase-3-measurements.md)
 - [Prototype asset pipeline and provenance](docs/asset-pipeline.md)
+- [Production-readiness change history](PRODUCTION-READINESS-REVIEW.md)
 
 ## License
 
