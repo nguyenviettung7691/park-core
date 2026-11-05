@@ -85,6 +85,17 @@ export interface SettingsSaveV1 {
 export type PersistenceRecord = 'progress' | 'settings' | 'calibration';
 export type RecordStatus = 'persistent' | 'session-only' | 'reset-required';
 
+export interface OnboardingSnapshot {
+  readonly dismissed: boolean;
+  readonly status: RecordStatus;
+}
+
+export interface OnboardingStore {
+  snapshot(): OnboardingSnapshot;
+  dismiss(): OnboardingSnapshot;
+  reset(): OnboardingSnapshot;
+}
+
 export interface PersistenceSnapshot {
   readonly progress: ProgressSaveV1;
   readonly settings: SettingsSaveV1;
