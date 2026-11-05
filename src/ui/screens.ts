@@ -287,7 +287,7 @@ export function mountScreen(
       progress.value = Math.min(progressState.loadedBytes, progressState.totalBytes);
     }
     screen.append(progress);
-    button(vi.closePreview, () => onAction({ type: 'menu' }));
+    button(vi.closePreview, () => onAction({ type: 'menu' })).className = 'primary-action';
   } else if (state.kind === 'briefing') {
     screen.classList.add('briefing');
     const scenario = scenarios[state.stageId];
@@ -367,10 +367,11 @@ export function mountScreen(
     text('p', vi[state.messageKey]).setAttribute('role', 'alert');
     if (state.retryable) {
       if (state.messageKey === 'webglContextLost') {
-        button(vi.reload, () => window.location.reload());
-      } else button(vi.retry, () => onAction({ type: 'retry' }));
+        button(vi.reload, () => window.location.reload()).className = 'primary-action';
+      } else button(vi.retry, () => onAction({ type: 'retry' })).className = 'primary-action';
     }
-    button(vi.closePreview, () => onAction({ type: 'menu' }));
+    const back = button(vi.closePreview, () => onAction({ type: 'menu' }));
+    if (!state.retryable) back.className = 'primary-action';
   } else if (state.kind === 'menu' && preview !== 'closed') {
     const controls = document.createElement('div');
     controls.className = 'preview-controls';

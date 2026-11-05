@@ -689,7 +689,7 @@ it('ten open/close cycles keep at most one canvas and release all previews', asy
     expect(canvas).not.toBe(previous);
     expect(f.root.querySelectorAll('canvas').length).toBe(1);
     expect(f.live).toBe(1);
-    expect(f.root.textContent).toContain('Bản thử vật lý — chưa có bài học');
+    expect(f.root.textContent).toContain('Lái tự do · Không tính tiến độ bài học');
     previous = canvas;
     f.click('Quay lại menu');
     expect(f.live).toBe(0);

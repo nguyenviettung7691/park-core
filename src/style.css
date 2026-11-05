@@ -613,6 +613,29 @@ select {
   font-weight: 600;
 }
 
+.calibration fieldset {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.calibration legend {
+  padding: 0 8px;
+  font-weight: 700;
+  color: var(--color-accent-light);
+}
+
+.calibration fieldset small,
+.calibration [data-calibration-device] {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
 .calibration label {
   display: flex;
   flex-wrap: wrap;

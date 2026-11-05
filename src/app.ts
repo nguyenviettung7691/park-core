@@ -175,7 +175,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     root.querySelector<HTMLElement>('#hud')!.inert = Boolean(view.overlay || view.calibrating);
     const sessionControls = root.querySelector<HTMLElement>('#session-controls')!;
     sessionControls.inert = Boolean(view.overlay || view.calibrating);
-    if (canvas) canvas.inert = Boolean(view.overlay || view.calibrating);
+    if (canvas) canvas.inert = view.preview !== 'running' || Boolean(view.overlay || view.calibrating);
     unmountScreen?.();
     if (view.calibrating && gamepadIndex !== null) {
       const index = gamepadIndex;
@@ -271,7 +271,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     const current = preview;
     const token = generation;
     if (!current || resumePending || !ready() || view.pauseReason === 'contact') return;
-    canvas?.focus();
+    if (canvas) { canvas.inert = false; canvas.focus(); }
     current.unlockAudio();
     resumePending = true;
     const attempt = ++resumeAttempt;
@@ -314,7 +314,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     canvas = document.createElement('canvas');
     canvas.id = 'simulation';
     canvas.tabIndex = 0;
-    canvas.setAttribute('aria-label', vi.previewBadge);
+    canvas.setAttribute('aria-label', mode.kind === 'lesson' ? vi[mode.scenario.titleKey] : vi.previewBadge);
     root.prepend(canvas);
     currentLesson = mode.kind === 'lesson' ? {
       stageId: mode.scenario.stageId,

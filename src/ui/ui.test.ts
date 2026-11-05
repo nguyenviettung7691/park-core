@@ -442,6 +442,32 @@ it('keeps calibration captures invalid until verified and cancels its polling wi
   vi.restoreAllMocks();
 });
 
+it('groups device setup, keeps diagnostics optional, and contains keyboard focus', () => {
+  vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+  const element = root();
+  const pad = testGamepad();
+  pad.id = 'Long wheel device '.repeat(24);
+  const cancel = vi.fn();
+  const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), cancel);
+  expect([...element.querySelectorAll('legend')].map((node) => node.textContent))
+    .toEqual(['Vô lăng', 'Chân ga', 'Phanh chân', 'Chuyển số']);
+  expect(element.querySelector('details')?.open).toBe(false);
+  expect(element.querySelector('details pre')).not.toBeNull();
+  expect(element.querySelector('[data-calibration-device]')?.textContent).toBe(pad.id);
+  const buttons = [...element.querySelectorAll('button')];
+  buttons.find((node) => node.textContent === 'Ghi chính giữa')!.click();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('1 / 9');
+  const last = element.querySelector<HTMLElement>('summary')!;
+  last.focus();
+  last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+  expect(document.activeElement).toBe(element.querySelector('input'));
+  last.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', bubbles: true }));
+  expect(cancel).toHaveBeenCalledOnce();
+  unmount();
+  vi.restoreAllMocks();
+});
+
 it('saves explicitly captured endpoints and invalidates them on rebinding or device replacement', () => {
   const element = root();
   const frames = new Map<number, FrameRequestCallback>();

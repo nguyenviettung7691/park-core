@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { vi } from '../../src/messages';
 import { enterLessonMenu, openSettings, closeSettings } from '../ui-journey';
+import { installObservationAndPad, calibrateThroughUi, selectGamepadDevice } from './lesson-driver';
 
 test('first visit teaches the goal before driving and remains skippable and replayable', async ({ page }) => {
   await page.goto('/');
@@ -30,6 +31,7 @@ test('visual lesson goal remains a briefing until the learner explicitly starts'
   await expect(page.locator('#simulation')).toHaveCount(0);
   await page.getByRole('button', { name: vi.startDriving, exact: true }).click();
   await expect(page.locator('#simulation')).toBeFocused();
+  await expect(page.locator('#simulation')).toHaveAccessibleName(vi.stage1);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: vi.resumePreview, exact: true })).toBeVisible();
 });
@@ -89,3 +91,39 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
     })).toBe(true);
   });
 }
+
+test('grouped calibration supports long device names, cancel, save and disconnect', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installObservationAndPad(page);
+  await page.goto('/');
+  await enterLessonMenu(page);
+  await page.evaluate(() => { window.lessonPad.id = 'Long wheel device '.repeat(24); });
+  await selectGamepadDevice(page);
+  const setup = page.getByRole('button', { name: vi.calibrate, exact: true });
+  await setup.click();
+  await expect(page.locator('.calibration fieldset')).toHaveCount(4);
+  await expect(page.locator('.calibration details')).not.toHaveAttribute('open');
+  await expect(page.getByRole('button', { name: vi.saveCalibration, exact: true })).toBeDisabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(setup).toBeFocused();
+  await calibrateThroughUi(page);
+  await expect(page.locator('#start-stage')).toBeEnabled();
+  await setup.click();
+  await page.evaluate(() => { window.lessonPad.connected = false; });
+  await expect(page.getByRole('alert')).toContainText('ngắt kết nối');
+  await expect(page.getByRole('button', { name: vi.saveCalibration, exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(setup).toBeFocused();
+  await expect(page.locator('#simulation')).toHaveCount(0);
+});
+
+test('canceling scoped storage recovery retains unreadable data', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('park-core.settings.v1', '{unreadable'));
+  await page.goto('/');
+  await enterLessonMenu(page);
+  await page.locator('[data-reset-record="settings"]').click();
+  await page.getByRole('button', { name: vi.cancelReset, exact: true }).click();
+  await expect(page.locator('[data-reset-record="settings"]')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('park-core.settings.v1'))).toBe('{unreadable');
+});
