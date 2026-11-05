@@ -10,12 +10,16 @@ Park-Core is a browser-based 3D parking simulator prototype for practicing
 low-speed maneuvers and spatial awareness. Its learner-facing interface is in
 Vietnamese.
 
-![Park-Core lesson and vehicle selection screen](docs/images/park-core-main.png)
+![Illustrated Vietnamese introduction explaining the parking goal](docs/images/phase-7/onboarding.png)
+
+*A skippable, replayable introduction teaches the goal before the first drive.*
 
 ## Features & Modules
 
 - **Guided lessons:** Five authored parking lessons with checkpoint guidance,
   parking evaluation, attempt recaps, and success-only stage progression.
+- **Tutorial-first interface:** Illustrated lesson goals, a stable driving
+  coach, paused settings, and constructive recaps with expandable metrics.
 - **Free drive:** A separate sandbox with Sedan and CUV prototypes in roadside
   and garage environments.
 - **Driving views:** Driver and chase cameras, mirrors, an overhead view, and
@@ -34,6 +38,18 @@ Vietnamese.
   fixed vehicle/view cases and JSON report export. The approved target is
   1440p at 60 Hz (p95 frame time <=17.5 ms, mean >=57 FPS, and zero loss);
   this is a benchmark target, not a measured performance guarantee.
+
+## Learning Experience
+
+![Running Stage 1 with a compact task panel, separate instruments and proximity warnings](docs/images/phase-7/lesson-hud.png)
+
+*An actual Stage 1 drive. Chase and overhead views were explicitly enabled;
+settings stay out of the driving HUD.*
+
+![Completed Stage 1 recap with a clear next action and optional detailed metrics](docs/images/phase-7/lesson-recap.png)
+
+*A real completed attempt: the outcome leads, detailed metrics remain available,
+and returning to the journey recommends the next unlocked lesson.*
 
 ## Tech Stack
 
@@ -117,6 +133,7 @@ for qualified instruction or supervised real-world practice.
 - [Implementation roadmap and phase documents](docs/implementation-plan.md)
 - [Phase 3 physics measurements](docs/phase-3-measurements.md)
 - [Prototype asset pipeline and provenance](docs/asset-pipeline.md)
+- [Phase 7 UI/UX design and verification](docs/phase-7-ui-ux-improve.md)
 - [Production-readiness change history](PRODUCTION-READINESS-REVIEW.md)
 
 ## License

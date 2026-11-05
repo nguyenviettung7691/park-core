@@ -79,6 +79,7 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
     await page.getByRole('button', { name: vi.startDriving, exact: true }).click();
     await expect(page.locator('#hud')).toHaveAttribute('data-overhead', 'true');
     await expect(page.locator('#lesson-strip')).toBeVisible();
+    await expect(page.locator('.proximity-warning')).toHaveCount(2);
     await expect.poll(() => page.evaluate(() => {
       const size = Number.parseFloat(document.querySelector<HTMLElement>('#app')!.style.getPropertyValue('--overhead-inset-size'));
       const inset = { x: innerWidth - size - 16, y: innerHeight - size - 16 };
@@ -127,3 +128,47 @@ test('canceling scoped storage recovery retains unreadable data', async ({ page 
   await expect(page.locator('[data-reset-record="settings"]')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('park-core.settings.v1'))).toBe('{unreadable');
 });
+
+for (const [width, height] of [[2560, 1440], [1440, 900], [1280, 720], [390, 844]]) {
+  test(`lesson journey remains readable at ${width}×${height}`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+    await enterLessonMenu(page);
+    await expect(page.locator('#start-stage')).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.locator('#start-stage').click();
+    const start = page.getByRole('button', { name: vi.startDriving, exact: true });
+    await expect(start).toBeInViewport();
+    await start.click();
+    await expect(page.locator('#telemetry')).toBeVisible();
+    await expect(page.locator('.proximity-warning')).toHaveCount(2);
+    expect(await page.evaluate(() => {
+      const bounds = [...document.querySelectorAll<HTMLElement>('#lesson-strip, #telemetry, .proximity-warning')]
+        .map((node) => node.getBoundingClientRect());
+      return bounds.every((box, index) => box.x >= 0 && box.y >= 0 &&
+        box.right <= innerWidth && box.bottom <= innerHeight &&
+        bounds.slice(index + 1).every((other) => box.right <= other.left || other.right <= box.left ||
+          box.bottom <= other.top || other.bottom <= box.top));
+    })).toBe(true);
+    for (let cycle = 0; cycle < 2; cycle++) {
+      await page.keyboard.press('Escape');
+      await openSettings(page, 'view');
+      await closeSettings(page);
+      await page.getByRole('button', { name: vi.help, exact: true }).click();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.locator('#simulation')).toHaveCount(1);
+      const resume = page.getByRole('button', { name: vi.resumePreview, exact: true });
+      await resume.click();
+      await expect(page.locator('#simulation')).toBeFocused();
+    }
+    expect(await page.locator('#lesson-strip').evaluate((node) => {
+      const style = getComputedStyle(node);
+      return Number.parseFloat(style.transitionDuration) <= 0.0001 && style.animationName === 'none';
+    })).toBe(true);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: vi.closePreview, exact: true }).click();
+    await expect(page.locator('#simulation')).toHaveCount(0);
+  });
+}

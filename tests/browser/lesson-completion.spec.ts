@@ -15,7 +15,10 @@ async function openMenuAfterReload(page: Page) {
   await ensureGamepadReady(page);
 }
 
-async function completeStage(page: Page, vehicleId: VehicleId, stageId: StageId, log: (line: string) => void) {
+async function completeStage(
+  page: Page, vehicleId: VehicleId, stageId: StageId, log: (line: string) => void,
+  capture?: (name: string) => Promise<void>,
+) {
   await page.locator('#vehicle').selectOption(vehicleId);
   for (const other of stages) {
     const choice = page.locator(`[data-stage-id="${other}"]`);
@@ -31,11 +34,15 @@ async function completeStage(page: Page, vehicleId: VehicleId, stageId: StageId,
   await expect(page.locator('#simulation')).toBeFocused();
   await expect.poll(() => page.evaluate(() =>
     document.pointerLockElement === document.querySelector('#simulation'))).toBe(true);
+  await expect(page.locator('#telemetry')).toBeVisible();
+  await expect(page.locator('.proximity-warning')).toHaveCount(2);
+  await capture?.('lesson-hud.png');
 
   const result = await driveLesson(page, stageId, vehicleId, log);
   expect(result.summary).toMatchObject({ stageId, vehicleId, outcome: 'success', failureReason: null });
 
   await expect(page.getByRole('heading', { name: vi.successTitle, exact: true })).toBeVisible({ timeout: 15000 });
+  await capture?.('lesson-recap.png');
   await page.getByText(vi.metricDetails, { exact: true }).click();
   await expect(page.getByText(vi.historyPeakSpeed, { exact: true })).toBeVisible();
   await expect(page.locator('#screen-layer')).not.toContainText(vi.failTitle);
@@ -78,7 +85,12 @@ for (const vehicleId of ['sedan', 'cuv'] as const) {
     const log = (line: string) => { lines.push(line); };
     page.on('pageerror', (error) => errors.push(error.message));
     await installObservationAndPad(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
+    if (vehicleId === 'sedan') {
+      await expect(page.locator('[data-onboarding-step="0"]')).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath('onboarding.png') });
+    }
     await enterLessonMenu(page);
     await expect(page.locator('#start-stage')).toBeVisible();
     expect(await page.evaluate(() => ['park-core.progress.v1', 'park-core.settings.v1',
@@ -89,7 +101,10 @@ for (const vehicleId of ['sedan', 'cuv'] as const) {
     try {
       for (const stageId of stages) {
         await test.step(`stage ${stageId} ${vehicleId}`, async () => {
-          const result = await completeStage(page, vehicleId, stageId, log);
+          const capture = vehicleId === 'sedan' && stageId === 1
+            ? async (name: string) => { await page.screenshot({ path: testInfo.outputPath(name) }); }
+            : undefined;
+          const result = await completeStage(page, vehicleId, stageId, log, capture);
           const line = `RESULT stage=${stageId} vehicle=${vehicleId} wallMs=${result.wallMs}` +
             ` simS=${result.simulationS.toFixed(1)} elapsedS=${result.summary.elapsedSimulationS.toFixed(1)}` +
             ` finalPos=${result.finalPositionM?.map((v) => v.toFixed(2)).join(',') ?? 'n/a'}`;
