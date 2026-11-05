@@ -83,6 +83,29 @@ describe('phase 5 scene asset loading', () => {
     } finally { assets.dispose(); }
   });
 
+  it.each(['garage', 'roadside'])('keeps %s details on the appropriate camera layers', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets(id, 'sedan', new AbortController().signal);
+    try {
+      if (id === 'garage') {
+        expect(assets.environment.getObjectByName('GarageWallDetails')).toBeTruthy();
+        const fixtures = assets.environment.getObjectByName('CeilingFixtures');
+        expect(fixtures).toBeTruthy();
+        assets.environment.getObjectByName('Ceiling').traverse((node) => {
+          expect(node.layers.isEnabled(2)).toBe(true);
+          expect(node.layers.isEnabled(0)).toBe(false);
+        });
+      } else {
+        expect(assets.environment.getObjectByName('RoadSurfaceDetails')).toBeTruthy();
+        expect(assets.environment.getObjectByName('FenceDetails')).toBeTruthy();
+      }
+      for (const name of ['Ground', 'WallsAndCurbs']) {
+        assets.environment.getObjectByName(name).traverse((node) =>
+          expect(node.layers.isEnabled(0)).toBe(true));
+      }
+    } finally { assets.dispose(); }
+  });
+
   it('loads only the selected vehicle/environment pair and disposes resources once', async () => {
     const calls = mockedFetch();
     const progress = [];
