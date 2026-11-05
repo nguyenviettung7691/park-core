@@ -228,7 +228,7 @@ it('keeps proximity warnings hidden until a real sample, then labels bands and d
   expect(front.textContent).toContain('0,55');
   expect(rear.hidden).toBe(false);
   expect(rear.textContent).toContain('Sau');
-  expect(rear.textContent).toContain('không có cảnh báo');
+  expect(rear.textContent).toContain('Không phát hiện bằng cảm biến trong phạm vi 2,5 m');
   expect(front.className).toContain('sensor-red');
 
   hud.updateSensors(null);
@@ -252,6 +252,47 @@ it('shows the most severe warning band rather than the nearest lower-severity se
   const front = element.querySelector<HTMLElement>('#proximity-front')!;
   expect(front.textContent).toContain('DỪNG');
   expect(front.className).toContain('sensor-stop');
+  hud.dispose();
+});
+
+it('qualifies green and no-hit sensor readings and clears the note without a snapshot', () => {
+  const element = root();
+  const hud = mountHud(element, vi.fn());
+  const front = element.querySelector<HTMLElement>('#proximity-front')!;
+  const rear = element.querySelector<HTMLElement>('#proximity-rear')!;
+  const snapshot: SensorSnapshot = {
+    sampledAtS: 1,
+    readings: [
+      { id: 'front-center', distanceM: 1.8, obstacleId: 'barrier', band: 'green' },
+      { id: 'rear-center', distanceM: null, obstacleId: null, band: 'clear' },
+    ],
+  };
+
+  hud.updateSensors(snapshot);
+  expect(front.textContent).toContain('PHÁT HIỆN XA');
+  expect(front.textContent).not.toContain('XANH — an toàn');
+  expect(front.textContent).toContain('Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.');
+  expect(rear.textContent).toContain('Không phát hiện bằng cảm biến trong phạm vi 2,5 m');
+  expect(rear.textContent).toContain('Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.');
+
+  const guidance = front.querySelector('.sensor-guidance');
+  expect(guidance).not.toBeNull();
+  hud.updateSensors({
+    sampledAtS: 2,
+    readings: [
+      { id: 'front-center', distanceM: 0.4, obstacleId: 'barrier', band: 'red' },
+      { id: 'rear-center', distanceM: null, obstacleId: null, band: 'clear' },
+    ],
+  });
+  expect(front.querySelector('.sensor-guidance')).toBe(guidance);
+  expect(front.textContent).toContain('0,40 m');
+  expect(front.textContent).toContain('Chỉ hỗ trợ quan sát; có thể bỏ sót vật cản, không xác nhận khoảng trống an toàn.');
+
+  hud.updateSensors(null);
+  expect(front.hidden).toBe(true);
+  expect(front.textContent).toBe('');
+  expect(rear.hidden).toBe(true);
+  expect(rear.textContent).toBe('');
   hud.dispose();
 });
 

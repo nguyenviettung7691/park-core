@@ -35,6 +35,13 @@ export function mountHud(root: HTMLElement, onAction: (action: ScreenAction) => 
   const telemetryNode = nodes.get('telemetry')!;
   const frontSensorNode = nodes.get('proximity-front')!;
   const rearSensorNode = nodes.get('proximity-rear')!;
+  const sensorPanels = [frontSensorNode, rearSensorNode].map((node) => {
+    const reading = document.createElement('span');
+    const guidance = document.createElement('small');
+    guidance.className = 'sensor-guidance';
+    node.append(reading, guidance);
+    return { node, reading, guidance };
+  });
   frontSensorNode.setAttribute('aria-live', 'off');
   rearSensorNode.setAttribute('aria-live', 'off');
   const controls = nodes.get('driving-controls')!;
@@ -191,13 +198,16 @@ export function mountHud(root: HTMLElement, onAction: (action: ScreenAction) => 
       parking.setAttribute('aria-pressed', String(telemetry.parkingBrake));
     },
     updateSensors(sensors) {
-      for (const [front, node, sideLabel] of [
-        [true, frontSensorNode, vi.sensorFront],
-        [false, rearSensorNode, vi.sensorRear],
+      for (const [index, panel, sideLabel] of [
+        [0, sensorPanels[0], vi.sensorFront],
+        [1, sensorPanels[1], vi.sensorRear],
       ] as const) {
+        const front = index === 0;
+        const { node, reading, guidance } = panel;
         if (!sensors) {
           node.hidden = true;
-          node.textContent = '';
+          reading.textContent = '';
+          guidance.textContent = '';
           node.className = '';
           continue;
         }
@@ -205,10 +215,11 @@ export function mountHud(root: HTMLElement, onAction: (action: ScreenAction) => 
           reading.id.startsWith(front ? 'front-' : 'rear-')));
         node.hidden = false;
         node.className = `proximity-warning sensor-${warning?.band ?? 'clear'}`;
-        node.textContent = warning
+        reading.textContent = warning
           ? `${sideLabel}: ${bandNames[warning.band]} · ${sensorNames[warning.id]} · ` +
             `${warning.distanceM!.toFixed(2).replace('.', ',')} m`
           : `${sideLabel}: ${vi.sensorNoWarning}`;
+        guidance.textContent = vi.sensorGuidance;
       }
     },
     updateSettings(value) {

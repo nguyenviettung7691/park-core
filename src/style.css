@@ -122,6 +122,12 @@ body {
   font-weight: 700;
 }
 
+.sensor-guidance {
+  display: block;
+  font-size: inherit;
+  font-weight: 400;
+}
+
 .sensor-green {
   border-left-color: var(--color-sensor-green);
 }
