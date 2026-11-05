@@ -176,7 +176,7 @@
   tooling delivered, no real reference/minimum-PC evidence, remains open.
   Do not silently close Finding 5 or alter other findings.
 
-- [ ] **Step 6: Verify and commit integrated tooling.** (committed; unit/typecheck/build passed; production benchmark 4 passed, 1 failed, 1 skipped; full browser suites pending)
+- [x] **Step 6: Verify and commit integrated tooling.** (local gap retained; supported-Node CI passed after approved integration)
   Recovery evidence (2026-11-05): Task 2 committed as `ad162bf`;
   integration review found no Critical/Important issues. Per owner direction,
   one background run only, capped at five minutes, was performed. Chromium's
@@ -184,6 +184,10 @@
   and then timed out awaiting completion. Root cause remains unresolved.
   Do not retry long benchmarks automatically or weaken timestamp validation.
   The remaining checks and supported-Node CI evidence are not claimed.
+  Subsequent hosted run 41957312693 at merged `e437d52` passed 417 unit tests,
+  typecheck/build, 28 browser tests, and nine production tests with one
+  Firefox resize skip. Both full-duration cases passed in CI; local Firefox
+  timestamp failure remains unresolved and hardware evidence remains absent.
   Run `npm test`, `npm run typecheck`, `npm run build`,
   `npm run test:browser -- --reporter=line`,
   `npm run test:production -- --reporter=line`, `git diff --check`.
@@ -204,10 +208,13 @@ merged/pushed main and software-tooling evidence, not hardware certification.
   close Finding 2 or waive validated-main-only Pages deployment.
   Wait for explicit approval before merge/push; hardware validation remains
   pending by the owner's decision.
-- [ ] **Step 2: Merge approved branch and verify merged tree.**
+- [x] **Step 2: Merge approved branch and verify merged tree.**
+  Merged/pushed `e437d52`; merged-tree 417 tests and typecheck/build passed.
   Preserve unrelated changes, merge non-interactively, run affected checks,
   then push without force and observe supported-Node Pages validation.
-- [ ] **Step 3: Verify deployed benchmark entry and persist actual evidence.**
+- [x] **Step 3: Verify deployed benchmark entry and persist actual evidence.**
+  Run 41957312693 validated/deployed successfully. Live app and benchmark
+  HTML/JS/CSS returned HTTPS 200 with correct MIME types. Finding 2 stays open.
   Confirm production entry/JS/CSS assets and normal app still load. Record
   run URL/revision and software smoke counts. Keep Finding 2 open with exact
   remaining hardware/browser/minimum-PC evidence; do not invent measurements.
