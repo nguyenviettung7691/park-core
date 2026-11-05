@@ -198,7 +198,10 @@
 **Interfaces:** Consumes reviewed benchmark commits; produces approved
 merged/pushed main and software-tooling evidence, not hardware certification.
 
-- [ ] **Step 1: Present implementation, tests, limitations and request sign-off.**
+- [x] **Step 1: Present implementation, tests, limitations and request sign-off.**
+  Owner signed off tooling-only merge/push on 2026-11-05, explicitly accepting
+  the unverified Firefox completion and possible CI failure. This does not
+  close Finding 2 or waive validated-main-only Pages deployment.
   Wait for explicit approval before merge/push; hardware validation remains
   pending by the owner's decision.
 - [ ] **Step 2: Merge approved branch and verify merged tree.**
