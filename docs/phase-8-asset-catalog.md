@@ -179,10 +179,11 @@ part of the production app. See [asset pipeline](asset-pipeline.md).
 
 ## Verification limits
 
-For the Issue #12 redesign, 49 focused generator/loader tests and all 10
-Chromium Phase 8 asset-render cases passed, including the five parked-lesson
-scenes. Project-wide tests, typecheck, build and production-browser results
-are recorded in the Issue #12 change record. No lint script exists.
+For the Issue #12 redesign, 500 tests across 31 files, 49 focused
+generator/loader tests, typecheck, production build and all 10 Chromium Phase 8
+asset-render cases passed, including the five parked-lesson scenes. The
+focused selection overlaps the full suite. Vite reports a 766.91 kB generated
+assets chunk, above its 500 kB advisory threshold. No lint script exists.
 
 The branch includes the current Phase 7 learner experience. Its app captures
 follow the real tutorial/menu/settings/briefing flow rather than bypassing it.
