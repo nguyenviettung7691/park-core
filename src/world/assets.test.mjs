@@ -124,7 +124,8 @@ describe('phase 5 scene asset loading', () => {
         const ray = new Raycaster(new Vector3(point.x, point.y, -4), new Vector3(0, 0, 1));
         ray.layers.enable(1);
         const hit = ray.intersectObjects(meshes, false)[0];
-        expect(hit?.object.name, `${name} hit at ${hit?.point.toArray()}`).toBe('ExteriorWindowFaces');
+        expect(hit?.object.name, `${name} target=${point.toArray()} hit=${hit?.point.toArray()}`)
+          .toBe('ExteriorWindowFaces');
       }
     } finally { assets.dispose(); }
   });
@@ -146,8 +147,60 @@ describe('phase 5 scene asset loading', () => {
             const point = new Vector3(x * size.x / 10, y * size.y / 10, 0).applyMatrix4(surface.matrixWorld);
             const ray = new Raycaster(eye, point.clone().sub(eye).normalize(), 0, eye.distanceTo(point) + 0.001);
             ray.layers.enable(1);
-            expect(ray.intersectObjects(meshes, false)[0]?.object.name, `${side} sample ${x},${y}`)
+            const hit = ray.intersectObjects(meshes, false)[0];
+            expect(hit?.object.name,
+              `${side} sample ${x},${y} target=${point.toArray()} hit=${hit?.point.toArray()}`)
               .toBe(surface.name);
+          }
+        }
+      }
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('keeps %s side-mirror housings visible from exterior three-quarter views', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      for (const side of [-1, 1]) {
+        const name = side < 0 ? 'Left' : 'Right';
+        const stem = assets.vehicle.getObjectByName(`MirrorStem${name}`);
+        const housing = assets.vehicle.getObjectByName(`MirrorHousing${name}`);
+        expect(stem, `${name} mirror stem`).toBeTruthy();
+        expect(housing, `${name} mirror housing`).toBeTruthy();
+        if (!housing) continue;
+
+        const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
+        const housingBounds = new Box3().setFromObject(housing);
+        const center = housingBounds.getCenter(new Vector3());
+        expect(center.y, `${name} housing height`).toBeGreaterThan(eye.y - 0.12);
+        if (stem) {
+          expect(new Box3().setFromObject(stem).getSize(new Vector3()).length())
+            .toBeGreaterThan(0.1);
+        }
+
+        housing.geometry.computeBoundingBox();
+        const bounds = housing.geometry.boundingBox;
+        const back = new Vector3(0, 0, -1).transformDirection(housing.matrixWorld);
+        const origin = center.clone().addScaledVector(back, 1.5).add(new Vector3(0, 0.3, -0.5));
+        for (let x = 0; x <= 2; x++) {
+          for (let y = 0; y <= 2; y++) {
+            const xFraction = 0.2 + x * 0.3;
+            const yFraction = 0.2 + y * 0.3;
+            const point = new Vector3(
+              bounds.min.x + (bounds.max.x - bounds.min.x) * xFraction,
+              bounds.min.y + (bounds.max.y - bounds.min.y) * yFraction,
+              bounds.min.z,
+            ).applyMatrix4(housing.matrixWorld);
+            const direction = point.clone().sub(origin);
+            const distance = direction.length();
+            const ray = new Raycaster(origin, direction.normalize(), 0, distance + 0.001);
+            ray.layers.enable(1);
+            const hit = ray.intersectObjects(meshes, false)[0];
+            expect(['MirrorHousing' + name, 'MirrorSurface' + name],
+              `${name} exterior sample ${x},${y}`).toContain(hit?.object.name);
           }
         }
       }
@@ -273,9 +326,11 @@ describe('phase 5 scene asset loading', () => {
       const display = new Box3().setFromObject(assets.vehicle.getObjectByName('MirrorSurfaceRear'));
       const size = display.getSize(new Vector3());
       const center = display.getCenter(new Vector3());
+      const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
       expect(size.x).toBeLessThan(0.12);
       expect(size.y).toBeLessThan(0.05);
-      expect(center.y).toBeGreaterThan(profiles[id].driverEyeLocalM[1] + 0.08);
+      expect(Math.abs(center.x)).toBeLessThan(0.1);
+      expect(center.y).toBeGreaterThan(eye.y + 0.15);
     } finally { assets.dispose(); }
   });
 

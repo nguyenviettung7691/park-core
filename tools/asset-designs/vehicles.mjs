@@ -15,7 +15,7 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   const rearZ = data.frontWeightFraction * data.wheelbaseM;
   const eyeZ = frontZ + 0.25;
   const roofFront = eyeZ - 0.25, roofRear = cuv ? 1.15 : 0.62;
-  const frontFoot = eyeZ - 0.78, rearFoot = cuv ? half - 0.2 : half - 0.25;
+  const frontFoot = frontZ - (cuv ? 0.24 : 0.235), rearFoot = half - 0.2;
   const exterior = addNode('Exterior', root);
   const part = (size, center, color, rotation) =>
     transformGeometry(boxGeometry(size, color), center, rotation);
@@ -225,13 +225,15 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   for (const [name, position, yaw] of mirrors) {
     addNode(`Mirror${name}`, root, { translation: position, rotation: yawQuaternion(yaw) });
     const display = name === 'Rear'
-      ? [-0.22, position[1] - 0.025, position[2] + 0.52] : position;
+      ? [0, eye[1] + 0.2, eye[2] - 0.02]
+      : [(name === 'Left' ? -1 : 1) * (width / 2 + 0.14),
+        data.mirrorHeightM - data.comHeightM + 0.1, eyeZ - 0.02];
     const displayYaw = name === 'Rear' ? 0
       : Math.atan2(eye[0] - display[0], eye[2] - display[2]);
     const displayNode = addNode(`MirrorDisplay${name}`, exterior, {
       translation: display, rotation: yawQuaternion(displayYaw),
     });
-    const size = name === 'Rear' ? [0.09, 0.035, 0.025] : [0.18, 0.1, 0.035];
+    const size = name === 'Rear' ? [0.09, 0.035, 0.025] : [0.17, 0.09, 0.035];
     const surface = {
       positions: [-size[0] / 2, -size[1] / 2, 0, size[0] / 2, -size[1] / 2, 0,
         size[0] / 2, size[1] / 2, 0, -size[0] / 2, size[1] / 2, 0],
@@ -241,5 +243,16 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     addMesh(`MirrorSurface${name}`, displayNode, surface, [1, 1, 1]);
     addMesh(`MirrorHousing${name}`, displayNode, boxGeometry(size.map((v) => v + 0.025), palette.trim),
       palette.trim, [0, 0, -0.04]);
+    if (name !== 'Rear') {
+      const side = name === 'Left' ? -1 : 1;
+      const tip = [display[0], display[1] - size[1] / 2 - 0.02, display[2] - 0.1];
+      const base = [side * (width / 2 - 0.03), belt - data.comHeightM - 0.03, display[2] - 0.1];
+      const dx = tip[0] - base[0], dy = tip[1] - base[1];
+      addMesh(`MirrorStem${name}`, exterior, part(
+        [Math.hypot(dx, dy), 0.04, 0.045],
+        [(base[0] + tip[0]) / 2, (base[1] + tip[1]) / 2, tip[2]],
+        palette.trim, [0, 0, Math.atan2(dy, dx)],
+      ), palette.trim);
+    }
   }
 }

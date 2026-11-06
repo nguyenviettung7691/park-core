@@ -96,6 +96,7 @@ describe('phase 5 original GLB generator', () => {
       'Body', 'WheelFL', 'WheelFR', 'WheelRL', 'WheelRR',
       'DriverEye', 'MirrorRear', 'MirrorLeft', 'MirrorRight',
       'MirrorSurfaceRear', 'MirrorSurfaceLeft', 'MirrorSurfaceRight',
+      'MirrorStemLeft', 'MirrorStemRight', 'MirrorHousingLeft', 'MirrorHousingRight',
     ];
 
     for (const name of requiredNodes) expect(names).toContain(name);
@@ -117,15 +118,15 @@ describe('phase 5 original GLB generator', () => {
     expect(readGlb(assetPath(root, 'sedan')).nodes.map((node) => node.name)).toContain('Trunk');
   });
 
-  it('exports a rebalanced sedan hood and trunk within the body envelope', () => {
+  it('exports reference-aligned hood, trunk, and greenhouse proportions', () => {
     const root = mkdtempSync(join(tmpdir(), 'park-core-hood-trunk-'));
     temporaryRoots.push(root);
     generate(root);
-    const { nodes, meshes, accessors } = readGlb(assetPath(root, 'sedan'));
-    const parents = new Map();
-    nodes.forEach((node, parentIndex) =>
-      node.children?.forEach((childIndex) => parents.set(childIndex, parentIndex)));
-    const boundsFor = (name) => {
+    const boundsFor = (json, name) => {
+      const { nodes, meshes, accessors } = json;
+      const parents = new Map();
+      nodes.forEach((node, parentIndex) =>
+        node.children?.forEach((childIndex) => parents.set(childIndex, parentIndex)));
       const index = nodes.findIndex((node) => node.name === name);
       if (index < 0) return null;
       const primitive = meshes[nodes[index].mesh].primitives[0];
@@ -141,16 +142,26 @@ describe('phase 5 original GLB generator', () => {
         max: bounds.max.map((value, axis) => value + offset[axis]),
       };
     };
-    const hood = boundsFor('Hood');
-    const trunk = boundsFor('Trunk');
+    const sedan = readGlb(assetPath(root, 'sedan'));
+    const cuv = readGlb(assetPath(root, 'cuv'));
+    const hood = boundsFor(sedan, 'Hood');
+    const trunk = boundsFor(sedan, 'Trunk');
+    const sedanGlass = boundsFor(sedan, 'ExteriorWindowFaces');
+    const cuvGlass = boundsFor(cuv, 'ExteriorWindowFaces');
 
     expect(hood).not.toBeNull();
     expect(trunk).not.toBeNull();
-    if (!hood || !trunk) return;
+    expect(sedanGlass).not.toBeNull();
+    expect(cuvGlass).not.toBeNull();
+    if (!hood || !trunk || !sedanGlass || !cuvGlass) return;
     expect(hood.max[2] - hood.min[2]).toBeGreaterThan(0);
     expect(trunk.max[2] - trunk.min[2]).toBeGreaterThan(0);
     expect(trunk.max[1] - trunk.min[1]).toBeGreaterThan(0.01);
+    expect(hood.max[2] - hood.min[2]).toBeGreaterThanOrEqual(0.84);
+    expect(trunk.max[2] - trunk.min[2]).toBeLessThanOrEqual(0.2001);
     expect(hood.max[2] - hood.min[2]).toBeGreaterThan(trunk.max[2] - trunk.min[2]);
+    expect(sedanGlass.max[2] - sedanGlass.min[2]).toBeLessThanOrEqual(0.78 * 4.6);
+    expect(cuvGlass.max[2] - cuvGlass.min[2]).toBeLessThanOrEqual(0.8 * 4.35);
     for (const bounds of [hood, trunk]) {
       expect(bounds.min[2]).toBeGreaterThanOrEqual(-2.3);
       expect(bounds.max[2]).toBeLessThanOrEqual(2.3);
