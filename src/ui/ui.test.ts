@@ -9,6 +9,7 @@ import type {
 } from '../contracts';
 import { testGamepad } from '../test/gamepad';
 import { vi as messages } from '../messages';
+import { calibrationForProfile, controllerProfiles } from '../input/profiles';
 
 afterEach(() => document.body.replaceChildren());
 
@@ -32,6 +33,35 @@ function root() {
   const element = document.createElement('div');
   document.body.append(element);
   return element;
+}
+
+function animationClock() {
+  const callbacks = new Map<number, FrameRequestCallback>();
+  let next = 0;
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    callbacks.set(++next, callback);
+    return next;
+  });
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+    callbacks.delete(id);
+  });
+  return {
+    tick(count = 1) {
+      for (let frame = 0; frame < count; frame++) {
+        const entry = callbacks.entries().next().value as
+          [number, FrameRequestCallback] | undefined;
+        if (!entry) throw new Error('Animation frame was not scheduled');
+        callbacks.delete(entry[0]);
+        entry[1](16);
+      }
+    },
+  };
+}
+
+function profileGamepad() {
+  const pad = testGamepad();
+  pad.axes.splice(0, pad.axes.length, 0, 0, 0);
+  return pad;
 }
 
 it('renders a decorative parking mark beside the accessible menu heading', () => {
@@ -610,6 +640,151 @@ it('saves explicitly captured endpoints and invalidates them on rebinding or dev
   expect(element.querySelector('[role="alert"]')?.textContent).toContain('không hợp lệ');
   unmount();
   expect(frames.size).toBe(0);
+  vi.restoreAllMocks();
+});
+
+it('auto-verifies each profile control and waits for neutral before advancing', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const complete = vi.fn();
+  const profile = controllerProfiles.find(({ id }) => id === 'xbox-series-x')!;
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn(), profile);
+  const progress = element.querySelector<HTMLElement>('[data-capture-progress]');
+  expect(progress?.textContent).toContain('0 / 6');
+  clock.tick();
+
+  function checkAxis(index: number, value: number, neutral: number) {
+    clock.tick();
+    pad.axes[index] = value;
+    clock.tick(3);
+    expect(progress?.textContent).toContain(`${verified} / 6`);
+    pad.axes[index] = neutral;
+    clock.tick();
+    verified++;
+    expect(progress?.textContent).toContain(`${verified} / 6`);
+  }
+  function checkButton(index: number) {
+    clock.tick();
+    pad.buttons[index]!.value = 1;
+    pad.buttons[index]!.pressed = true;
+    clock.tick(3);
+    expect(progress?.textContent).toContain(`${verified} / 6`);
+    pad.buttons[index]!.value = 0;
+    pad.buttons[index]!.pressed = false;
+    clock.tick();
+    verified++;
+    expect(progress?.textContent).toContain(`${verified} / 6`);
+  }
+
+  let verified = 0;
+  checkAxis(0, -1, 0);
+  checkAxis(0, 1, 0);
+  checkButton(7);
+  checkButton(6);
+  checkButton(4);
+  checkButton(5);
+  expect(complete).not.toHaveBeenCalled();
+
+  const save = [...element.querySelectorAll('button')]
+    .find((button) => button.textContent === messages.saveCalibration);
+  expect(save?.disabled).toBe(false);
+  save?.click();
+  expect(complete).toHaveBeenCalledWith(calibrationForProfile('xbox-series-x', pad.id));
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('does not verify preset movement from a reversed direction or short spike', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const profile = controllerProfiles.find(({ id }) => id === 'xbox-series-x')!;
+  const complete = vi.fn();
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn(), profile);
+  const progress = element.querySelector<HTMLElement>('[data-capture-progress]');
+
+  clock.tick();
+  pad.axes[0] = 1;
+  clock.tick(3);
+  expect(progress?.textContent).toContain('0 / 6');
+  pad.axes[0] = 0;
+  clock.tick();
+  pad.axes[0] = -1;
+  clock.tick();
+  pad.axes[0] = 0;
+  clock.tick(3);
+  expect(progress?.textContent).toContain('0 / 6');
+  expect(complete).not.toHaveBeenCalled();
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('does not verify a pedal whose preset axis is active at rest and reversed when pressed', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const profile = controllerProfiles.find(({ id }) => id === 'logitech-g29')!;
+  const complete = vi.fn();
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn(), profile);
+  const progress = element.querySelector<HTMLElement>('[data-capture-progress]');
+
+  clock.tick();
+  pad.axes[0] = -1;
+  clock.tick(3);
+  pad.axes[0] = 0;
+  clock.tick();
+  clock.tick();
+  pad.axes[0] = 1;
+  clock.tick(3);
+  pad.axes[0] = 0;
+  clock.tick();
+  expect(progress?.textContent).toContain('2 / 6');
+
+  pad.axes[1] = 1;
+  clock.tick(3);
+  pad.axes[1] = -1;
+  clock.tick();
+  expect(progress?.textContent).toContain('2 / 6');
+  expect(complete).not.toHaveBeenCalled();
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('invalidates preset verification on missing samples and device replacement', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const profile = controllerProfiles.find(({ id }) => id === 'xbox-series-x')!;
+  const complete = vi.fn();
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn(), profile);
+  const progress = element.querySelector<HTMLElement>('[data-capture-progress]');
+
+  clock.tick();
+  pad.axes[0] = -1;
+  clock.tick(3);
+  pad.axes[0] = 0;
+  clock.tick();
+  expect(progress?.textContent).toContain('1 / 6');
+  pad.axes.length = 0;
+  clock.tick();
+  expect(progress?.textContent).toContain('0 / 6');
+  expect(complete).not.toHaveBeenCalled();
+
+  pad.axes.splice(0, 0, 0, 0, 0);
+  clock.tick();
+  pad.axes[0] = -1;
+  clock.tick(3);
+  pad.axes[0] = 0;
+  clock.tick();
+  expect(progress?.textContent).toContain('1 / 6');
+  pad.id = 'replacement';
+  clock.tick();
+  expect(progress?.textContent).toContain('0 / 6');
+  expect(element.querySelector('[role="alert"]')?.textContent)
+    .toContain(messages.controllerReplaced);
+  expect(complete).not.toHaveBeenCalled();
+  unmount();
   vi.restoreAllMocks();
 });
 
