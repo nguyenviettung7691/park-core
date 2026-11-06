@@ -31,7 +31,11 @@ export interface BenchmarkPageOptions {
   readonly embedded?: boolean;
   /** Read when a case starts so a mounted panel uses the latest saved choices. */
   readonly getSettings?: () => SettingsSaveV1;
+  readonly onSettingsLockChange?: (locked: boolean) => void;
 }
+
+type BenchmarkGraphicsSettings = Pick<SettingsSaveV1,
+  'preset' | 'resolutionScale' | 'frameRateCap' | 'antialias' | 'mirrorQuality' | 'overheadQuality'>;
 
 export function createEnvironmentReader(): () => EnvironmentInfo {
   let renderer: EnvironmentInfo['renderer'] | undefined;
@@ -134,6 +138,8 @@ export function createBenchmarkPage(
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   const outcomes = new Map<string, CaseOutcome>();
   const invalidAttempts: InvalidAttempt[] = [];
+  let suiteSettings: BenchmarkGraphicsSettings | null = null;
+  let settingsLocked = false;
 
   const status = element('p', { id: 'benchmark-status', className: 'bm-status' });
   status.setAttribute('role', 'status');
@@ -175,6 +181,12 @@ export function createBenchmarkPage(
     id: 'benchmark-export', type: 'button', disabled: true, hidden: embedded,
     textContent: 'Xuất báo cáo JSON',
   });
+  const editSettings = element('button', {
+    id: 'benchmark-edit-settings',
+    type: 'button',
+    hidden: true,
+    textContent: 'Thay đổi cài đặt đồ họa',
+  });
   const results = element('section', { id: 'benchmark-results', className: 'bm-results' });
   const introduction = embedded
     ? 'Phép đo dùng cài đặt đồ họa hiện đã chọn, không tự thay đổi hay lưu lại gợi ý. ' +
@@ -206,7 +218,7 @@ export function createBenchmarkPage(
     })] : []));
   const panel = element('main', { className: 'bm-panel' },
     intro, alertBox, fieldset,
-    element('div', { className: 'bm-actions' }, start, lock, exportButton), results);
+    element('div', { className: 'bm-actions' }, start, lock, exportButton, editSettings), results);
   const stage = element('div', { id: 'benchmark-stage', className: 'bm-stage', hidden: true });
   root.classList.add('bm-root');
   if (embedded) root.dataset.embedded = 'true';
@@ -219,6 +231,11 @@ export function createBenchmarkPage(
     setStatus(text);
   }
   function clearError() { alertBox.textContent = ''; alertBox.hidden = true; }
+  function setSettingsLocked(locked: boolean) {
+    if (settingsLocked === locked) return;
+    settingsLocked = locked;
+    options.onSettingsLockChange?.(locked);
+  }
   function nextCase(): BenchmarkCase | null {
     return BENCHMARK_CASES.find((c) => outcomes.get(c.id)?.result.phase !== 'complete') ?? null;
   }
@@ -232,6 +249,7 @@ export function createBenchmarkPage(
     lock.hidden = state !== 'ready';
     cancel.disabled = state === 'setup' || state === 'closed';
     exportButton.disabled = outcomes.size === 0;
+    editSettings.hidden = !embedded || state !== 'setup' || suiteSettings === null;
     fieldset.disabled = state !== 'setup' || [...outcomes.values()].some((o) => o.result.phase === 'complete');
     panel.hidden = state === 'starting' || state === 'running';
     stage.hidden = !panel.hidden;
@@ -239,6 +257,17 @@ export function createBenchmarkPage(
   }
   function renderResults() {
     results.replaceChildren(element('h2', { textContent: 'Kết quả' }));
+    if (embedded && suiteSettings) {
+      const cap = suiteSettings.frameRateCap === 'display'
+        ? 'đồng bộ màn hình'
+        : `${suiteSettings.frameRateCap} FPS`;
+      results.append(element('p', {
+        textContent: `Cấu hình được đo: ${Math.round(suiteSettings.resolutionScale * 100)}%, ` +
+          `${cap}, khử răng cưa ${suiteSettings.antialias ? 'bật' : 'tắt'}, ` +
+          `gương ${suiteSettings.mirrorQuality === 'high' ? 'cao' : 'thấp'}, ` +
+          `camera trên cao ${suiteSettings.overheadQuality === 'high' ? 'cao' : 'thấp'}.`,
+      }));
+    }
     const list = element('ul', {});
     for (const definition of BENCHMARK_CASES) {
       const outcome = outcomes.get(definition.id);
@@ -267,10 +296,14 @@ export function createBenchmarkPage(
         if (embedded) {
           const losses = `mất catch-up ${result.catchUpLossS.toFixed(3)} s, ` +
             `clamp ${result.clampLossS.toFixed(3)} s`;
-          const suggestions = getGraphicsSuggestions(result).map((suggestion) =>
+          const suggestions = getGraphicsSuggestions(
+            result, suiteSettings?.frameRateCap ?? 'display',
+          ).map((suggestion) =>
             suggestion === 'lower-render-scale'
               ? 'giảm tỷ lệ kết xuất rồi đo lại'
-              : 'giảm chất lượng gương hoặc camera trên cao rồi đo lại');
+              : suggestion === 'lower-auxiliary-quality'
+                ? 'giảm chất lượng gương hoặc camera trên cao rồi đo lại'
+                : 'chọn giới hạn ít nhất 60 FPS hoặc đồng bộ màn hình rồi đo lại');
           const advice = suggestions.length > 0
             ? ` Gợi ý thủ công: ${suggestions.join('; ')}.` : '';
           item.textContent = `${caseLabel(definition)}: hoàn tất (${verdict}) — ${metrics}, ${losses}.${advice}`;
@@ -435,6 +468,20 @@ export function createBenchmarkPage(
     if (!next) return;
     const validated = readMachine();
     if (!validated) return;
+    if (embedded && !suiteSettings) {
+      const selected = options.getSettings?.();
+      if (selected) {
+        suiteSettings = {
+          preset: selected.preset,
+          resolutionScale: selected.resolutionScale,
+          frameRateCap: selected.frameRateCap,
+          antialias: selected.antialias,
+          mirrorQuality: selected.mirrorQuality,
+          overheadQuality: selected.overheadQuality,
+        };
+      }
+    }
+    setSettingsLocked(suiteSettings !== null);
     machine = validated;
     readEnvironment();
     clearError();
@@ -484,7 +531,7 @@ export function createBenchmarkPage(
     canvas = element('canvas', { id: 'benchmark-canvas', tabIndex: 0 });
     canvas.setAttribute('aria-label', 'Khung mô phỏng đang đo hiệu năng');
     stage.append(canvas);
-    const selectedSettings = embedded ? options.getSettings?.() : undefined;
+    const selectedSettings = embedded ? suiteSettings : undefined;
     try {
       preview = createPreview(canvas, stage, events, {
         environmentId: 'garage', vehicleId: definition.vehicleId, sceneAssets: owned,
@@ -552,6 +599,17 @@ export function createBenchmarkPage(
       default: break;
     }
   }
+  function onEditSettings() {
+    if (!embedded || state !== 'setup' || suiteSettings === null) return;
+    outcomes.clear();
+    invalidAttempts.length = 0;
+    suiteSettings = null;
+    setSettingsLocked(false);
+    clearError();
+    renderResults();
+    refreshControls();
+    setStatus('Số đo đã xóa. Thay đổi cài đặt đồ họa rồi bắt đầu lại.');
+  }
   function onExport() {
     if (embedded || outcomes.size === 0 || !machine || !runEnvironment) return;
     const report = buildReport({
@@ -566,6 +624,7 @@ export function createBenchmarkPage(
   lock.addEventListener('click', onLock);
   cancel.addEventListener('click', onCancel);
   exportButton.addEventListener('click', onExport);
+  editSettings.addEventListener('click', onEditSettings);
   refreshControls();
   setStatus('Điền thông tin máy thực tế để bắt đầu.');
 
@@ -573,6 +632,7 @@ export function createBenchmarkPage(
     dispose() {
       if (state === 'closed') return;
       state = 'closed';
+      setSettingsLocked(false);
       attempt++;
       controller?.abort();
       assets?.dispose();
@@ -582,6 +642,7 @@ export function createBenchmarkPage(
       lock.removeEventListener('click', onLock);
       cancel.removeEventListener('click', onCancel);
       exportButton.removeEventListener('click', onExport);
+      editSettings.removeEventListener('click', onEditSettings);
       root.replaceChildren();
       root.classList.remove('bm-root');
       delete root.dataset.embedded;
@@ -590,7 +651,9 @@ export function createBenchmarkPage(
 }
 
 export function mountBenchmarkPanel(
-  root: HTMLElement, getSettings: () => SettingsSaveV1,
+  root: HTMLElement,
+  getSettings: () => SettingsSaveV1,
+  onSettingsLockChange?: (locked: boolean) => void,
 ): { dispose(): void } {
-  return createBenchmarkPage(root, { embedded: true, getSettings });
+  return createBenchmarkPage(root, { embedded: true, getSettings, onSettingsLockChange });
 }

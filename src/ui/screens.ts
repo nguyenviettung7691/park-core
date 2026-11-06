@@ -7,7 +7,7 @@ import type {
 } from '../runtime-types';
 import { scenarios } from '../lessons/scenarios';
 import { createParkingIllustration } from './illustrations';
-import { mountViewSettings } from './view-settings';
+import { mountViewSettings, type MountedViewSettings } from './view-settings';
 import type { ControllerProfile, ControllerProfileId } from '../input/profiles';
 export { mountCalibration } from './calibration';
 
@@ -114,7 +114,7 @@ export function mountScreen(
   screen.dataset.screen = state.kind;
   if (preview === 'paused') screen.classList.add('preview-paused');
   const listeners = new AbortController();
-  let unmountSettings: (() => void) | undefined;
+  let settingsMount: MountedViewSettings | undefined;
   let unmountBenchmark: (() => void) | undefined;
 
   function text(tag: 'h1' | 'h2' | 'p', value: string, parent: HTMLElement = screen) {
@@ -301,7 +301,7 @@ export function mountScreen(
       else {
         const graphicsDisabled = overlay.returnTo.kind === 'paused' ||
           (overlay.returnTo.kind === 'onboarding' && overlay.returnTo.origin === 'paused');
-        unmountSettings = mountViewSettings(screen, context.settings, overlay.tab, onAction, {
+        settingsMount = mountViewSettings(screen, context.settings, overlay.tab, onAction, {
           graphicsDisabled,
         });
         if (!graphicsDisabled) {
@@ -314,7 +314,10 @@ export function mountScreen(
               loading = true;
               void import('../benchmark/page').then(({ mountBenchmarkPanel }) => {
                 if (listeners.signal.aborted) return;
-                unmountBenchmark = mountBenchmarkPanel(benchmarkRoot, getSettings).dispose;
+                unmountBenchmark = mountBenchmarkPanel(
+                  benchmarkRoot, getSettings,
+                  (locked) => settingsMount?.setGraphicsDisabled(locked),
+                ).dispose;
               }).catch(() => {
                 if (listeners.signal.aborted) return;
                 const error = document.createElement('p');
@@ -615,7 +618,7 @@ export function mountScreen(
   }
   return () => {
     unmountBenchmark?.();
-    unmountSettings?.();
+    settingsMount?.dispose();
     listeners.abort();
     screen.remove();
   };

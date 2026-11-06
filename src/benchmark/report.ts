@@ -29,6 +29,7 @@ export const BENCHMARK_CASES: readonly BenchmarkCase[] = [
 export function workloadSettings(cameraMode: CameraMode): SettingsSaveV1 {
   return {
     ...createDefaultGraphicsSettings(DEFAULT_GRAPHICS_CAPABILITIES),
+    antialias: false,
     version: 1, volume: 0, muted: true, driverFovDeg: 60, cameraMode, overhead: true,
     trajectory: true, inputSource: 'keyboard',
   };

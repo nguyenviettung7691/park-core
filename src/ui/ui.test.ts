@@ -547,7 +547,7 @@ it('keeps moved settings labeled and preserves edits across view and audio tabs'
 
   element.querySelector<HTMLButtonElement>('#recenter-view')!.click();
   expect(action).toHaveBeenLastCalledWith({ type: 'recenter-view' });
-  unmountView();
+  unmountView.dispose();
   const unmountAudio = mountViewSettings(element, { ...context.settings, cameraMode: 'chase',
     overhead: true, trajectory: true, driverFovDeg: 75 }, 'audio', action);
   const volume = element.querySelector<HTMLInputElement>('#volume')!;
@@ -567,7 +567,7 @@ it('keeps moved settings labeled and preserves edits across view and audio tabs'
     settings: { ...context.settings, cameraMode: 'chase', overhead: true, trajectory: true,
       driverFovDeg: 75, volume: 0.25, muted: true },
   });
-  unmountAudio();
+  unmountAudio.dispose();
   expect(element.children.length).toBe(0);
 });
 
@@ -627,6 +627,32 @@ it('shows all graphics controls together, applies presets, and marks manual edit
     settings: { ...balanced, preset: 'custom', resolutionScale: 1 },
   });
   expect(preset.value).toBe('custom');
+});
+
+it('locks learner graphics controls during a benchmark suite', () => {
+  const element = root();
+  const mounted = mountViewSettings(element, context.settings, 'view', vi.fn());
+  const ids = [
+    'graphics-preset',
+    'resolution-scale',
+    'frame-rate-cap',
+    'anti-aliasing',
+    'mirror-quality',
+    'overhead-quality',
+    'graphics-benchmark-toggle',
+  ];
+
+  mounted.setGraphicsDisabled(true);
+  for (const id of ids) {
+    expect(element.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.disabled)
+      .toBe(true);
+  }
+  mounted.setGraphicsDisabled(false);
+  for (const id of ids) {
+    expect(element.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.disabled)
+      .toBe(false);
+  }
+  mounted.dispose();
 });
 
 it('shows the optional benchmark only after the learner opens it', async () => {

@@ -401,6 +401,7 @@ test('measures selected graphics on a non-reference setup and keeps tuning manua
   const benchmarkRoot = page.locator('#graphics-benchmark-root');
   await benchmarkRoot.locator('#benchmark-start').click();
   await expect(benchmarkRoot.locator('#benchmark-lock')).toBeVisible({ timeout: 60000 });
+  await expect(page.locator('#resolution-scale')).toBeDisabled();
   await benchmarkRoot.locator('#benchmark-lock').click();
   const canvas = benchmarkRoot.locator('#benchmark-canvas');
   await expect(canvas).toBeVisible();
@@ -416,6 +417,9 @@ test('measures selected graphics on a non-reference setup and keeps tuning manua
   await expect(result).not.toContainText('đạt mục tiêu tham khảo');
   await expect(canvas).toHaveCount(0);
 
+  await benchmarkRoot.locator('#benchmark-edit-settings').click();
+  await expect(result).toHaveCount(0);
+  await expect(page.locator('#resolution-scale')).toBeEnabled();
   await page.locator('#resolution-scale').selectOption('0.75');
   await expect(page.locator('#graphics-preset')).toHaveValue('custom');
   await expect(page.locator('#screen-layer > main')).toHaveAttribute('data-screen', 'settings');

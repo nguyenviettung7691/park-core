@@ -10,12 +10,22 @@ import {
   type GraphicsSettings,
 } from '../views/graphics-settings';
 
+interface MountedGraphicsSettings {
+  setDisabled(disabled: boolean): void;
+  dispose(): void;
+}
+
+export interface MountedViewSettings {
+  setGraphicsDisabled(disabled: boolean): void;
+  dispose(): void;
+}
+
 function mountGraphicsSettings(
   root: HTMLElement,
   initial: SettingsSaveV1,
   onAction: (action: ScreenAction) => void,
   disabled: boolean,
-): () => void {
+): MountedGraphicsSettings {
   let settings = { ...initial };
   const listeners = new AbortController();
   const group = document.createElement('div');
@@ -146,15 +156,24 @@ function mountGraphicsSettings(
   }, { signal: listeners.signal });
   group.append(benchmarkToggle, benchmarkRoot);
   root.append(group);
+  const controls: { disabled: boolean }[] = [
+    preset, scale, frameRate, antialias, mirror, overhead, benchmarkToggle,
+  ];
+  function setDisabled(value: boolean) {
+    for (const control of controls) control.disabled = disabled || value;
+  }
   syncControls();
-  return () => { listeners.abort(); group.remove(); };
+  return {
+    setDisabled,
+    dispose() { listeners.abort(); group.remove(); },
+  };
 }
 
 export function mountViewSettings(
   root: HTMLElement, initial: SettingsSaveV1, tab: 'view' | 'audio',
   onAction: (action: ScreenAction) => void,
   options: { readonly graphicsDisabled?: boolean } = {},
-): () => void {
+): MountedViewSettings {
   let settings = { ...initial };
   const listeners = new AbortController();
   const group = document.createElement('div');
@@ -214,12 +233,15 @@ export function mountViewSettings(
     checkbox('mute-audio', vi.muteWarnings, settings.muted, (muted) => change({ muted }));
   }
   root.append(group);
-  const unmountGraphics = tab === 'view'
+  const graphics = tab === 'view'
     ? mountGraphicsSettings(root, initial, onAction, options.graphicsDisabled ?? false)
     : undefined;
-  return () => {
-    listeners.abort();
-    group.remove();
-    unmountGraphics?.();
+  return {
+    setGraphicsDisabled(disabled) { graphics?.setDisabled(disabled); },
+    dispose() {
+      listeners.abort();
+      group.remove();
+      graphics?.dispose();
+    },
   };
 }

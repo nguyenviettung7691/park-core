@@ -57,6 +57,13 @@ describe('graphics suggestions', () => {
     expect(getGraphicsSuggestions(performanceResult(update))).toEqual(['lower-render-scale']);
   });
 
+  it('does not recommend lower render scale when a 30 FPS cap explains missed targets', () => {
+    expect(getGraphicsSuggestions(performanceResult({
+      p95Ms: 34,
+      meanFps: 30,
+    }), 30)).toEqual(['raise-frame-rate-cap']);
+  });
+
   it.each([
     ['catch-up loss', { catchUpLossS: 0.01 }],
     ['clamp loss', { clampLossS: 0.01 }],
