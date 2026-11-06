@@ -400,6 +400,17 @@ meter::-webkit-meter-optimum-value {
   grid-column: 1 / -1;
 }
 
+.controller-profile-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  grid-column: 1 / -1;
+}
+
+.controller-profile-list [data-suggested="true"] {
+  border-color: var(--color-accent);
+}
+
 summary {
   cursor: pointer;
   padding: 10px 0;

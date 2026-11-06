@@ -21,6 +21,7 @@ import { createPersistence, unlockedStages, type PersistenceStore } from './stor
 import { createAttemptHistoryStore } from './storage/attempt-history';
 import { scenarios } from './lessons/scenarios';
 import type { AppObservation, AppObservationPayload } from './app-observation';
+import { controllerProfiles, findControllerProfile } from './input/profiles';
 
 export interface AppDeps {
   createOnboarding: () => OnboardingStore;
@@ -177,6 +178,8 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       ready: context.settings.inputSource === 'keyboard' ||
         (pad !== undefined && verifiedCalibration && calibration !== undefined),
       savedCalibrationAvailable: calibration !== undefined && !verifiedCalibration,
+      profiles: controllerProfiles,
+      matchedProfileId: pad ? findControllerProfile(pad)?.id ?? null : null,
     };
   }
   function drawScreen() {
@@ -189,6 +192,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     unmountScreen?.();
     if (view.calibrating && gamepadIndex !== null) {
       const index = gamepadIndex;
+      const profile = controllerProfiles.find((candidate) =>
+        candidate.id === view.calibrationProfileId);
+      const profileId = view.calibrationProfileId ?? null;
       unmountScreen = mountCalibration(layer, index, deps.getGamepads, (value) => {
         calibrations.set(value.deviceId, value);
         verified.set(index, value.deviceId);
@@ -198,13 +204,18 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         readDevices();
         preview?.setCalibration(value);
         preview?.selectSource('gamepad', index);
-        view = { ...view, calibrating: false };
+        view = { ...view, calibrating: false, calibrationProfileId: null };
         drawScreen();
       }, () => {
-        view = { ...view, calibrating: false };
+        view = { ...view, calibrating: false, calibrationProfileId: null };
         drawScreen();
-        layer.querySelector<HTMLButtonElement>('#calibrate-device')?.focus();
-      });
+        const trigger = profileId
+          ? layer.querySelector<HTMLButtonElement>(
+            `[data-controller-profile="${profileId}"]`,
+          )
+          : layer.querySelector<HTMLButtonElement>('#calibrate-device');
+        trigger?.focus();
+      }, profile);
     } else if (view.overlay?.kind === 'onboarding') {
       unmountScreen = mountOnboarding(layer, view.overlay, context, inputSetup(), onAction);
     } else if (view.preview === 'running') {
@@ -826,9 +837,21 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         break;
       case 'open-calibration':
         if (view.preview === 'running' || gamepadIndex === null || view.pauseReason === 'contact') return;
-        view = { ...view, calibrating: true };
+        view = { ...view, calibrating: true, calibrationProfileId: null };
         drawScreen();
         break;
+      case 'open-profile-verification': {
+        if (view.preview === 'running' || gamepadIndex === null || view.pauseReason === 'contact') return;
+        const profile = controllerProfiles.find((candidate) => candidate.id === action.profileId);
+        if (!profile) throw new RangeError(`Unknown controller profile: ${action.profileId}`);
+        if (!readDevices() || !devices.some((pad) => pad.index === gamepadIndex)) {
+          drawScreen();
+          return;
+        }
+        view = { ...view, calibrating: true, calibrationProfileId: profile.id };
+        drawScreen();
+        break;
+      }
       default:
         throw new Error('Unsupported app action');
     }

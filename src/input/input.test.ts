@@ -58,6 +58,10 @@ describe('controller profiles', () => {
     })?.id).toBe('thrustmaster-t300-rs-gt');
     expect(findControllerProfile({ id: 'Logitech G27 Racing Wheel', mapping: '' }))
       .toBeNull();
+    expect(findControllerProfile({ id: 'Logitech G290 Racing Wheel', mapping: '' }))
+      .toBeNull();
+    expect(findControllerProfile({ id: 'Logitech G9230 Racing Wheel', mapping: '' }))
+      .toBeNull();
   });
 });
 

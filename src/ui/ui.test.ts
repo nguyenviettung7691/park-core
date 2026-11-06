@@ -268,10 +268,66 @@ it('offers explicit verification for a saved calibration matching the selected d
   }, action, undefined, {
     source: 'gamepad', index: 0, devices: [{ index: 0, id: 'wheel' }],
     ready: false, savedCalibrationAvailable: true,
+    profiles: controllerProfiles, matchedProfileId: null,
   });
 
   element.querySelector<HTMLButtonElement>('#verify-saved-calibration')?.click();
   expect(action).toHaveBeenCalledWith({ type: 'verify-saved-calibration' });
+});
+
+it('offers named profiles, marks an exact match as a suggestion, and keeps manual calibration available', () => {
+  const element = root();
+  const action = vi.fn();
+  const setup = {
+    source: 'gamepad' as const, index: 0,
+    devices: [{ index: 0, id: 'Xbox Wireless Controller Series X' }],
+    ready: false, savedCalibrationAvailable: false,
+    profiles: controllerProfiles, matchedProfileId: 'xbox-series-x' as const,
+  };
+  const view: ShellView = {
+    state: { kind: 'menu' }, preview: 'closed',
+    overlay: { kind: 'settings', tab: 'input', returnTo: { kind: 'menu' } },
+  };
+  mountScreen(element, view.state, {
+    ...context, settings: { ...context.settings, inputSource: 'gamepad' },
+  }, action, view, setup);
+
+  expect(element.querySelector('[data-profile-match-status]')?.textContent)
+    .toContain('Khớp với thiết bị hiện tại');
+  const choices = [...element.querySelectorAll<HTMLButtonElement>('[data-controller-profile]')];
+  expect(choices).toHaveLength(6);
+  expect(choices.map((choice) => choice.textContent)).toContain('Xbox Wireless Controller (Series X)');
+  expect(element.querySelector('#calibrate-device')).not.toBeNull();
+  element.querySelector<HTMLButtonElement>('[data-controller-profile="xbox-series-x"]')!.click();
+  expect(action).toHaveBeenCalledWith({
+    type: 'open-profile-verification', profileId: 'xbox-series-x',
+  });
+});
+
+it('keeps named profile choice and manual calibration available for an unmatched device', () => {
+  const element = root();
+  const action = vi.fn();
+  const setup = {
+    source: 'gamepad' as const, index: 0,
+    devices: [{ index: 0, id: 'Unknown Controller' }],
+    ready: false, savedCalibrationAvailable: false,
+    profiles: controllerProfiles, matchedProfileId: null,
+  };
+  const view: ShellView = {
+    state: { kind: 'menu' }, preview: 'closed',
+    overlay: { kind: 'settings', tab: 'input', returnTo: { kind: 'menu' } },
+  };
+  mountScreen(element, view.state, {
+    ...context, settings: { ...context.settings, inputSource: 'gamepad' },
+  }, action, view, setup);
+
+  expect(element.querySelector('[data-profile-match-status]')?.textContent)
+    .toContain('Chưa nhận diện chính xác');
+  expect(element.querySelectorAll('[data-controller-profile]')).toHaveLength(6);
+  const manual = element.querySelector<HTMLButtonElement>('#calibrate-device');
+  expect(manual?.disabled).toBe(false);
+  manual?.click();
+  expect(action).toHaveBeenCalledWith({ type: 'open-calibration' });
 });
 
 it('shows accessible indeterminate asset progress and lets the learner cancel to the menu', () => {

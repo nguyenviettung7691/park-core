@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { mountOnboarding } from './onboarding';
 import type { ScreenContext } from '../runtime-types';
+import { controllerProfiles } from '../input/profiles';
 
 afterEach(() => document.body.replaceChildren());
 const context: ScreenContext = {
@@ -43,6 +44,9 @@ it('explains braking rather than reversing and does not claim an unverified game
   unmount();
   mountOnboarding(document.body, { kind: 'onboarding', step: 1, origin: 'menu' },
     { ...context, settings: { ...context.settings, inputSource: 'gamepad' } },
-    { source: 'gamepad', index: null, devices: [], ready: false, savedCalibrationAvailable: false }, vi.fn());
+    {
+      source: 'gamepad', index: null, devices: [], ready: false, savedCalibrationAvailable: false,
+      profiles: controllerProfiles, matchedProfileId: null,
+    }, vi.fn());
   expect(document.body.textContent).toContain('chưa được hiệu chỉnh');
 });

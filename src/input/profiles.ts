@@ -20,8 +20,12 @@ export interface ControllerProfile {
 }
 
 function hasTokens(id: string, ...tokens: string[]): boolean {
-  const normalized = id.toLocaleLowerCase();
-  return tokens.every((token) => normalized.includes(token));
+  const words = id.toLocaleLowerCase().match(/[a-z0-9]+/g) ?? [];
+  return tokens.every((token) => {
+    const phrase = token.toLocaleLowerCase().match(/[a-z0-9]+/g) ?? [];
+    return phrase.length > 0 && words.some((_, index) =>
+      phrase.every((word, offset) => words[index + offset] === word));
+  });
 }
 
 function gamepadCalibration(): CalibrationTemplate {

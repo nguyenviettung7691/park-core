@@ -108,8 +108,12 @@ Keyboard is selected by default:
   modes while the simulation canvas is focused. Throttle, brake, and steering
   stay source-specific.
 
-For a gamepad or simulation wheel, select the Gamepad input source and complete
-the in-app calibration before starting or resuming a session.
+For a gamepad or simulation wheel, select the Gamepad input source, then choose
+a suggested or other controller profile and complete its movement checks.
+Illustrated manual calibration remains available for unmatched devices and
+custom mappings. Profile names are suggestions only; compatibility with these
+hardware candidates has not been validated. Saved calibration is tied to the
+browser-reported device ID and must be verified again after reconnecting.
 
 ## Deployment
 

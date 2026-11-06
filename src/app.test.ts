@@ -472,15 +472,16 @@ it('saves calibration by stable device ID and never records success from preview
     if (!button) throw new Error(`Button missing: ${label}`);
     button.click();
   };
-  pad.axes[0] = -1; click('Ghi hết lái trái');
-  pad.axes[0] = 0; click('Ghi chính giữa');
-  pad.axes[0] = 1; click('Ghi hết lái phải');
-  for (const [index, label] of [[7, 'Chân ga'], [6, 'Phanh chân']] as const) {
-    pad.buttons[index]!.value = 0; click(`${label} — Ghi đã nhả`);
-    pad.buttons[index]!.value = 1; click(`${label} — Ghi đã nhấn hết`);
+  const capture = () => click('Ghi nhận vị trí này');
+  pad.axes[0] = -1; capture();
+  pad.axes[0] = 0; capture();
+  pad.axes[0] = 1; capture();
+  for (const index of [7, 6]) {
+    pad.buttons[index]!.value = 0; capture();
+    pad.buttons[index]!.value = 1; capture();
   }
-  pad.buttons[4]!.value = 1; click('Xác minh nút R');
-  pad.buttons[5]!.value = 1; click('Xác minh nút D');
+  pad.buttons[4]!.value = 1; capture();
+  pad.buttons[5]!.value = 1; capture();
   click('Lưu hiệu chuẩn');
 
   expect(persistence.saveCalibrations).toHaveBeenCalledWith([
@@ -493,6 +494,144 @@ it('saves calibration by stable device ID and never records success from preview
   await f.openPreview();
   expect(persistence.recordConfirmedStageSuccess).not.toHaveBeenCalled();
   app.dispose();
+});
+
+it('opens a selected controller profile for verification without saving it automatically', () => {
+  const f = fixture();
+  const pad = testGamepad();
+  pad.id = 'Xbox Wireless Controller Series X';
+  const persistence = appPersistence();
+  const app = f.app({
+    createPersistence: () => persistence.store,
+    getGamepads: () => [pad],
+  });
+  try {
+    const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
+    source.value = 'gamepad';
+    source.dispatchEvent(new Event('change'));
+    const device = f.root.querySelector<HTMLSelectElement>('#input-device')!;
+    device.value = '0';
+    device.dispatchEvent(new Event('change'));
+
+    const profile = f.root.querySelector<HTMLButtonElement>(
+      '[data-controller-profile="xbox-series-x"]',
+    );
+    expect(profile).not.toBeNull();
+    profile?.click();
+    expect(f.root.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(f.root.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 6');
+    expect(persistence.saveCalibrations).not.toHaveBeenCalled();
+  } finally {
+    app.dispose();
+  }
+});
+
+it('saves a profile only after all checks and binds it to the actual device ID', () => {
+  const f = fixture();
+  const pad = testGamepad();
+  pad.id = 'Xbox Wireless Controller Series X';
+  const persistence = appPersistence();
+  const frames: FrameRequestCallback[] = [];
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    frames.push(callback);
+    return frames.length;
+  });
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+  const tick = () => {
+    const callback = frames.shift();
+    if (!callback) throw new Error('Calibration animation frame missing');
+    callback(0);
+  };
+  const app = f.app({
+    createPersistence: () => persistence.store,
+    getGamepads: () => [pad],
+  });
+  try {
+    const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
+    source.value = 'gamepad';
+    source.dispatchEvent(new Event('change'));
+    const device = f.root.querySelector<HTMLSelectElement>('#input-device')!;
+    device.value = '0';
+    device.dispatchEvent(new Event('change'));
+    f.root.querySelector<HTMLButtonElement>(
+      '[data-controller-profile="xbox-series-x"]',
+    )!.click();
+    expect(persistence.saveCalibrations).not.toHaveBeenCalled();
+
+    const checkAxis = (active: number) => {
+      tick();
+      pad.axes[0] = active;
+      tick(); tick(); tick();
+      pad.axes[0] = 0;
+      tick();
+    };
+    const checkButton = (index: number) => {
+      tick();
+      pad.buttons[index]!.value = 1;
+      pad.buttons[index]!.pressed = true;
+      tick(); tick(); tick();
+      pad.buttons[index]!.value = 0;
+      pad.buttons[index]!.pressed = false;
+      tick();
+    };
+    checkAxis(-1);
+    checkAxis(1);
+    for (const index of [7, 6, 4, 5]) checkButton(index);
+
+    expect(f.root.querySelector('[data-capture-progress]')?.textContent).toContain('6 / 6');
+    expect(persistence.saveCalibrations).not.toHaveBeenCalled();
+    f.click('Lưu hiệu chuẩn');
+    expect(persistence.saveCalibrations).toHaveBeenCalledWith([
+      expect.objectContaining({ deviceId: 'Xbox Wireless Controller Series X' }),
+    ]);
+    expect(f.root.querySelector<HTMLButtonElement>('#start-stage')?.disabled).toBe(false);
+  } finally {
+    app.dispose();
+  }
+});
+
+it('does not save or mark input ready when the selected profile device is replaced', () => {
+  const f = fixture();
+  const pad = testGamepad();
+  pad.id = 'Xbox Wireless Controller Series X';
+  const persistence = appPersistence();
+  const frames: FrameRequestCallback[] = [];
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    frames.push(callback);
+    return frames.length;
+  });
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+  const app = f.app({
+    createPersistence: () => persistence.store,
+    getGamepads: () => [pad],
+  });
+  try {
+    const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
+    source.value = 'gamepad';
+    source.dispatchEvent(new Event('change'));
+    const device = f.root.querySelector<HTMLSelectElement>('#input-device')!;
+    device.value = '0';
+    device.dispatchEvent(new Event('change'));
+    f.root.querySelector<HTMLButtonElement>(
+      '[data-controller-profile="xbox-series-x"]',
+    )!.click();
+
+    pad.id = 'Replacement Controller';
+    const callback = frames.shift();
+    if (!callback) throw new Error('Calibration animation frame missing');
+    callback(0);
+
+    expect(f.root.querySelector('[role="alert"]')?.textContent).toContain('đã bị thay');
+    const save = [...f.root.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === 'Lưu hiệu chuẩn');
+    expect(save?.disabled).toBe(true);
+    f.click('Hủy');
+    expect(persistence.saveCalibrations).not.toHaveBeenCalled();
+    expect(f.root.querySelector<HTMLButtonElement>('#start-stage')?.disabled).toBe(true);
+    expect((document.activeElement as HTMLElement).dataset.controllerProfile).toBe('xbox-series-x');
+  } finally {
+    app.dispose();
+  }
 });
 
 it('verifies a saved calibration only for the selected stable device ID', async () => {
