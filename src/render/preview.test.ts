@@ -12,6 +12,7 @@ import { scenarios } from '../lessons/scenarios';
 import {
   createPreview as startPreview,
   PreviewStartError,
+  type PrototypeOptions,
   type PreviewDeps,
   type PreviewRenderer,
 } from './preview';
@@ -28,10 +29,12 @@ afterEach(() => {
 const settings = {
   version: 1, volume: 0.5, muted: false, driverFovDeg: 60,
   cameraMode: 'driver', overhead: false, trajectory: false,
-  inputSource: 'keyboard', resolutionScale: 1,
+  inputSource: 'keyboard', preset: 'high', resolutionScale: 1,
+  frameRateCap: 'display', antialias: true,
+  mirrorQuality: 'high', overheadQuality: 'high',
 } as const;
 
-function options() {
+function options(settingsOverride: PrototypeOptions['settings'] = settings) {
   const sceneAssets = buildPrototypeScene(
     profiles.sedan, collidersForEnvironment('garage'),
   ).assets;
@@ -46,7 +49,7 @@ function options() {
   return {
     environmentId: 'garage' as const, vehicleId: 'sedan' as const,
     sceneAssets, source: 'keyboard' as const, gamepadIndex: null,
-    calibration: null, getGamepads: () => [], settings,
+    calibration: null, getGamepads: () => [], settings: settingsOverride,
   };
 }
 
@@ -169,6 +172,16 @@ function fixture() {
 }
 
 describe('preview lifecycle', () => {
+  it('uses the selected anti-aliasing setting for context and renderer creation', () => {
+    const f = fixture();
+    const previewOptions = options({ ...settings, antialias: false });
+    const p = startPreview(f.canvas, f.container, f.events, previewOptions, f.deps);
+
+    expect(f.deps.createContext).toHaveBeenCalledWith(f.canvas, false);
+    expect(f.deps.createRenderer).toHaveBeenCalledWith(f.canvas, false);
+    p.dispose();
+  });
+
   it('disposes the loaded visual assets exactly once when the preview closes', () => {
     const f = fixture();
     const previewOptions = options();
@@ -1029,6 +1042,41 @@ describe('preview lifecycle', () => {
 });
 
 describe('preview frame observer', () => {
+  it('caps rendering without reducing fixed-step physics updates', () => {
+    function run(frameRateCap: 'display' | 30) {
+      const f = fixture();
+      const steps = vi.spyOn(f.world, 'step');
+      const p = startPreview(
+        f.canvas,
+        f.container,
+        f.events,
+        options({ ...settings, frameRateCap }),
+        f.deps,
+      );
+      f.canvas.focus();
+      void p.requestPointerLock();
+      p.resume();
+      steps.mockClear();
+      const initialRenders = f.renderer.render.mock.calls.filter(
+        ([, camera]) => camera.name === 'driver-camera',
+      ).length;
+
+      for (const time of [8, 16, 24, 32, 40, 48]) f.frame(time);
+
+      const renderedFrames = f.renderer.render.mock.calls.filter(
+        ([, camera]) => camera.name === 'driver-camera',
+      ).length - initialRenders;
+      const physicsSteps = steps.mock.calls.length;
+      p.dispose();
+      return { renderedFrames, physicsSteps };
+    }
+
+    const limited = run(30);
+    const display = run('display');
+    expect(limited.renderedFrames).toBeLessThan(display.renderedFrames);
+    expect(limited.physicsSteps).toBe(display.physicsSteps);
+  });
+
   it('runs without an observer and does not emit for the initial static render', () => {
     const f = fixture();
     const onFrame = vi.fn();

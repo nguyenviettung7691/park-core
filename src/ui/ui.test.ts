@@ -20,7 +20,9 @@ const context: ScreenContext = {
   settings: {
     version: 1, volume: 0.5, muted: false, driverFovDeg: 60,
     cameraMode: 'driver', overhead: false, trajectory: false,
-    inputSource: 'keyboard', resolutionScale: 1,
+    inputSource: 'keyboard', preset: 'high', resolutionScale: 1,
+    frameRateCap: 'display', antialias: true,
+    mirrorQuality: 'high', overheadQuality: 'high',
   },
   selectedStageId: 1,
   selectedVehicleId: 'sedan',

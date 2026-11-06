@@ -67,7 +67,10 @@ async function setup() {
       parkingDwellS: 0, acknowledgedStepIds: [] });
     assets.environment.getObjectByName('ParkingMarkings')!.visible = false;
   }
-  const views = createViews(renderer, content.scene, assets, profiles[vehicle], boxes);
+  const views = createViews(renderer, content.scene, assets, profiles[vehicle], boxes, {
+    mirrorQuality: 'high',
+    overheadQuality: 'high',
+  });
   views.resize(1280, 720, 1);
   views.setOverhead(true);
   views.setTrajectory(true);

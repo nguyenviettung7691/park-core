@@ -1,6 +1,10 @@
 import type { CameraMode, VehicleId } from '../contracts';
 import type { SettingsSaveV1 } from '../runtime-types';
 import {
+  DEFAULT_GRAPHICS_CAPABILITIES,
+  createDefaultGraphicsSettings,
+} from '../views/graphics-settings';
+import {
   TARGET_MEAN_FPS, TARGET_P95_MS, type MeasurementResult, type MeasurementTiming,
 } from './metrics';
 
@@ -24,8 +28,9 @@ export const BENCHMARK_CASES: readonly BenchmarkCase[] = [
 
 export function workloadSettings(cameraMode: CameraMode): SettingsSaveV1 {
   return {
+    ...createDefaultGraphicsSettings(DEFAULT_GRAPHICS_CAPABILITIES),
     version: 1, volume: 0, muted: true, driverFovDeg: 60, cameraMode, overhead: true,
-    trajectory: true, inputSource: 'keyboard', resolutionScale: 1,
+    trajectory: true, inputSource: 'keyboard',
   };
 }
 

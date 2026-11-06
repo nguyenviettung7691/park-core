@@ -71,7 +71,9 @@ export interface InputPoll {
   readonly issue: MessageKey | null;
 }
 
-export interface SettingsSaveV1 {
+import type { GraphicsSettings } from './views/graphics-settings';
+
+export interface SettingsSaveV1 extends GraphicsSettings {
   readonly version: 1;
   readonly volume: number;
   readonly muted: boolean;
@@ -80,7 +82,6 @@ export interface SettingsSaveV1 {
   readonly overhead: boolean;
   readonly trajectory: boolean;
   readonly inputSource: InputSource;
-  readonly resolutionScale: 1 | 0.75 | 0.5;
 }
 
 export type PersistenceRecord = 'progress' | 'settings' | 'calibration';
