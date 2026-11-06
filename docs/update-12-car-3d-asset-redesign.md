@@ -6,47 +6,51 @@
 
 ## Summary
 
-Redesigned the Sedan and CUV exterior proportions and cockpit artwork in the
-deterministic vehicle asset generator. Post-implementation review corrections
-also close rear-side shell and glazing gaps, make the side-mirror displays face
-the driver, raise the rearview display, and separate the cockpit dials and
-indicator lamps. The simulator's body dimensions, colliders, camera anchors,
-and runtime behavior remain unchanged.
+Realigned the Sedan and CUV models to the Issue #12 reference boards in the
+deterministic vehicle asset generator. The follow-up corrects the criticized
+short Sedan hood and oversized greenhouse, redesigns visible mirror hardware
+instead of enlarging the windows, and reduces the cockpit panel so the wheel
+ring remains clear. The simulator's body dimensions, colliders, camera
+anchors, and runtime behavior remain unchanged.
 
-The issue's first reference guided the Sedan and its second guided the CUV.
-Both remain generic low-poly vehicles using the existing palettes, vertex
-colors, unlit materials, and CC BY-NC 4.0 artwork license. No third-party art,
-textures, shaders, dynamic lighting, dependencies, or live vehicle telemetry
-were added.
+The Sedan and CUV reference boards guided their respective proportions and
+four-view details. Both remain generic low-poly vehicles using the existing
+palettes, vertex colors, unlit materials, and CC BY-NC 4.0 artwork license. No
+third-party art, textures, shaders, dynamic lighting, dependencies, or live
+vehicle telemetry were added.
 
 ## Vehicle changes
 
-- **Sedan:** lengthened the rounded hood relative to its separate, shorter
-  trunk, adjusted the hood shoulder, and replaced the flat trunk surface with
-  a thin 0.03 m box lid.
+- **Sedan:** lengthened the rounded hood to 0.85 m and shortened its separate
+  trunk to 0.20 m, adjusted the hood shoulder, and retained the thin 0.03 m
+  box lid.
 - **CUV:** retained its upright hatch silhouette and extended the rear deck
   across the full 1.8 m body width to eliminate rear-side slits.
-- **Both:** aligned side glazing with the outer shell and roof, raised the rear
-  wall, and connected the upper side shell to the rear deck. Existing profile
-  dimensions and collider boxes are unchanged. Loaded-GLB regressions ray-test
-  both sides and representative front/rear glass edges, plus side and rear
-  body coverage.
+- **Both:** kept side-glass Z-spans to at most 78% of Sedan length and 80% of
+  CUV length, aligned glazing with the outer shell and roof, raised the rear
+  wall, and connected the upper side shell to the rear deck. Added side-mirror
+  stems and housings, with pale exterior reflector faces distinct from the
+  driver-facing display surfaces. Existing profile dimensions and collider
+  boxes are unchanged. Loaded-GLB regressions cover body bounds, glass edges,
+  exterior mirror faces, and fixed-eye mirror visibility.
 
 ## Static cockpit and mirrors
 
 Added named `InstrumentCluster`, `PedalSet`, `CenterConsole`, `DoorPanels`, and
-`Floor` meshes, and completed the seating in `SeatsAndInterior`. The instrument
-cluster has three static dial faces, needles, and four separated indicator
-lamps; these are artwork only and are not connected to simulator state. Their
-height and spacing put all faces and lamps in the default driver's view.
-Loaded-GLB ray/color regressions verify their visibility, while browser
-captures show the spacing and steering-wheel clearance.
+`Floor` meshes, and completed the seating in `SeatsAndInterior`. Narrowed the
+dashboard from 1.46 m to 1.10 m, reduced the instrument backing from 0.66 m to
+0.44 m, and compacted the three static dials so all 16 sampled points around
+the steering-wheel ring are unobstructed. Four separated indicator lamps,
+needles, pedals, console, seats and static controls remain artwork only, not
+simulator telemetry. Loaded-GLB regressions check the wheel ring, dial faces,
+indicator visibility and steering-wheel clearance.
 
 Reduced the rearview display surface from 0.12 x 0.05 m to 0.09 x 0.035 m and
 raised it inside the cabin. Its offset from the unchanged `MirrorRear` camera
-anchor is (-0.22, -0.025, +0.52) m. The visible side-mirror display meshes now
-face the fixed driver eye; their camera anchors and yaw remain unchanged.
-Housings sit behind the reflective planes. Render-target behavior, UVs, and
+anchor is (-0.22, -0.025, +0.52) m. The visible side-mirror display meshes
+face the fixed driver eye; separate pale exterior faces make the mirror bodies
+read in outside views. Camera anchors and yaw remain unchanged, and housings
+sit behind the driver-facing display planes. Render-target behavior, UVs, and
 the 15 FPS update cap remain unchanged. Displays are view proxies, not
 calibrated optical mirrors.
 
@@ -70,22 +74,22 @@ cockpit and glazing variants, including hidden variants.
 
 | Asset | Triangles | Nodes / meshes | GLB bytes |
 |---|---:|---:|---:|
-| Sedan | 3,226 | 39 / 27 | 232,452 |
-| CUV | 3,342 | 38 / 26 | 240,432 |
+| Sedan | 3,270 | 43 / 31 | 240,248 |
+| CUV | 3,390 | 42 / 30 | 248,460 |
 
 Both vehicles remain below the 10,000-triangle limit. Selected vehicle and
 environment payloads remain below 5 MB:
 
 | Selected pair | Uncompressed bytes |
 |---|---:|
-| Sedan + garage | 415,076 |
-| Sedan + roadside | 395,248 |
-| CUV + garage | 423,056 |
-| CUV + roadside | 403,228 |
+| Sedan + garage | 422,872 |
+| Sedan + roadside | 403,044 |
+| CUV + garage | 431,084 |
+| CUV + roadside | 411,256 |
 
 Parked lesson cars reuse only the selected vehicle's exterior and wheels,
 including static glazing but excluding cockpit/live mirror surfaces. Their
-measured geometry is 2,258 Sedan triangles and 2,374 CUV triangles; both
+measured geometry is 2,302 Sedan triangles and 2,422 CUV triangles; both
 remain below the 4,000-triangle cap.
 
 ## Real-render verification
@@ -96,15 +100,15 @@ calls stayed below the sandbox limit of 100 and lesson limit of 140.
 
 | Scene | Main calls / triangles | Mirror calls | Overhead | Composite | Full-frame calls |
 |---|---:|---|---:|---:|---:|
-| Sedan + garage | 30 / 3,530 | 32 + 18 + 18 | 37 | 1 | 136 |
-| Sedan + roadside | 26 / 3,350 | 30 + 18 + 18 | 37 | 1 | 130 |
-| CUV + garage | 30 / 3,658 | 31 + 18 + 18 | 36 | 1 | 134 |
-| CUV + roadside | 26 / 3,478 | 29 + 18 + 18 | 36 | 1 | 128 |
-| Stage 1, CUV | 67 / 8,306 | 31 + 20 + 20 | 36 | 1 | 175 |
-| Stage 2, CUV | 26 / 3,494 | 66 + 20 + 20 | 36 | 1 | 169 |
-| Stage 3, CUV | 38 / 4,554 | 49 + 19 + 28 | 56 | 1 | 191 |
-| Stage 4, CUV | 27 / 3,506 | 51 + 20 + 23 | 37 | 1 | 159 |
-| Stage 5, CUV | 29 / 3,590 | 47 + 19 + 28 | 54 | 1 | 178 |
+| Sedan + garage | 28 / 3,512 | 36 + 19 + 19 | 41 | 1 | 144 |
+| Sedan + roadside | 24 / 3,332 | 34 + 19 + 19 | 41 | 1 | 138 |
+| CUV + garage | 28 / 3,644 | 35 + 19 + 19 | 40 | 1 | 142 |
+| CUV + roadside | 24 / 3,464 | 33 + 19 + 19 | 40 | 1 | 136 |
+| Stage 1, CUV | 73 / 8,388 | 35 + 21 + 21 | 40 | 1 | 191 |
+| Stage 2, CUV | 24 / 3,480 | 78 + 21 + 21 | 40 | 1 | 185 |
+| Stage 3, CUV | 36 / 4,550 | 57 + 20 + 29 | 64 | 1 | 207 |
+| Stage 4, CUV | 25 / 3,492 | 59 + 21 + 24 | 41 | 1 | 171 |
+| Stage 5, CUV | 27 / 3,576 | 55 + 20 + 29 | 60 | 1 | 192 |
 
 The figures are sampled render calls, not FPS or worst-case performance
 measurements. The full-frame totals include the separate mirror, overhead, and
@@ -127,8 +131,8 @@ Final verification:
 - `node tools\generate-assets.mjs` — passed; SHA-256 hashes for both vehicle
   GLBs were unchanged across regeneration.
 - `npx vitest run src\world\generate-assets.test.mjs src\world\assets.test.mjs`
-  — 61 tests passed.
-- `npm test` — 512 tests passed across 31 files.
+  — 67 tests passed.
+- `npm test` — 518 tests passed across 31 files.
 - `npm run typecheck` — passed.
 - `npm run build` — passed. Vite reported the existing large-chunk warning:
   the generated assets chunk is 766.91 kB, above its 500 kB advisory threshold.

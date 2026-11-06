@@ -11,15 +11,16 @@ The amethyst sedan has a low three-box body, a longer rounded hood and a
 distinct shorter angular trunk. The ivory/charcoal CUV has a taller cabin, roof
 rails, wheel-arch cladding, an upright hatch and vertical rear lamps. Both
 include handles, door seams, grilles, bumpers, static lamp colors, mirror
-housings and independently animated alloy wheels. Designs are generic and
-unbranded. The side shell follows the glazing and roof boundaries down to the
-rear deck; the Sedan has a volumetric 0.03 m trunk lid, and the CUV rear deck
-spans the full body width to close rear-side gaps.
+housings, stems, pale exterior reflector faces, and independently animated
+alloy wheels. Designs are generic and unbranded. The side shell follows the
+glazing and roof boundaries down to the rear deck; the Sedan has a volumetric
+0.03 m trunk lid, and the CUV rear deck spans the full body width to close
+rear-side gaps.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 3,226 | 39 / 27 | 232,452 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 3,342 | 38 / 26 | 240,432 |
+| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 3,270 | 43 / 31 | 240,248 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 3,390 | 42 / 30 | 248,460 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden. Both are below the 10,000-triangle vehicle gate.
@@ -38,11 +39,13 @@ even when one is hidden. Both are below the 10,000-triangle vehicle gate.
 
 ### Cockpits and mirrors
 
-Both cockpits contain a dashboard, three static instrument dials/needles and
-four separated indicator lamps, pedals, a center console/storage, door panels,
-floor, roof lining, front seats/headrests and a rear seat. The dials and all
-four lamps are visible from the fixed driver eye; these are static artwork,
-not simulator telemetry. Application camera controls and default poses are
+Both cockpits contain a narrowed 1.1 m dashboard and compact instrument
+backing, three static instrument dials/needles and four separated indicator
+lamps, pedals, a center console/storage, door panels, floor, roof lining, front
+seats/headrests and a rear seat. The dial cluster sits above the wheel rim; all
+16 sampled points around the steering-wheel ring, all three dials and all four
+lamps remain visible from the fixed driver eye. These are static artwork, not
+simulator telemetry. Application camera controls and default poses are
 unchanged.
 Driver-view asset captures omit the HUD overhead inset so all three dials
 remain visible; the separate overhead captures are unchanged.
@@ -68,8 +71,10 @@ Mirror anchor yaw remains rear 180 degrees, left +105 degrees and right
 -105 degrees. The smaller 0.09 x 0.035 m rearview **display mesh** is placed
 inside the cabin, offset from its unchanged virtual camera by
 (-0.22, -0.025, +0.52) m. It is a view proxy, not a newly calibrated optical
-mirror. Side display meshes face the driver while their virtual camera anchors
-and yaw remain unchanged; housings sit behind the reflective planes.
+mirror. Side displays face the driver while their virtual camera anchors and
+yaw remain unchanged; separate pale exterior reflector faces make the side
+mirrors legible from outside, and housings remain behind the driver-facing
+display planes.
 Planar mirror surfaces have UVs and updates retain the existing 15 FPS cap.
 Loaded-mesh 9 x 9 ray grids verify both side faces are unobstructed from each
 fixed eye; separate projected-width and angle checks reject edge-on displays.
@@ -118,8 +123,8 @@ driving surface; they do not introduce traversable solid-looking buildings.
 Every existing lesson obstacle now has a visible stationary car, reusing the
 selected vehicle's exterior and wheels without its cockpit or live mirror
 surfaces. Each owns cloned geometry/materials and is fitted to the exact
-collider box before applying its yaw. Stationary geometry is 2,258 triangles
-for Sedan and 2,374 for CUV, below the 4,000-triangle gate.
+collider box before applying its yaw. Stationary geometry is 2,302 triangles
+for Sedan and 2,422 for CUV, below the 4,000-triangle gate.
 
 ![Stage 1 parked CUV obstacles beside the unchanged lesson target](images/phase-8/lesson-parked-cars.png)
 
@@ -139,10 +144,10 @@ All GLBs are self-contained and use no external image/buffer resources.
 
 | Selected pair | Uncompressed bytes |
 |---|---:|
-| Sedan + garage | 415,076 |
-| Sedan + roadside | 395,248 |
-| CUV + garage | 423,056 |
-| CUV + roadside | 403,228 |
+| Sedan + garage | 422,872 |
+| Sedan + roadside | 403,044 |
+| CUV + garage | 431,084 |
+| CUV + roadside | 411,256 |
 
 All pairs are below the 5,000,000-byte gate.
 
@@ -153,15 +158,15 @@ The table reports an auxiliary-update frame at 80 ms:
 
 | Scene | Main calls / triangles | Three mirror calls | Overhead calls | Composite calls | Full-frame calls |
 |---|---:|---|---:|---:|---:|
-| Sedan + garage | 30 / 3,530 | 32 + 18 + 18 | 37 | 1 | 136 |
-| Sedan + roadside | 26 / 3,350 | 30 + 18 + 18 | 37 | 1 | 130 |
-| CUV + garage | 30 / 3,658 | 31 + 18 + 18 | 36 | 1 | 134 |
-| CUV + roadside | 26 / 3,478 | 29 + 18 + 18 | 36 | 1 | 128 |
-| Stage 1, CUV | 67 / 8,306 | 31 + 20 + 20 | 36 | 1 | 175 |
-| Stage 2, CUV | 26 / 3,494 | 66 + 20 + 20 | 36 | 1 | 169 |
-| Stage 3, CUV | 38 / 4,554 | 49 + 19 + 28 | 56 | 1 | 191 |
-| Stage 4, CUV | 27 / 3,506 | 51 + 20 + 23 | 37 | 1 | 159 |
-| Stage 5, CUV | 29 / 3,590 | 47 + 19 + 28 | 54 | 1 | 178 |
+| Sedan + garage | 28 / 3,512 | 36 + 19 + 19 | 41 | 1 | 144 |
+| Sedan + roadside | 24 / 3,332 | 34 + 19 + 19 | 41 | 1 | 138 |
+| CUV + garage | 28 / 3,644 | 35 + 19 + 19 | 40 | 1 | 142 |
+| CUV + roadside | 24 / 3,464 | 33 + 19 + 19 | 40 | 1 | 136 |
+| Stage 1, CUV | 73 / 8,388 | 35 + 21 + 21 | 40 | 1 | 191 |
+| Stage 2, CUV | 24 / 3,480 | 78 + 21 + 21 | 40 | 1 | 185 |
+| Stage 3, CUV | 36 / 4,550 | 57 + 20 + 29 | 64 | 1 | 207 |
+| Stage 4, CUV | 25 / 3,492 | 59 + 21 + 24 | 41 | 1 | 171 |
+| Stage 5, CUV | 27 / 3,576 | 55 + 20 + 29 | 60 | 1 | 192 |
 
 The gates are <=100 **main-pass** calls in sandbox and <=140 in lessons,
 not limits on the sum of all camera passes. These sampled poses pass; their
@@ -185,7 +190,7 @@ part of the production app. See [asset pipeline](asset-pipeline.md).
 
 ## Verification limits
 
-For the Issue #12 redesign, 512 tests across 31 files, 61 focused
+For the Issue #12 redesign, 518 tests across 31 files, 67 focused
 generator/loader tests, typecheck, production build and all 10 Chromium Phase 8
 asset-render cases passed, including the five parked-lesson scenes. The
 focused selection overlaps the full suite. Vite reports a 766.91 kB generated
