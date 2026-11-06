@@ -556,6 +556,164 @@ it('keeps calibration captures invalid until verified and cancels its polling wi
   vi.restoreAllMocks();
 });
 
+it('guides manual calibration one illustrated capture at a time in the nine-control order', () => {
+  animationClock();
+  const element = root();
+  const previousFocus = document.createElement('button');
+  document.body.append(previousFocus);
+  previousFocus.focus();
+  const pad = testGamepad();
+  const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), vi.fn());
+  const expected = [
+    ['steering-left', 'steering'],
+    ['steering-center', 'steering'],
+    ['steering-right', 'steering'],
+    ['throttle-released', 'throttle'],
+    ['throttle-pressed', 'throttle'],
+    ['brake-released', 'brake'],
+    ['brake-pressed', 'brake'],
+    ['reverse', 'reverse'],
+    ['drive', 'drive'],
+  ] as const;
+  const samples = [
+    () => { pad.axes[0] = -1; },
+    () => { pad.axes[0] = 0; },
+    () => { pad.axes[0] = 1; },
+    () => { pad.buttons[7]!.value = 0; },
+    () => { pad.buttons[7]!.value = 1; },
+    () => { pad.buttons[6]!.value = 0; },
+    () => { pad.buttons[6]!.value = 1; },
+    () => { pad.buttons[4]!.value = 1; },
+    () => { pad.buttons[5]!.value = 1; },
+  ];
+  const kind = element.querySelector<HTMLSelectElement>('[data-illustration-kind]');
+  expect(kind?.value).toBe('gamepad');
+  kind!.value = 'wheel';
+  kind!.dispatchEvent(new Event('change'));
+  const wheelIllustration = element.querySelector('svg[role="img"]');
+  expect(wheelIllustration?.getAttribute('data-controller-kind')).toBe('wheel');
+  expect(wheelIllustration?.getAttribute('aria-label')).toContain('vô lăng');
+  kind!.value = 'gamepad';
+  kind!.dispatchEvent(new Event('change'));
+  expect(element.querySelector('details')?.open).toBe(false);
+
+  expected.forEach(([step, part], index) => {
+    expect(element.querySelector('[data-calibration-step]')?.getAttribute('data-calibration-step'))
+      .toBe(step);
+    expect(element.querySelector('svg[role="img"]')?.getAttribute('data-highlighted-part'))
+      .toBe(part);
+    expect(element.querySelector(`svg [data-part="${part}"][data-active="true"]`)).not.toBeNull();
+    expect(element.querySelector('[data-capture-progress]')?.textContent)
+      .toContain(`${index} / 9`);
+    samples[index]!();
+    const capture = element.querySelector<HTMLButtonElement>('[data-calibration-capture]')!;
+    if (index === expected.length - 1) capture.focus();
+    capture.click();
+    if (index === expected.length - 1) {
+      expect(document.activeElement).toBe([...element.querySelectorAll('button')]
+        .find((button) => button.textContent === messages.saveCalibration));
+    }
+  });
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('9 / 9');
+  expect(element.querySelector<HTMLButtonElement>('[data-calibration-capture]')?.hidden).toBe(true);
+  unmount();
+  expect(document.activeElement).toBe(previousFocus);
+  vi.restoreAllMocks();
+});
+
+it('clears the current manual step when the connected device is replaced', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = testGamepad();
+  const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), vi.fn());
+  pad.axes[0] = -1;
+  element.querySelector<HTMLButtonElement>('[data-calibration-capture]')!.click();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('1 / 9');
+  pad.id = 'replacement';
+  clock.tick();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  expect(element.querySelector('[role="alert"]')?.textContent).toContain('thiết bị khác');
+  expect(element.querySelector<HTMLButtonElement>('[data-calibration-capture]')?.disabled).toBe(true);
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('allows restarting manual capture when completed endpoints are invalid', () => {
+  animationClock();
+  const element = root();
+  const pad = testGamepad();
+  const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), vi.fn());
+  const samples = [
+    () => { pad.axes[0] = 0; },
+    () => { pad.axes[0] = 0; },
+    () => { pad.axes[0] = 1; },
+    () => { pad.buttons[7]!.value = 0; },
+    () => { pad.buttons[7]!.value = 1; },
+    () => { pad.buttons[6]!.value = 0; },
+    () => { pad.buttons[6]!.value = 1; },
+    () => { pad.buttons[4]!.value = 1; },
+    () => { pad.buttons[5]!.value = 1; },
+  ];
+  for (const setSample of samples) {
+    setSample();
+    element.querySelector<HTMLButtonElement>('[data-calibration-capture]')!.click();
+  }
+  const save = [...element.querySelectorAll('button')]
+    .find((button) => button.textContent === messages.saveCalibration);
+  const restart = element.querySelector<HTMLButtonElement>('[data-calibration-capture]');
+  expect(save?.disabled).toBe(true);
+  expect(restart?.hidden).toBe(false);
+  expect(restart?.textContent).toBe('Bắt đầu lại');
+  restart?.click();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  expect(element.querySelector('[data-calibration-step]')?.getAttribute('data-calibration-step'))
+    .toBe('steering-left');
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('uses a selected profile kind for the verification illustration', () => {
+  animationClock();
+  const element = root();
+  const profile = controllerProfiles.find(({ id }) => id === 'logitech-g29')!;
+  const unmount = mountCalibration(element, 0, () => [testGamepad()], vi.fn(), vi.fn(), profile);
+  const illustration = element.querySelector('svg[role="img"]');
+  expect(illustration?.getAttribute('data-controller-kind')).toBe('wheel');
+  expect(illustration?.getAttribute('data-highlighted-part')).toBe('steering');
+  expect(illustration?.getAttribute('aria-label')).toContain('vô lăng');
+  const fallback = element.querySelector<HTMLButtonElement>('[data-manual-fallback]')!;
+  fallback.focus();
+  fallback.click();
+  expect(document.activeElement).toBe(element.querySelector('[data-calibration-capture]'));
+  expect(element.querySelector('[data-calibration-step]')?.getAttribute('data-calibration-step'))
+    .toBe('steering-left');
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  expect(element.querySelector('svg[role="img"]')?.getAttribute('data-controller-kind')).toBe('wheel');
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('allows fresh manual calibration after a preset device is replaced', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const profile = controllerProfiles.find(({ id }) => id === 'xbox-series-x')!;
+  const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), vi.fn(), profile);
+  pad.id = 'replacement';
+  clock.tick();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 6');
+  element.querySelector<HTMLButtonElement>('[data-manual-fallback]')!.click();
+  clock.tick();
+  const capture = element.querySelector<HTMLButtonElement>('[data-calibration-capture]');
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  expect(capture?.disabled).toBe(false);
+  pad.axes[0] = -1;
+  capture?.click();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('1 / 9');
+  unmount();
+  vi.restoreAllMocks();
+});
+
 it('groups device setup, keeps diagnostics optional, and contains keyboard focus', () => {
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
@@ -565,17 +723,19 @@ it('groups device setup, keeps diagnostics optional, and contains keyboard focus
   const cancel = vi.fn();
   const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), cancel);
   expect([...element.querySelectorAll('legend')].map((node) => node.textContent))
-    .toEqual(['Vô lăng', 'Chân ga', 'Phanh chân', 'Chuyển số']);
+    .toEqual(['Vô lăng']);
   expect(element.querySelector('details')?.open).toBe(false);
   expect(element.querySelector('details pre')).not.toBeNull();
   expect(element.querySelector('[data-calibration-device]')?.textContent).toBe(pad.id);
+  expect(element.querySelector<HTMLSelectElement>('[data-illustration-kind]')?.value).toBe('gamepad');
+  expect(element.querySelector('svg[role="img"]')?.getAttribute('data-highlighted-part')).toBe('steering');
   const buttons = [...element.querySelectorAll('button')];
-  buttons.find((node) => node.textContent === 'Ghi chính giữa')!.click();
-  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('1 / 9');
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  expect(buttons.some((node) => node.dataset.calibrationCapture !== undefined)).toBe(true);
   const last = element.querySelector<HTMLElement>('summary')!;
   last.focus();
   last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
-  expect(document.activeElement).toBe(element.querySelector('input'));
+  expect(document.activeElement).toBe(element.querySelector('[data-illustration-kind]'));
   last.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', bubbles: true }));
   expect(cancel).toHaveBeenCalledOnce();
   unmount();
@@ -593,21 +753,29 @@ it('saves explicitly captured endpoints and invalidates them on rebinding or dev
   const pad = testGamepad();
   const complete = vi.fn();
   const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn());
-  function click(text: string) {
-    const node = [...element.querySelectorAll('button')].find((button) => button.textContent === text)!;
-    node.click();
+  function capture(step: string, setSample: () => void) {
+    expect(element.querySelector('[data-calibration-step]')?.getAttribute('data-calibration-step'))
+      .toBe(step);
+    setSample();
+    element.querySelector<HTMLButtonElement>('[data-calibration-capture]')!.click();
   }
   function captureAll() {
-    pad.axes[0] = -1; click('Ghi hết lái trái');
-    pad.axes[0] = 0; click('Ghi chính giữa');
-    pad.axes[0] = 1; click('Ghi hết lái phải');
-    for (const [index, label] of [[7, 'Chân ga'], [6, 'Phanh chân']] as const) {
-      pad.buttons[index]!.value = 0; click(`${label} — Ghi đã nhả`);
-      pad.buttons[index]!.value = 1; click(`${label} — Ghi đã nhấn hết`);
-    }
-    pad.buttons[4]!.value = 1; click('Xác minh nút R');
-    pad.buttons[5]!.value = 1; click('Xác minh nút D');
+    capture('steering-left', () => { pad.axes[0] = -1; });
+    capture('steering-center', () => { pad.axes[0] = 0; });
+    capture('steering-right', () => { pad.axes[0] = 1; });
+    capture('throttle-released', () => { pad.buttons[7]!.value = 0; });
+    capture('throttle-pressed', () => { pad.buttons[7]!.value = 1; });
+    capture('brake-released', () => { pad.buttons[6]!.value = 0; });
+    capture('brake-pressed', () => { pad.buttons[6]!.value = 1; });
+    capture('reverse', () => { pad.buttons[4]!.value = 1; });
+    capture('drive', () => { pad.buttons[5]!.value = 1; });
   }
+  capture('steering-left', () => { pad.axes[0] = -1; });
+  const axis = element.querySelector<HTMLInputElement>('input')!;
+  axis.value = '1'; axis.dispatchEvent(new Event('change'));
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  const resetAxis = element.querySelector<HTMLInputElement>('input')!;
+  resetAxis.value = '0'; resetAxis.dispatchEvent(new Event('change'));
   captureAll();
   const save = [...element.querySelectorAll('button')].find((button) => button.textContent === 'Lưu hiệu chuẩn')!;
   expect(save.disabled).toBe(false);
@@ -617,17 +785,6 @@ it('saves explicitly captured endpoints and invalidates them on rebinding or dev
     steeringRight: 1, throttle: { kind: 'button', index: 7, released: 0, pressed: 1 },
     brake: { kind: 'button', index: 6, released: 0, pressed: 1 }, reverseButton: 4, driveButton: 5,
   });
-  pad.axes[0] = 1; click('Ghi hết lái trái');
-  expect(save.disabled).toBe(true);
-  expect(element.querySelector('[role="alert"]')?.textContent).toContain('Dữ liệu hiệu chỉnh không hợp lệ');
-  pad.axes[0] = -1; click('Ghi hết lái trái');
-  expect(save.disabled).toBe(false);
-  const axis = element.querySelector<HTMLInputElement>('input')!;
-  axis.value = '1'; axis.dispatchEvent(new Event('change'));
-  expect(save.disabled).toBe(true);
-  axis.value = '0'; axis.dispatchEvent(new Event('change'));
-  captureAll();
-  expect(save.disabled).toBe(false);
   pad.id = 'replacement';
   const [id, callback] = frames.entries().next().value!;
   frames.delete(id); callback(16);

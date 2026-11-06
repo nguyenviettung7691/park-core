@@ -1,17 +1,52 @@
 import type { ControllerCalibration, MessageKey, PedalBinding } from '../contracts';
 import { normalizePedal, normalizeSteering, validateCalibration } from '../input/calibration';
 import { calibrationForProfile, type ControllerProfile } from '../input/profiles';
+import { createControllerIllustration, type CalibrationPart } from './controller-illustrations';
 import { vi } from '../messages';
 
 const PROFILE_STEPS = [
-  { id: 'steering-left', message: 'profileSteeringLeft', kind: 'axis' },
-  { id: 'steering-right', message: 'profileSteeringRight', kind: 'axis' },
-  { id: 'throttle', message: 'profileThrottle', kind: 'axis' },
-  { id: 'brake', message: 'profileBrake', kind: 'axis' },
-  { id: 'reverse', message: 'profileReverse', kind: 'button' },
-  { id: 'drive', message: 'profileDrive', kind: 'button' },
+  { id: 'steering-left', message: 'profileSteeringLeft', kind: 'axis', part: 'steering' },
+  { id: 'steering-right', message: 'profileSteeringRight', kind: 'axis', part: 'steering' },
+  { id: 'throttle', message: 'profileThrottle', kind: 'axis', part: 'throttle' },
+  { id: 'brake', message: 'profileBrake', kind: 'axis', part: 'brake' },
+  { id: 'reverse', message: 'profileReverse', kind: 'button', part: 'reverse' },
+  { id: 'drive', message: 'profileDrive', kind: 'button', part: 'drive' },
 ] as const satisfies readonly { readonly id: string; readonly message: MessageKey;
-  readonly kind: 'axis' | 'button' }[];
+  readonly kind: 'axis' | 'button'; readonly part: CalibrationPart }[];
+
+type ManualSamples = {
+  left: number | null;
+  center: number | null;
+  right: number | null;
+  throttleReleased: number | null;
+  throttlePressed: number | null;
+  brakeReleased: number | null;
+  brakePressed: number | null;
+  reverse: number | null;
+  drive: number | null;
+};
+
+const MANUAL_STEPS = [
+  { id: 'steering-left', sample: 'left', message: 'manualSteeringLeft', part: 'steering', binding: 'steering' },
+  { id: 'steering-center', sample: 'center', message: 'manualSteeringCenter', part: 'steering', binding: 'steering' },
+  { id: 'steering-right', sample: 'right', message: 'manualSteeringRight', part: 'steering', binding: 'steering' },
+  { id: 'throttle-released', sample: 'throttleReleased', message: 'manualThrottleReleased', part: 'throttle', binding: 'throttle' },
+  { id: 'throttle-pressed', sample: 'throttlePressed', message: 'manualThrottlePressed', part: 'throttle', binding: 'throttle' },
+  { id: 'brake-released', sample: 'brakeReleased', message: 'manualBrakeReleased', part: 'brake', binding: 'brake' },
+  { id: 'brake-pressed', sample: 'brakePressed', message: 'manualBrakePressed', part: 'brake', binding: 'brake' },
+  { id: 'reverse', sample: 'reverse', message: 'manualReverse', part: 'reverse', binding: 'reverse' },
+  { id: 'drive', sample: 'drive', message: 'manualDrive', part: 'drive', binding: 'drive' },
+] as const satisfies readonly { readonly id: string; readonly sample: keyof ManualSamples;
+  readonly message: MessageKey; readonly part: CalibrationPart;
+  readonly binding: 'steering' | 'throttle' | 'brake' | 'reverse' | 'drive' }[];
+
+function emptyManualSamples(): ManualSamples {
+  return {
+    left: null, center: null, right: null,
+    throttleReleased: null, throttlePressed: null,
+    brakeReleased: null, brakePressed: null, reverse: null, drive: null,
+  };
+}
 
 export function mountCalibration(
   root: HTMLElement, selectedIndex: number,
@@ -26,10 +61,12 @@ export function mountCalibration(
   screen.setAttribute('role', 'dialog');
   screen.setAttribute('aria-modal', 'true');
   screen.setAttribute('aria-label', vi.calibrationTitle);
+  let manualMode = !profile;
+  let manualKind: 'wheel' | 'gamepad' = profile?.kind ?? 'gamepad';
   const title = document.createElement('h1');
   title.textContent = vi.calibrationTitle;
   const help = document.createElement('p');
-  help.textContent = profile ? vi.profileVerificationHelp : vi.calibrationHelp;
+  help.textContent = manualMode ? vi.calibrationHelp : vi.profileVerificationHelp;
   const error = document.createElement('p');
   error.setAttribute('role', 'alert');
   const monitor = document.createElement('pre');
@@ -43,40 +80,63 @@ export function mountCalibration(
   const progress = document.createElement('p');
   progress.dataset.captureProgress = '';
   progress.setAttribute('role', 'status');
-  const profileInstruction = document.createElement('p');
-  profileInstruction.dataset.profileStep = '';
-  profileInstruction.tabIndex = -1;
+  const illustration = document.createElement('figure');
+  illustration.dataset.controllerIllustration = '';
+  const instruction = document.createElement('p');
+  instruction.dataset.calibrationStep = '';
+  instruction.tabIndex = -1;
+  instruction.setAttribute('aria-live', 'polite');
+  const manualControls = document.createElement('div');
+  manualControls.dataset.manualControls = '';
+  const kindLabel = document.createElement('label');
+  kindLabel.textContent = vi.calibrationIllustrationType;
+  const kindSelect = document.createElement('select');
+  kindSelect.dataset.illustrationKind = '';
+  for (const [value, text] of [['gamepad', vi.gamepadIllustration], ['wheel', vi.wheelIllustration]]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = text;
+    kindSelect.append(option);
+  }
+  kindSelect.value = manualKind;
+  kindLabel.append(kindSelect);
   screen.append(title, help, device, error, progress);
+  if (!profile) screen.append(kindLabel);
+  screen.append(illustration, instruction, manualControls);
   root.append(screen);
   let disposed = false;
   let frame: number | null = null;
   let deviceId: string | null = null;
   let pad: Gamepad | null = null;
   let issue: MessageKey | null = null;
-  let steeringAxis = 0;
-  let left: number | null = null;
-  let center: number | null = null;
-  let right: number | null = null;
-  let reverseButton = 4;
-  let driveButton = 5;
-  let reverseVerified = false;
-  let driveVerified = false;
+  const template = profile?.calibration;
+  let steeringAxis = template?.steeringAxis ?? 0;
+  let reverseButton = template?.reverseButton ?? 4;
+  let driveButton = template?.driveButton ?? 5;
   let profileIndex = 0;
+  let manualIndex = 0;
+  let manualSamples = emptyManualSamples();
+  let renderedStep: string | null = null;
+  let renderedIllustration = '';
   let movementFrames = 0;
   let awaitingRelease = false;
   let profileReady = false;
   let profileBlocked = false;
   interface PedalDraft { kind: PedalBinding['kind']; index: number; released: number | null; pressed: number | null }
-  const throttle: PedalDraft = { kind: 'button', index: 7, released: null, pressed: null };
-  const brake: PedalDraft = { kind: 'button', index: 6, released: null, pressed: null };
-  const captures: HTMLButtonElement[] = [];
-  const captureStates = new Map<HTMLButtonElement, HTMLElement>();
-  function group(label: string) {
+  const throttle: PedalDraft = {
+    kind: template?.throttle.kind ?? 'button', index: template?.throttle.index ?? 7,
+    released: null, pressed: null,
+  };
+  const brake: PedalDraft = {
+    kind: template?.brake.kind ?? 'button', index: template?.brake.index ?? 6,
+    released: null, pressed: null,
+  };
+  function group(label: string, parent: HTMLElement = manualControls) {
     const fieldset = document.createElement('fieldset');
     const legend = document.createElement('legend');
     legend.textContent = label;
     fieldset.append(legend);
-    screen.append(fieldset);
+    parent.append(fieldset);
     return fieldset;
   }
   function button(label: string, handler: () => void, parent: HTMLElement = screen) {
@@ -103,14 +163,14 @@ export function mountCalibration(
     return element;
   }
   function invalidate() {
-    left = center = right = null;
+    manualSamples = emptyManualSamples();
     throttle.released = throttle.pressed = brake.released = brake.pressed = null;
-    reverseVerified = driveVerified = false;
     profileIndex = 0;
+    manualIndex = 0;
+    renderedStep = null;
     movementFrames = 0;
     awaitingRelease = false;
     profileReady = false;
-    captures.forEach((element) => element.setAttribute('aria-pressed', 'false'));
   }
   function sample() {
     let next: Gamepad | null;
@@ -126,7 +186,7 @@ export function mountCalibration(
       issue = 'controllerReplaced';
       deviceId = next.id;
       pad = next;
-      if (profile) profileBlocked = true;
+      if (profile && !manualMode) profileBlocked = true;
       return;
     }
     if (profileBlocked) {
@@ -143,100 +203,146 @@ export function mountCalibration(
     pad = next;
     issue = null;
   }
-  function capture(
-    label: string, read: (value: Gamepad) => number | null, store: (value: number) => void,
-    parent: HTMLElement,
-  ) {
-    const element = button(label, () => {
-      sample();
-      const value = pad && !issue ? read(pad) : null;
-      if (value === null || !Number.isFinite(value)) {
-        issue ??= 'controllerControlsMissing';
-      } else {
-        store(value);
-        element.setAttribute('aria-pressed', 'true');
-      }
-      refresh();
-    }, parent);
-    element.setAttribute('aria-pressed', 'false');
-    captures.push(element);
-    const state = document.createElement('small');
-    parent.append(state);
-    captureStates.set(element, state);
+  function clearManual() {
+    manualSamples = emptyManualSamples();
+    throttle.released = throttle.pressed = brake.released = brake.pressed = null;
+    manualIndex = 0;
+    renderedStep = null;
   }
-  if (profile) {
-    screen.append(profileInstruction);
-  } else {
-    const steering = group(vi.steeringGroup);
-    numberField(vi.steeringAxis, 0, (index) => {
-      steeringAxis = index;
-      left = center = right = null;
-      captures.slice(0, 3).forEach((element) => element.setAttribute('aria-pressed', 'false'));
-    }, steering);
-    capture(vi.steeringLeft, (value) => value.axes[steeringAxis] ?? null,
-      (value) => { left = value; }, steering);
-    capture(vi.steeringCenter, (value) => value.axes[steeringAxis] ?? null,
-      (value) => { center = value; }, steering);
-    capture(vi.steeringRight, (value) => value.axes[steeringAxis] ?? null,
-      (value) => { right = value; }, steering);
-    function pedalFields(label: string, draft: PedalDraft) {
-      const fieldset = group(label);
-      const kind = document.createElement('select');
-      for (const [value, text] of [['axis', vi.axis], ['button', vi.button]]) {
-        const option = document.createElement('option');
-        option.value = value!; option.textContent = text!;
-        kind.append(option);
-      }
-      kind.value = draft.kind;
-      const wrapper = document.createElement('label');
-      wrapper.textContent = `${label} — ${vi.bindingKind}`;
-      wrapper.append(kind);
-      fieldset.append(wrapper);
-      const captureStart = captures.length;
-      function clearPedal() {
-        draft.released = draft.pressed = null;
-        captures.slice(captureStart, captureStart + 2)
-          .forEach((element) => element.setAttribute('aria-pressed', 'false'));
-      }
-      kind.addEventListener('change', () => {
-        if (kind.value !== 'axis' && kind.value !== 'button') {
-          throw new RangeError('Invalid pedal kind');
-        }
-        draft.kind = kind.value;
-        clearPedal(); refresh();
-      }, { signal: listeners.signal });
-      numberField(`${label} — ${vi.bindingIndex}`, draft.index, (index) => {
-        draft.index = index; clearPedal();
-      }, fieldset);
-      function raw(value: Gamepad) {
-        return draft.kind === 'axis' ? value.axes[draft.index] ?? null :
-          value.buttons[draft.index]?.value ?? null;
-      }
-      capture(`${label} — ${vi.released}`, raw, (value) => { draft.released = value; }, fieldset);
-      capture(`${label} — ${vi.pressed}`, raw, (value) => { draft.pressed = value; }, fieldset);
+  function pedalFields(label: string, draft: PedalDraft) {
+    const fieldset = group(label);
+    const kind = document.createElement('select');
+    for (const [value, text] of [['axis', vi.axis], ['button', vi.button]]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      kind.append(option);
     }
-    pedalFields(vi.throttle, throttle);
-    pedalFields(vi.brake, brake);
-    const gears = group(vi.gearsGroup);
-    numberField(vi.reverseButton, reverseButton, (index) => {
-      reverseButton = index; reverseVerified = false;
-      captures[7]?.setAttribute('aria-pressed', 'false');
-    }, gears);
-    capture(vi.verifyReverse,
-      (value) => (value.buttons[reverseButton]?.value ?? 0) > 0.5 ? 1 : null,
-      () => { reverseVerified = true; }, gears);
-    numberField(vi.driveButton, driveButton, (index) => {
-      driveButton = index; driveVerified = false;
-      captures[8]?.setAttribute('aria-pressed', 'false');
-    }, gears);
-    capture(vi.verifyDrive,
-      (value) => (value.buttons[driveButton]?.value ?? 0) > 0.5 ? 1 : null,
-      () => { driveVerified = true; }, gears);
+    kind.value = draft.kind;
+    const wrapper = document.createElement('label');
+    wrapper.textContent = `${label} — ${vi.bindingKind}`;
+    wrapper.append(kind);
+    fieldset.append(wrapper);
+    kind.addEventListener('change', () => {
+      if (kind.value !== 'axis' && kind.value !== 'button') {
+        throw new RangeError('Invalid pedal kind');
+      }
+      draft.kind = kind.value;
+      clearManual();
+      refresh();
+    }, { signal: listeners.signal });
+    numberField(`${label} — ${vi.bindingIndex}`, draft.index, (index) => {
+      draft.index = index;
+      clearManual();
+    }, fieldset);
+  }
+  function renderManualControls() {
+    if (!manualMode) return;
+    const step = MANUAL_STEPS[manualIndex];
+    const stepId = step?.id ?? 'complete';
+    if (renderedStep === stepId) return;
+    renderedStep = stepId;
+    manualControls.replaceChildren();
+    if (!step) return;
+    switch (step.binding) {
+      case 'steering': {
+        const fieldset = group(vi.steeringGroup);
+        numberField(vi.steeringAxis, steeringAxis, (index) => {
+          steeringAxis = index;
+          clearManual();
+        }, fieldset);
+        break;
+      }
+      case 'throttle':
+        pedalFields(vi.throttle, throttle);
+        break;
+      case 'brake':
+        pedalFields(vi.brake, brake);
+        break;
+      case 'reverse': {
+        const fieldset = group(vi.gearsGroup);
+        numberField(vi.reverseButton, reverseButton, (index) => {
+          reverseButton = index;
+          clearManual();
+        }, fieldset);
+        break;
+      }
+      case 'drive': {
+        const fieldset = group(vi.gearsGroup);
+        numberField(vi.driveButton, driveButton, (index) => {
+          driveButton = index;
+          clearManual();
+        }, fieldset);
+        break;
+      }
+    }
+  }
+  function readManualValue(step: typeof MANUAL_STEPS[number], value: Gamepad): number | null {
+    if (step.binding === 'steering') return value.axes[steeringAxis] ?? null;
+    if (step.binding === 'throttle' || step.binding === 'brake') {
+      const binding = step.binding === 'throttle' ? throttle : brake;
+      return binding.kind === 'axis' ? value.axes[binding.index] ?? null
+        : value.buttons[binding.index]?.value ?? null;
+    }
+    const buttonIndex = step.binding === 'reverse' ? reverseButton : driveButton;
+    return (value.buttons[buttonIndex]?.value ?? 0) > 0.5 ? 1 : null;
+  }
+  function captureManualStep() {
+    if (!manualMode) return;
+    if (manualIndex === MANUAL_STEPS.length) {
+      clearManual();
+      issue = null;
+      refresh();
+      manualCapture.focus();
+      return;
+    }
+    sample();
+    const step = MANUAL_STEPS[manualIndex];
+    const value = step && pad && !issue ? readManualValue(step, pad) : null;
+    if (value === null || !Number.isFinite(value)) {
+      issue ??= 'controllerControlsMissing';
+      refresh();
+      return;
+    }
+    manualSamples[step.sample] = value;
+    manualIndex++;
+    renderedStep = null;
+    refresh();
+    if (manualIndex === MANUAL_STEPS.length) {
+      if (save.disabled) manualCapture.focus();
+      else save.focus();
+    }
+  }
+  function selectManual() {
+    if (!profile) return;
+    manualMode = true;
+    manualKind = profile.kind;
+    profileBlocked = false;
+    clearManual();
+    issue = null;
+    refresh();
+    manualCapture.focus();
+  }
+  if (!profile) {
+    kindSelect.addEventListener('change', () => {
+      if (kindSelect.value !== 'wheel' && kindSelect.value !== 'gamepad') {
+        throw new RangeError('Invalid illustration kind');
+      }
+      manualKind = kindSelect.value;
+      refresh();
+    }, { signal: listeners.signal });
+  }
+  const manualCapture = button(vi.captureCalibrationStep, captureManualStep);
+  manualCapture.dataset.calibrationCapture = '';
+  manualCapture.className = 'primary-action';
+  if (profile) {
+    const fallback = button(vi.useManualCalibration, selectManual);
+    fallback.dataset.manualFallback = '';
+    fallback.className = 'quiet-action';
   }
   function captured() {
-    return reverseVerified && driveVerified &&
-      [left, center, right, throttle.released, throttle.pressed, brake.released, brake.pressed]
-        .every((value) => value !== null);
+    return manualMode ? manualIndex === MANUAL_STEPS.length
+      : profileIndex === PROFILE_STEPS.length;
   }
   function readProfileValue(): number | null {
     if (!profile || !pad || !deviceId) return null;
@@ -258,7 +364,8 @@ export function mountCalibration(
     return raw === undefined ? null : normalizePedal(raw, binding);
   }
   function updateProfileCheck() {
-    if (!profile || !pad || issue || profileBlocked || profileIndex >= PROFILE_STEPS.length) return;
+    if (manualMode || !profile || !pad || issue || profileBlocked ||
+        profileIndex >= PROFILE_STEPS.length) return;
     const step = PROFILE_STEPS[profileIndex];
     let value: number | null;
     try { value = readProfileValue(); }
@@ -296,14 +403,19 @@ export function mountCalibration(
   }
   function calibration(): ControllerCalibration | null {
     if (issue || !pad || !deviceId) return null;
-    if (profile) {
+    if (!manualMode && profile) {
       if (profileIndex !== PROFILE_STEPS.length || awaitingRelease) return null;
       return validateCalibration(calibrationForProfile(profile.id, deviceId));
     }
     if (!captured()) return null;
     return validateCalibration({
-      version: 1, deviceId, steeringAxis, steeringLeft: left, steeringCenter: center,
-      steeringRight: right, throttle: { ...throttle }, brake: { ...brake }, reverseButton, driveButton,
+      version: 1, deviceId, steeringAxis,
+      steeringLeft: manualSamples.left, steeringCenter: manualSamples.center,
+      steeringRight: manualSamples.right,
+      throttle: { ...throttle, released: manualSamples.throttleReleased,
+        pressed: manualSamples.throttlePressed },
+      brake: { ...brake, released: manualSamples.brakeReleased, pressed: manualSamples.brakePressed },
+      reverseButton, driveButton,
     });
   }
   const save = button(vi.saveCalibration, () => {
@@ -323,22 +435,52 @@ export function mountCalibration(
     const message = issue ?? (captured() && value === null ? 'invalidCalibration' : null);
     setText(error, message ? vi[message] : '');
     setText(device, deviceId ?? vi.controllerDisconnected);
-    const completed = profile ? profileIndex : captures.filter(
-      (element) => element.getAttribute('aria-pressed') === 'true',
-    ).length;
-    setText(progress, `${vi.capturedProgress}: ${completed} / ${profile ? PROFILE_STEPS.length : 9}`);
-    if (profile) {
+    const activeProfile = !manualMode && profile;
+    const completed = manualMode ? manualIndex : profileIndex;
+    setText(progress, `${vi.capturedProgress}: ${completed} / ${
+      manualMode ? MANUAL_STEPS.length : PROFILE_STEPS.length
+    }`);
+    help.textContent = manualMode ? vi.calibrationHelp : vi.profileVerificationHelp;
+    if (manualMode) {
+      const step = MANUAL_STEPS[manualIndex];
+      setText(instruction, step ? vi[step.message] : vi.manualCalibrationComplete);
+      instruction.dataset.calibrationStep = step?.id ?? 'complete';
+      const restart = !step && captured() && value === null;
+      manualCapture.hidden = !step && !restart;
+      manualCapture.textContent = restart ? vi.restartCalibration : vi.captureCalibrationStep;
+      manualCapture.disabled = pad === null || issue !== null;
+      kindLabel.hidden = Boolean(profile);
+      renderManualControls();
+      if (step) renderIllustration(manualKind, step.part);
+      else renderIllustration(manualKind, 'steering');
+    } else if (activeProfile) {
       const step = PROFILE_STEPS[profileIndex];
-      setText(profileInstruction, profileIndex >= PROFILE_STEPS.length
+      setText(instruction, profileIndex >= PROFILE_STEPS.length
         ? vi.profileVerificationComplete
         : awaitingRelease ? vi.profileRelease : vi[step.message]);
+      if (profileIndex < PROFILE_STEPS.length) {
+        instruction.dataset.calibrationStep = step.id;
+        renderIllustration(profile.kind, step.part);
+      } else {
+        instruction.dataset.calibrationStep = 'complete';
+        renderIllustration(profile.kind, 'steering');
+      }
+      manualCapture.hidden = true;
+      kindLabel.hidden = true;
+      renderManualControls();
     }
+    const fallback = screen.querySelector<HTMLButtonElement>('[data-manual-fallback]');
+    if (fallback) fallback.hidden = manualMode;
     save.disabled = value === null;
-    captures.forEach((element) => {
-      element.disabled = pad === null || issue !== null;
-      setText(captureStates.get(element)!, element.getAttribute('aria-pressed') === 'true'
-        ? vi.captureReady : vi.capturePending);
-    });
+    manualCapture.disabled = manualCapture.disabled || pad === null || issue !== null;
+    if (save.disabled && document.activeElement === save) instruction.focus();
+    if (manualCapture.disabled && document.activeElement === manualCapture) instruction.focus();
+  }
+  function renderIllustration(kind: 'wheel' | 'gamepad', part: CalibrationPart) {
+    const key = `${kind}:${part}`;
+    if (renderedIllustration === key) return;
+    illustration.replaceChildren(createControllerIllustration(kind, part));
+    renderedIllustration = key;
   }
   function tick() {
     if (disposed) return;
@@ -358,7 +500,9 @@ export function mountCalibration(
   screen.addEventListener('keydown', (event) => {
     if (event.code === 'Escape') { event.preventDefault(); event.stopPropagation(); onCancel(); }
     if (event.key === 'Tab') {
-      const focusable = [...screen.querySelectorAll<HTMLElement>('button:not(:disabled), input, select, summary')];
+      const focusable = [...screen.querySelectorAll<HTMLElement>(
+        'button:not(:disabled):not([hidden]), input:not([hidden]), select:not([hidden]), summary',
+      )];
       const first = focusable[0]; const last = focusable[focusable.length - 1];
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault(); last?.focus();
@@ -370,8 +514,8 @@ export function mountCalibration(
   sample();
   refresh();
   frame = window.requestAnimationFrame(tick);
-  if (profile) profileInstruction.focus();
-  else screen.querySelector('input')?.focus();
+  if (manualMode && !manualCapture.disabled) manualCapture.focus();
+  else instruction.focus();
   return () => {
     if (disposed) return;
     disposed = true;

@@ -734,6 +734,47 @@ select {
   overflow-wrap: anywhere;
 }
 
+.calibration [data-controller-illustration] {
+  width: min(100%, 32rem);
+  margin: 0 auto;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: radial-gradient(ellipse, #38243f, var(--color-panel) 75%);
+}
+
+.controller-illustration {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.controller-illustration [data-active="true"] {
+  filter: drop-shadow(0 0 7px var(--color-accent));
+}
+
+.controller-illustration [data-active="true"] > *:not(text) {
+  stroke: var(--color-accent-light);
+}
+
+.controller-illustration [data-active="true"] > text {
+  fill: var(--color-accent-light);
+}
+
+.calibration [data-calibration-step] {
+  color: var(--color-accent-light);
+  font-weight: 700;
+}
+
+.calibration [data-calibration-capture] {
+  width: 100%;
+  min-height: var(--control-min);
+}
+
+.calibration [data-manual-controls] {
+  min-width: 0;
+}
+
 :focus-visible {
   outline: 3px solid var(--color-accent-light);
   outline-offset: 2px;
