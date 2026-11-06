@@ -138,11 +138,11 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   }
   addMesh('ExteriorDetails', body, mergeGeometry(detail), paint);
   const cockpit = addNode('Cockpit', root, { translation: [0, -data.comHeightM, 0] });
-  box('Dashboard', cockpit, [0, belt - 0.06, eyeZ - 0.52], [1.46, 0.16, 0.26], palette.trim);
+  box('Dashboard', cockpit, [0, belt - 0.08, eyeZ - 0.52], [1.1, 0.16, 0.26], palette.trim);
   box('Floor', cockpit, [0, data.clearanceM + 0.035, (frontFoot + rearFoot) / 2],
     [1.5, 0.05, rearFoot - frontFoot - 0.12], palette.trim);
   const instrumentParts = [
-    part([0.66, 0.16, 0.04], [-0.36, data.eyeHeightM - 0.1, eyeZ - 0.34], palette.trim),
+    part([0.44, 0.06, 0.02], [-0.36, data.eyeHeightM - 0.05, eyeZ - 0.34], palette.trim),
     part([0.2, 0.2, 0.1], [-0.36, data.eyeHeightM - 0.28, eyeZ - 0.41], palette.trim),
   ];
   const dialFace = (x, y, z, radius, color) => facesGeometry(
@@ -153,11 +153,11 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
         [x + Math.cos(b) * radius, y + Math.sin(b) * radius, z]] };
     }),
   );
-  const dialY = data.eyeHeightM - 0.08, dialZ = eyeZ - 0.31;
+  const dialY = data.eyeHeightM - 0.05, dialZ = eyeZ - 0.31;
   for (const x of [-0.5, -0.36, -0.22]) {
-    instrumentParts.push(dialFace(x, dialY, dialZ, 0.046, [0.06, 0.055, 0.07]));
+    instrumentParts.push(dialFace(x, dialY, dialZ, 0.036, [0.06, 0.055, 0.07]));
     instrumentParts.push(transformGeometry(
-      torusGeometry(0.048, 0.006, palette.marking, 12, 4), [x, dialY, dialZ],
+      torusGeometry(0.038, 0.004, palette.marking, 12, 4), [x, dialY, dialZ],
     ));
     instrumentParts.push(part([0.006, 0.04, 0.008], [x, dialY + 0.012, dialZ], palette.marking));
   }

@@ -345,7 +345,7 @@ describe('phase 5 scene asset loading', () => {
       const meshes = [];
       assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
       for (const offset of [-0.14, 0, 0.14]) {
-        const target = new Vector3(eye.x + offset, eye.y - 0.08, bounds.max.z - 0.006);
+        const target = new Vector3(eye.x + offset, eye.y - 0.05, bounds.max.z - 0.006);
         const direction = target.clone().sub(eye);
         expect(Math.atan2(direction.y, Math.hypot(direction.x, direction.z))).toBeGreaterThan(-Math.PI / 6);
         expect(Math.abs(Math.atan2(direction.x, -direction.z))).toBeLessThan(Math.PI / 4);
@@ -363,6 +363,38 @@ describe('phase 5 scene asset loading', () => {
     } finally { assets.dispose(); }
   });
 
+  it.each(['sedan', 'cuv'])('keeps the full %s steering-wheel ring visible from the driver eye', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
+      const wheel = assets.vehicle.getObjectByName('SteeringWheel');
+      const wheelCenter = wheel.getWorldPosition(new Vector3());
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      const obstructedSamples = [];
+      for (let index = 0; index < 16; index++) {
+        const angle = index * Math.PI / 8;
+        const target = new Vector3(
+          wheelCenter.x + Math.cos(angle) * 0.17,
+          wheelCenter.y + Math.sin(angle) * 0.17,
+          wheelCenter.z + 0.02,
+        );
+        const direction = target.clone().sub(eye);
+        const ray = new Raycaster(eye, direction.clone().normalize(), 0.01, direction.length() + 0.04);
+        ray.layers.enable(1);
+        const hit = ray.intersectObjects(meshes, false)[0];
+        if (hit?.object.name !== 'SteeringWheel') obstructedSamples.push({
+          index, hit: hit?.object.name, point: hit?.point.toArray(),
+        });
+      }
+      expect(obstructedSamples, 'wheel ring samples must not be obstructed').toEqual([]);
+      const dashboardBounds = new Box3().setFromObject(assets.vehicle.getObjectByName('Dashboard'));
+      expect(dashboardBounds.getSize(new Vector3()).x).toBeLessThanOrEqual(1.15);
+    } finally { assets.dispose(); }
+  });
+
   it.each(['sedan', 'cuv'])('keeps the %s dial face ahead of the steering-wheel hub', async (id) => {
     mockedFetch();
     const assets = await loadSceneAssets('garage', id, new AbortController().signal);
@@ -371,7 +403,7 @@ describe('phase 5 scene asset loading', () => {
       const cluster = assets.vehicle.getObjectByName('InstrumentCluster');
       const bounds = new Box3().setFromObject(cluster);
       const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
-      const target = new Vector3(eye.x, eye.y - 0.08, bounds.max.z - 0.006);
+      const target = new Vector3(eye.x, eye.y - 0.05, bounds.max.z - 0.006);
       const direction = target.clone().sub(eye);
       const ray = new Raycaster(eye, direction.normalize(), 0.1, direction.length() + 0.1);
       ray.layers.enable(1);
@@ -393,7 +425,7 @@ describe('phase 5 scene asset loading', () => {
       const cluster = assets.vehicle.getObjectByName('InstrumentCluster');
       const bounds = new Box3().setFromObject(cluster);
       const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
-      const target = new Vector3(eye.x - 0.07, eye.y - 0.11, bounds.max.z - 0.006);
+      const target = new Vector3(eye.x - 0.07, eye.y - 0.05, bounds.max.z - 0.006);
       const direction = target.clone().sub(eye);
       const ray = new Raycaster(eye, direction.clone().normalize(), 0.1, direction.length() + 0.1);
       ray.layers.enable(1);
