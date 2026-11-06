@@ -123,7 +123,8 @@ describe('phase 5 scene asset loading', () => {
         point.y = bounds.max.y;
         const ray = new Raycaster(new Vector3(point.x, point.y, -4), new Vector3(0, 0, 1));
         ray.layers.enable(1);
-        expect(ray.intersectObjects(meshes, false)[0]?.object.name, name).toBe('ExteriorWindowFaces');
+        const hit = ray.intersectObjects(meshes, false)[0];
+        expect(hit?.object.name, `${name} hit at ${hit?.point.toArray()}`).toBe('ExteriorWindowFaces');
       }
     } finally { assets.dispose(); }
   });
@@ -148,6 +149,26 @@ describe('phase 5 scene asset loading', () => {
             expect(ray.intersectObjects(meshes, false)[0]?.object.name, `${side} sample ${x},${y}`)
               .toBe(surface.name);
           }
+        }
+      }
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('keeps both %s door-side shells covered at representative samples', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const exterior = assets.vehicle.getObjectByName('Exterior');
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      for (const side of [-1, 1]) {
+        for (const z of [-0.8, -0.4, 0, 0.4, 0.8]) {
+          const ray = new Raycaster(new Vector3(side * 1.2, 0.2, z), new Vector3(-side, 0, 0), 0, 2.4);
+          const hit = ray.intersectObjects(meshes, false)[0];
+          let object = hit?.object;
+          while (object && object !== exterior) object = object.parent;
+          expect(object, `${side} side at z=${z}`).toBe(exterior);
         }
       }
     } finally { assets.dispose(); }

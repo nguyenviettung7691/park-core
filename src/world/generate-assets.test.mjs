@@ -110,6 +110,47 @@ describe('phase 5 original GLB generator', () => {
     expect(names).toContain('SteeringWheel');
   });
 
+  it('includes a named Trunk node for sedan', () => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-trunk-'));
+    temporaryRoots.push(root);
+    generate(root);
+    expect(readGlb(assetPath(root, 'sedan')).nodes.map((node) => node.name)).toContain('Trunk');
+  });
+
+  it('exports a rebalanced sedan hood and trunk within the body envelope', () => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-hood-trunk-'));
+    temporaryRoots.push(root);
+    generate(root);
+    const { nodes, meshes, accessors } = readGlb(assetPath(root, 'sedan'));
+    const parents = new Map();
+    nodes.forEach((node, parentIndex) =>
+      node.children?.forEach((childIndex) => parents.set(childIndex, parentIndex)));
+    const boundsFor = (name) => {
+      const index = nodes.findIndex((node) => node.name === name);
+      if (index < 0) return null;
+      const primitive = meshes[nodes[index].mesh].primitives[0];
+      const bounds = accessors[primitive.attributes.POSITION];
+      let zOffset = 0;
+      for (let parentIndex = index; parentIndex !== undefined; parentIndex = parents.get(parentIndex)) {
+        zOffset += nodes[parentIndex].translation?.[2] ?? 0;
+      }
+      return [bounds.min[2] + zOffset, bounds.max[2] + zOffset];
+    };
+    const hood = boundsFor('Hood');
+    const trunk = boundsFor('Trunk');
+
+    expect(hood).not.toBeNull();
+    expect(trunk).not.toBeNull();
+    if (!hood || !trunk) return;
+    expect(hood[1] - hood[0]).toBeGreaterThan(0);
+    expect(trunk[1] - trunk[0]).toBeGreaterThan(0);
+    expect(hood[1] - hood[0]).toBeGreaterThan(trunk[1] - trunk[0]);
+    for (const [minZ, maxZ] of [hood, trunk]) {
+      expect(minZ).toBeGreaterThanOrEqual(-2.3);
+      expect(maxZ).toBeLessThanOrEqual(2.3);
+    }
+  });
+
   it.each(['sedan', 'cuv'])('keeps the hood below the driver eye for %s', (assetId) => {
     const root = mkdtempSync(join(tmpdir(), 'park-core-cockpit-'));
     temporaryRoots.push(root);
