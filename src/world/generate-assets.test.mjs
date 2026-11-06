@@ -97,6 +97,7 @@ describe('phase 5 original GLB generator', () => {
       'DriverEye', 'MirrorRear', 'MirrorLeft', 'MirrorRight',
       'MirrorSurfaceRear', 'MirrorSurfaceLeft', 'MirrorSurfaceRight',
       'MirrorStemLeft', 'MirrorStemRight', 'MirrorHousingLeft', 'MirrorHousingRight',
+      'MirrorReflectiveFaceLeft', 'MirrorReflectiveFaceRight',
     ];
 
     for (const name of requiredNodes) expect(names).toContain(name);

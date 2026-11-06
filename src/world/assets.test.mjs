@@ -199,10 +199,33 @@ describe('phase 5 scene asset loading', () => {
             const ray = new Raycaster(origin, direction.normalize(), 0, distance + 0.001);
             ray.layers.enable(1);
             const hit = ray.intersectObjects(meshes, false)[0];
-            expect(['MirrorHousing' + name, 'MirrorSurface' + name],
+            expect(['MirrorHousing' + name, 'MirrorSurface' + name, 'MirrorReflectiveFace' + name],
               `${name} exterior sample ${x},${y}`).toContain(hit?.object.name);
           }
         }
+      }
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('shows exterior-facing reflectors on the %s side mirrors', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      for (const side of ['Left', 'Right']) {
+        const face = assets.vehicle.getObjectByName(`MirrorReflectiveFace${side}`);
+        expect(face, `${side} exterior reflector`).toBeTruthy();
+        if (!face) continue;
+        const center = new Box3().setFromObject(face).getCenter(new Vector3());
+        const outward = new Vector3(0, 0, -1).transformDirection(face.matrixWorld);
+        const origin = center.clone().addScaledVector(outward, 0.25);
+        const direction = center.clone().sub(origin);
+        const ray = new Raycaster(origin, direction.normalize(), 0, 0.5);
+        ray.layers.enable(1);
+        expect(ray.intersectObjects(meshes, false)[0]?.object.name, `${side} reflector exterior face`)
+          .toBe(face.name);
       }
     } finally { assets.dispose(); }
   });

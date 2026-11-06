@@ -244,6 +244,11 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     addMesh(`MirrorHousing${name}`, displayNode, boxGeometry(size.map((v) => v + 0.025), palette.trim),
       palette.trim, [0, 0, -0.04]);
     if (name !== 'Rear') {
+      const exteriorFaceSize = [size[0] - 0.035, size[1] - 0.035, 0.004];
+      const housingBack = -0.04 - (size[2] + 0.025) / 2;
+      addMesh(`MirrorReflectiveFace${name}`, displayNode,
+        boxGeometry(exteriorFaceSize, [0.82, 0.82, 0.86]), palette.trim,
+        [0, 0, housingBack - exteriorFaceSize[2] / 2]);
       const side = name === 'Left' ? -1 : 1;
       const tip = [display[0], display[1] - size[1] / 2 - 0.02, display[2] - 0.1];
       const base = [side * (width / 2 - 0.03), belt - data.comHeightM - 0.03, display[2] - 0.1];
