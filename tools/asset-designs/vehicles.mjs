@@ -151,7 +151,7 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     }),
   );
   const dialY = belt + 0.04, dialZ = eyeZ - 0.32;
-  for (const x of [-0.53, -0.36, -0.19]) {
+  for (const x of [-0.43, -0.36, -0.29]) {
     instrumentParts.push(dialFace(x, dialY, dialZ, 0.046, [0.06, 0.055, 0.07]));
     instrumentParts.push(transformGeometry(
       torusGeometry(0.048, 0.006, palette.marking, 12, 4), [x, dialY, dialZ],

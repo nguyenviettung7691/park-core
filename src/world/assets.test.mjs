@@ -209,6 +209,31 @@ describe('phase 5 scene asset loading', () => {
     } finally { assets.dispose(); }
   });
 
+  it.each(['sedan', 'cuv'])('shows a visible instrument dial from the %s driver eye', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const cluster = assets.vehicle.getObjectByName('InstrumentCluster');
+      const bounds = new Box3().setFromObject(cluster);
+      const center = bounds.getCenter(new Vector3());
+      const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
+      const target = new Vector3(eye.x - 0.07, center.y + 0.06, bounds.max.z - 0.006);
+      const direction = target.clone().sub(eye);
+      const ray = new Raycaster(eye, direction.clone().normalize(), 0.1, direction.length() + 0.1);
+      ray.layers.enable(1);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      const hit = ray.intersectObjects(meshes, false)[0];
+      expect(hit?.object.name).toBe('InstrumentCluster');
+      if (!hit?.face) return;
+      const colors = hit.object.geometry.getAttribute('color');
+      const brightness = [hit.face.a, hit.face.b, hit.face.c]
+        .reduce((sum, index) => sum + colors.getX(index), 0) / 3;
+      expect(brightness).toBeGreaterThan(0.5);
+    } finally { assets.dispose(); }
+  });
+
   it.each(['garage', 'roadside'])('keeps %s details on the appropriate camera layers', async (id) => {
     mockedFetch();
     const assets = await loadSceneAssets(id, 'sedan', new AbortController().signal);
