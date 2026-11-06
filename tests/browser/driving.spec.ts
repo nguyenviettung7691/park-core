@@ -118,7 +118,7 @@ async function setButton(page: Page, index: number, value: number) {
   }, { index, value });
 }
 
-test('real keyboard drivetrain, brake, invalid shift, pause, stale key and reset', async ({ page }) => {
+test('real keyboard drivetrain, brake, invalid shift, pause, stale key and reset', { tag: '@smoke' }, async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await open(page);
@@ -171,7 +171,7 @@ test('real contact stops the prototype until Reset or Menu', async ({ page }) =>
   await expect(page.locator('[data-telemetry="gear"]')).toHaveText('P');
 });
 
-test('explicit calibration, physical brake and gamepad gear, disconnect and same-ID reconnect', async ({ page }) => {
+test('explicit calibration, physical brake and gamepad gear, disconnect and same-ID reconnect', { tag: '@smoke' }, async ({ page }) => {
   await page.addInitScript(() => {
     window.testPad = {
       id: 'Injected calibration wheel', index: 0, connected: true, mapping: 'standard', timestamp: 0,
@@ -186,20 +186,21 @@ test('explicit calibration, physical brake and gamepad gear, disconnect and same
   await page.getByLabel('Thiết bị', { exact: true }).selectOption('0');
   await expect(page.getByRole('button', { name: 'Lái tự do', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Hiệu chuẩn thiết bị', exact: true }).click();
-  for (const [value, label] of [[-1, 'Ghi hết lái trái'], [0, 'Ghi chính giữa'], [1, 'Ghi hết lái phải']] as const) {
+  const capture = page.locator('[data-calibration-capture]');
+  for (const value of [-1, 0, 1]) {
     await page.evaluate((value) => { window.testPad.axes[0] = value; }, value);
-    await page.getByRole('button', { name: label, exact: true }).click();
+    await capture.click();
   }
-  for (const [index, label] of [[7, 'Chân ga'], [6, 'Phanh chân']] as const) {
+  for (const index of [7, 6]) {
     await setButton(page, index, 0);
-    await page.getByRole('button', { name: `${label} — Ghi đã nhả`, exact: true }).click();
+    await capture.click();
     await setButton(page, index, 1);
-    await page.getByRole('button', { name: `${label} — Ghi đã nhấn hết`, exact: true }).click();
+    await capture.click();
   }
   await setButton(page, 4, 1);
-  await page.getByRole('button', { name: 'Xác minh nút R', exact: true }).click();
+  await capture.click();
   await setButton(page, 5, 1);
-  await page.getByRole('button', { name: 'Xác minh nút D', exact: true }).click();
+  await capture.click();
   for (const index of [4, 5, 6, 7]) await setButton(page, index, 0);
   await page.evaluate(() => { window.testPad.axes[0] = 0; });
   await page.getByRole('button', { name: 'Lưu hiệu chuẩn', exact: true }).click();

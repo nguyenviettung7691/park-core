@@ -3,7 +3,7 @@ import { vi } from '../../src/messages';
 import { enterLessonMenu, openSettings, closeSettings } from '../ui-journey';
 import { installObservationAndPad, calibrateThroughUi, selectGamepadDevice } from './lesson-driver';
 
-test('first visit teaches the goal before driving and remains skippable and replayable', async ({ page }) => {
+test('first visit teaches the goal before driving and remains skippable and replayable', { tag: '@smoke' }, async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('[data-onboarding-step="0"]')).toBeVisible();
   await expect(page.locator('#simulation')).toHaveCount(0);
@@ -23,7 +23,7 @@ test('first visit teaches the goal before driving and remains skippable and repl
   expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
 });
 
-test('visual lesson goal remains a briefing until the learner explicitly starts', async ({ page }) => {
+test('visual lesson goal remains a briefing until the learner explicitly starts', { tag: '@smoke' }, async ({ page }) => {
   await page.goto('/');
   await enterLessonMenu(page);
   await page.locator('#start-stage').click();
@@ -36,7 +36,7 @@ test('visual lesson goal remains a briefing until the learner explicitly starts'
   await expect(page.getByRole('button', { name: vi.resumePreview, exact: true })).toBeVisible();
 });
 
-test('pause help and settings contain focus and never resume driving on close', async ({ page }) => {
+test('pause help and settings contain focus and never resume driving on close', { tag: '@smoke' }, async ({ page }) => {
   await page.goto('/');
   await enterLessonMenu(page);
   await page.locator('#start-stage').click();

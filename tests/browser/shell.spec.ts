@@ -95,7 +95,7 @@ test('menu, real rendering, resize, keyboard focus and repeated preview lifecycl
   expect(errors).toEqual([]);
 });
 
-test('missing WebGL2 shows honest feedback with no retry or training controls', async ({ page }) => {
+test('missing WebGL2 shows honest feedback with no retry or training controls', { tag: '@smoke' }, async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript(() => {

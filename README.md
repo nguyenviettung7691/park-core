@@ -91,6 +91,12 @@ npx playwright install chromium
 npm run test:browser
 ```
 
+CI runs only the six `@smoke` browser checks (onboarding, lesson startup,
+pause/settings safety, keyboard driving, gamepad calibration/disconnection,
+and missing WebGL2), with a four-minute suite timeout. Use
+`npm run test:browser -- --grep @smoke` to run the same subset locally;
+`npm run test:browser` still runs the full browser suite.
+
 After building, run `npm run test:production` to serve and check the production
 bundle. Use `npm run preview` to preview a build locally.
 
