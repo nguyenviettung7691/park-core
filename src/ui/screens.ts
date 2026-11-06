@@ -8,6 +8,7 @@ import type {
 import { scenarios } from '../lessons/scenarios';
 import { createParkingIllustration } from './illustrations';
 import { mountViewSettings } from './view-settings';
+import type { ControllerProfile, ControllerProfileId } from '../input/profiles';
 export { mountCalibration } from './calibration';
 
 export interface InputSetup {
@@ -16,6 +17,8 @@ export interface InputSetup {
   readonly devices: readonly { readonly index: number; readonly id: string }[];
   readonly ready: boolean;
   readonly savedCalibrationAvailable: boolean;
+  readonly profiles: readonly ControllerProfile[];
+  readonly matchedProfileId: ControllerProfileId | null;
 }
 
 const FAILURE_MESSAGES: Readonly<Record<FailureReason, keyof typeof vi>> = {
@@ -230,6 +233,24 @@ export function mountScreen(
         (value) => onAction({
           type: 'select-input', source: 'gamepad', gamepadIndex: value === '' ? null : Number(value),
         }));
+      const matchStatus = text('p',
+        input.matchedProfileId ? vi.profileMatchSuggested : vi.profileMatchNone, parent);
+      matchStatus.dataset.profileMatchStatus = '';
+      matchStatus.id = 'profile-match-status';
+      const choices = document.createElement('div');
+      choices.className = 'controller-profile-list';
+      choices.setAttribute('role', 'group');
+      choices.setAttribute('aria-label', vi.controllerProfiles);
+      for (const profile of input.profiles) {
+        const choice = button(profile.name, () => onAction({
+          type: 'open-profile-verification', profileId: profile.id,
+        }), choices);
+        choice.dataset.controllerProfile = profile.id;
+        choice.setAttribute('aria-describedby', matchStatus.id);
+        if (profile.id === input.matchedProfileId) choice.dataset.suggested = 'true';
+        choice.disabled = input.index === null;
+      }
+      parent.append(choices);
       button(vi.discoverDevices, () => onAction({
         type: 'select-input', source: 'gamepad', gamepadIndex: input.index,
       }), parent);

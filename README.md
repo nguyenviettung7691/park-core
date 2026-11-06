@@ -91,6 +91,12 @@ npx playwright install chromium
 npm run test:browser
 ```
 
+CI runs only the six `@smoke` browser checks (onboarding, lesson startup,
+pause/settings safety, keyboard driving, gamepad calibration/disconnection,
+and missing WebGL2), with a four-minute suite timeout. Use
+`npm run test:browser -- --grep @smoke` to run the same subset locally;
+`npm run test:browser` still runs the full browser suite.
+
 After building, run `npm run test:production` to serve and check the production
 bundle. Use `npm run preview` to preview a build locally.
 
@@ -108,8 +114,12 @@ Keyboard is selected by default:
   modes while the simulation canvas is focused. Throttle, brake, and steering
   stay source-specific.
 
-For a gamepad or simulation wheel, select the Gamepad input source and complete
-the in-app calibration before starting or resuming a session.
+For a gamepad or simulation wheel, select the Gamepad input source, then choose
+a suggested or other controller profile and complete its movement checks.
+Illustrated manual calibration remains available for unmatched devices and
+custom mappings. Profile names are suggestions only; compatibility with these
+hardware candidates has not been validated. Saved calibration is tied to the
+browser-reported device ID and must be verified again after reconnecting.
 
 ## Deployment
 

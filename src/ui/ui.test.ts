@@ -9,6 +9,7 @@ import type {
 } from '../contracts';
 import { testGamepad } from '../test/gamepad';
 import { vi as messages } from '../messages';
+import { calibrationForProfile, controllerProfiles } from '../input/profiles';
 
 afterEach(() => document.body.replaceChildren());
 
@@ -32,6 +33,35 @@ function root() {
   const element = document.createElement('div');
   document.body.append(element);
   return element;
+}
+
+function animationClock() {
+  const callbacks = new Map<number, FrameRequestCallback>();
+  let next = 0;
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    callbacks.set(++next, callback);
+    return next;
+  });
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+    callbacks.delete(id);
+  });
+  return {
+    tick(count = 1) {
+      for (let frame = 0; frame < count; frame++) {
+        const entry = callbacks.entries().next().value as
+          [number, FrameRequestCallback] | undefined;
+        if (!entry) throw new Error('Animation frame was not scheduled');
+        callbacks.delete(entry[0]);
+        entry[1](16);
+      }
+    },
+  };
+}
+
+function profileGamepad() {
+  const pad = testGamepad();
+  pad.axes.splice(0, pad.axes.length, 0, 0, 0);
+  return pad;
 }
 
 it('renders a decorative parking mark beside the accessible menu heading', () => {
@@ -238,10 +268,66 @@ it('offers explicit verification for a saved calibration matching the selected d
   }, action, undefined, {
     source: 'gamepad', index: 0, devices: [{ index: 0, id: 'wheel' }],
     ready: false, savedCalibrationAvailable: true,
+    profiles: controllerProfiles, matchedProfileId: null,
   });
 
   element.querySelector<HTMLButtonElement>('#verify-saved-calibration')?.click();
   expect(action).toHaveBeenCalledWith({ type: 'verify-saved-calibration' });
+});
+
+it('offers named profiles, marks an exact match as a suggestion, and keeps manual calibration available', () => {
+  const element = root();
+  const action = vi.fn();
+  const setup = {
+    source: 'gamepad' as const, index: 0,
+    devices: [{ index: 0, id: 'Xbox Wireless Controller Series X' }],
+    ready: false, savedCalibrationAvailable: false,
+    profiles: controllerProfiles, matchedProfileId: 'xbox-series-x' as const,
+  };
+  const view: ShellView = {
+    state: { kind: 'menu' }, preview: 'closed',
+    overlay: { kind: 'settings', tab: 'input', returnTo: { kind: 'menu' } },
+  };
+  mountScreen(element, view.state, {
+    ...context, settings: { ...context.settings, inputSource: 'gamepad' },
+  }, action, view, setup);
+
+  expect(element.querySelector('[data-profile-match-status]')?.textContent)
+    .toContain('Khớp với thiết bị hiện tại');
+  const choices = [...element.querySelectorAll<HTMLButtonElement>('[data-controller-profile]')];
+  expect(choices).toHaveLength(6);
+  expect(choices.map((choice) => choice.textContent)).toContain('Xbox Wireless Controller (Series X)');
+  expect(element.querySelector('#calibrate-device')).not.toBeNull();
+  element.querySelector<HTMLButtonElement>('[data-controller-profile="xbox-series-x"]')!.click();
+  expect(action).toHaveBeenCalledWith({
+    type: 'open-profile-verification', profileId: 'xbox-series-x',
+  });
+});
+
+it('keeps named profile choice and manual calibration available for an unmatched device', () => {
+  const element = root();
+  const action = vi.fn();
+  const setup = {
+    source: 'gamepad' as const, index: 0,
+    devices: [{ index: 0, id: 'Unknown Controller' }],
+    ready: false, savedCalibrationAvailable: false,
+    profiles: controllerProfiles, matchedProfileId: null,
+  };
+  const view: ShellView = {
+    state: { kind: 'menu' }, preview: 'closed',
+    overlay: { kind: 'settings', tab: 'input', returnTo: { kind: 'menu' } },
+  };
+  mountScreen(element, view.state, {
+    ...context, settings: { ...context.settings, inputSource: 'gamepad' },
+  }, action, view, setup);
+
+  expect(element.querySelector('[data-profile-match-status]')?.textContent)
+    .toContain('Chưa nhận diện chính xác');
+  expect(element.querySelectorAll('[data-controller-profile]')).toHaveLength(6);
+  const manual = element.querySelector<HTMLButtonElement>('#calibrate-device');
+  expect(manual?.disabled).toBe(false);
+  manual?.click();
+  expect(action).toHaveBeenCalledWith({ type: 'open-calibration' });
 });
 
 it('shows accessible indeterminate asset progress and lets the learner cancel to the menu', () => {
@@ -526,6 +612,164 @@ it('keeps calibration captures invalid until verified and cancels its polling wi
   vi.restoreAllMocks();
 });
 
+it('guides manual calibration one illustrated capture at a time in the nine-control order', () => {
+  animationClock();
+  const element = root();
+  const previousFocus = document.createElement('button');
+  document.body.append(previousFocus);
+  previousFocus.focus();
+  const pad = testGamepad();
+  const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), vi.fn());
+  const expected = [
+    ['steering-left', 'steering'],
+    ['steering-center', 'steering'],
+    ['steering-right', 'steering'],
+    ['throttle-released', 'throttle'],
+    ['throttle-pressed', 'throttle'],
+    ['brake-released', 'brake'],
+    ['brake-pressed', 'brake'],
+    ['reverse', 'reverse'],
+    ['drive', 'drive'],
+  ] as const;
+  const samples = [
+    () => { pad.axes[0] = -1; },
+    () => { pad.axes[0] = 0; },
+    () => { pad.axes[0] = 1; },
+    () => { pad.buttons[7]!.value = 0; },
+    () => { pad.buttons[7]!.value = 1; },
+    () => { pad.buttons[6]!.value = 0; },
+    () => { pad.buttons[6]!.value = 1; },
+    () => { pad.buttons[4]!.value = 1; },
+    () => { pad.buttons[5]!.value = 1; },
+  ];
+  const kind = element.querySelector<HTMLSelectElement>('[data-illustration-kind]');
+  expect(kind?.value).toBe('gamepad');
+  kind!.value = 'wheel';
+  kind!.dispatchEvent(new Event('change'));
+  const wheelIllustration = element.querySelector('svg[role="img"]');
+  expect(wheelIllustration?.getAttribute('data-controller-kind')).toBe('wheel');
+  expect(wheelIllustration?.getAttribute('aria-label')).toContain('vô lăng');
+  kind!.value = 'gamepad';
+  kind!.dispatchEvent(new Event('change'));
+  expect(element.querySelector('details')?.open).toBe(false);
+
+  expected.forEach(([step, part], index) => {
+    expect(element.querySelector('[data-calibration-step]')?.getAttribute('data-calibration-step'))
+      .toBe(step);
+    expect(element.querySelector('svg[role="img"]')?.getAttribute('data-highlighted-part'))
+      .toBe(part);
+    expect(element.querySelector(`svg [data-part="${part}"][data-active="true"]`)).not.toBeNull();
+    expect(element.querySelector('[data-capture-progress]')?.textContent)
+      .toContain(`${index} / 9`);
+    samples[index]!();
+    const capture = element.querySelector<HTMLButtonElement>('[data-calibration-capture]')!;
+    if (index === expected.length - 1) capture.focus();
+    capture.click();
+    if (index === expected.length - 1) {
+      expect(document.activeElement).toBe([...element.querySelectorAll('button')]
+        .find((button) => button.textContent === messages.saveCalibration));
+    }
+  });
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('9 / 9');
+  expect(element.querySelector<HTMLButtonElement>('[data-calibration-capture]')?.hidden).toBe(true);
+  unmount();
+  expect(document.activeElement).toBe(previousFocus);
+  vi.restoreAllMocks();
+});
+
+it('clears the current manual step when the connected device is replaced', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = testGamepad();
+  const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), vi.fn());
+  pad.axes[0] = -1;
+  element.querySelector<HTMLButtonElement>('[data-calibration-capture]')!.click();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('1 / 9');
+  pad.id = 'replacement';
+  clock.tick();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  expect(element.querySelector('[role="alert"]')?.textContent).toContain('thiết bị khác');
+  expect(element.querySelector<HTMLButtonElement>('[data-calibration-capture]')?.disabled).toBe(true);
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('allows restarting manual capture when completed endpoints are invalid', () => {
+  animationClock();
+  const element = root();
+  const pad = testGamepad();
+  const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), vi.fn());
+  const samples = [
+    () => { pad.axes[0] = 0; },
+    () => { pad.axes[0] = 0; },
+    () => { pad.axes[0] = 1; },
+    () => { pad.buttons[7]!.value = 0; },
+    () => { pad.buttons[7]!.value = 1; },
+    () => { pad.buttons[6]!.value = 0; },
+    () => { pad.buttons[6]!.value = 1; },
+    () => { pad.buttons[4]!.value = 1; },
+    () => { pad.buttons[5]!.value = 1; },
+  ];
+  for (const setSample of samples) {
+    setSample();
+    element.querySelector<HTMLButtonElement>('[data-calibration-capture]')!.click();
+  }
+  const save = [...element.querySelectorAll('button')]
+    .find((button) => button.textContent === messages.saveCalibration);
+  const restart = element.querySelector<HTMLButtonElement>('[data-calibration-capture]');
+  expect(save?.disabled).toBe(true);
+  expect(restart?.hidden).toBe(false);
+  expect(restart?.textContent).toBe('Bắt đầu lại');
+  restart?.click();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  expect(element.querySelector('[data-calibration-step]')?.getAttribute('data-calibration-step'))
+    .toBe('steering-left');
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('uses a selected profile kind for the verification illustration', () => {
+  animationClock();
+  const element = root();
+  const profile = controllerProfiles.find(({ id }) => id === 'logitech-g29')!;
+  const unmount = mountCalibration(element, 0, () => [testGamepad()], vi.fn(), vi.fn(), profile);
+  const illustration = element.querySelector('svg[role="img"]');
+  expect(illustration?.getAttribute('data-controller-kind')).toBe('wheel');
+  expect(illustration?.getAttribute('data-highlighted-part')).toBe('steering');
+  expect(illustration?.getAttribute('aria-label')).toContain('vô lăng');
+  const fallback = element.querySelector<HTMLButtonElement>('[data-manual-fallback]')!;
+  fallback.focus();
+  fallback.click();
+  expect(document.activeElement).toBe(element.querySelector('[data-calibration-capture]'));
+  expect(element.querySelector('[data-calibration-step]')?.getAttribute('data-calibration-step'))
+    .toBe('steering-left');
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  expect(element.querySelector('svg[role="img"]')?.getAttribute('data-controller-kind')).toBe('wheel');
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('allows fresh manual calibration after a preset device is replaced', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const profile = controllerProfiles.find(({ id }) => id === 'xbox-series-x')!;
+  const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), vi.fn(), profile);
+  pad.id = 'replacement';
+  clock.tick();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 6');
+  element.querySelector<HTMLButtonElement>('[data-manual-fallback]')!.click();
+  clock.tick();
+  const capture = element.querySelector<HTMLButtonElement>('[data-calibration-capture]');
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  expect(capture?.disabled).toBe(false);
+  pad.axes[0] = -1;
+  capture?.click();
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('1 / 9');
+  unmount();
+  vi.restoreAllMocks();
+});
+
 it('groups device setup, keeps diagnostics optional, and contains keyboard focus', () => {
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
@@ -535,17 +779,19 @@ it('groups device setup, keeps diagnostics optional, and contains keyboard focus
   const cancel = vi.fn();
   const unmount = mountCalibration(element, 0, () => [pad], vi.fn(), cancel);
   expect([...element.querySelectorAll('legend')].map((node) => node.textContent))
-    .toEqual(['Vô lăng', 'Chân ga', 'Phanh chân', 'Chuyển số']);
+    .toEqual(['Vô lăng']);
   expect(element.querySelector('details')?.open).toBe(false);
   expect(element.querySelector('details pre')).not.toBeNull();
   expect(element.querySelector('[data-calibration-device]')?.textContent).toBe(pad.id);
+  expect(element.querySelector<HTMLSelectElement>('[data-illustration-kind]')?.value).toBe('gamepad');
+  expect(element.querySelector('svg[role="img"]')?.getAttribute('data-highlighted-part')).toBe('steering');
   const buttons = [...element.querySelectorAll('button')];
-  buttons.find((node) => node.textContent === 'Ghi chính giữa')!.click();
-  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('1 / 9');
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  expect(buttons.some((node) => node.dataset.calibrationCapture !== undefined)).toBe(true);
   const last = element.querySelector<HTMLElement>('summary')!;
   last.focus();
   last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
-  expect(document.activeElement).toBe(element.querySelector('input'));
+  expect(document.activeElement).toBe(element.querySelector('[data-illustration-kind]'));
   last.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', bubbles: true }));
   expect(cancel).toHaveBeenCalledOnce();
   unmount();
@@ -563,21 +809,29 @@ it('saves explicitly captured endpoints and invalidates them on rebinding or dev
   const pad = testGamepad();
   const complete = vi.fn();
   const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn());
-  function click(text: string) {
-    const node = [...element.querySelectorAll('button')].find((button) => button.textContent === text)!;
-    node.click();
+  function capture(step: string, setSample: () => void) {
+    expect(element.querySelector('[data-calibration-step]')?.getAttribute('data-calibration-step'))
+      .toBe(step);
+    setSample();
+    element.querySelector<HTMLButtonElement>('[data-calibration-capture]')!.click();
   }
   function captureAll() {
-    pad.axes[0] = -1; click('Ghi hết lái trái');
-    pad.axes[0] = 0; click('Ghi chính giữa');
-    pad.axes[0] = 1; click('Ghi hết lái phải');
-    for (const [index, label] of [[7, 'Chân ga'], [6, 'Phanh chân']] as const) {
-      pad.buttons[index]!.value = 0; click(`${label} — Ghi đã nhả`);
-      pad.buttons[index]!.value = 1; click(`${label} — Ghi đã nhấn hết`);
-    }
-    pad.buttons[4]!.value = 1; click('Xác minh nút R');
-    pad.buttons[5]!.value = 1; click('Xác minh nút D');
+    capture('steering-left', () => { pad.axes[0] = -1; });
+    capture('steering-center', () => { pad.axes[0] = 0; });
+    capture('steering-right', () => { pad.axes[0] = 1; });
+    capture('throttle-released', () => { pad.buttons[7]!.value = 0; });
+    capture('throttle-pressed', () => { pad.buttons[7]!.value = 1; });
+    capture('brake-released', () => { pad.buttons[6]!.value = 0; });
+    capture('brake-pressed', () => { pad.buttons[6]!.value = 1; });
+    capture('reverse', () => { pad.buttons[4]!.value = 1; });
+    capture('drive', () => { pad.buttons[5]!.value = 1; });
   }
+  capture('steering-left', () => { pad.axes[0] = -1; });
+  const axis = element.querySelector<HTMLInputElement>('input')!;
+  axis.value = '1'; axis.dispatchEvent(new Event('change'));
+  expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('0 / 9');
+  const resetAxis = element.querySelector<HTMLInputElement>('input')!;
+  resetAxis.value = '0'; resetAxis.dispatchEvent(new Event('change'));
   captureAll();
   const save = [...element.querySelectorAll('button')].find((button) => button.textContent === 'Lưu hiệu chuẩn')!;
   expect(save.disabled).toBe(false);
@@ -587,17 +841,6 @@ it('saves explicitly captured endpoints and invalidates them on rebinding or dev
     steeringRight: 1, throttle: { kind: 'button', index: 7, released: 0, pressed: 1 },
     brake: { kind: 'button', index: 6, released: 0, pressed: 1 }, reverseButton: 4, driveButton: 5,
   });
-  pad.axes[0] = 1; click('Ghi hết lái trái');
-  expect(save.disabled).toBe(true);
-  expect(element.querySelector('[role="alert"]')?.textContent).toContain('Dữ liệu hiệu chỉnh không hợp lệ');
-  pad.axes[0] = -1; click('Ghi hết lái trái');
-  expect(save.disabled).toBe(false);
-  const axis = element.querySelector<HTMLInputElement>('input')!;
-  axis.value = '1'; axis.dispatchEvent(new Event('change'));
-  expect(save.disabled).toBe(true);
-  axis.value = '0'; axis.dispatchEvent(new Event('change'));
-  captureAll();
-  expect(save.disabled).toBe(false);
   pad.id = 'replacement';
   const [id, callback] = frames.entries().next().value!;
   frames.delete(id); callback(16);
@@ -610,6 +853,151 @@ it('saves explicitly captured endpoints and invalidates them on rebinding or dev
   expect(element.querySelector('[role="alert"]')?.textContent).toContain('không hợp lệ');
   unmount();
   expect(frames.size).toBe(0);
+  vi.restoreAllMocks();
+});
+
+it('auto-verifies each profile control and waits for neutral before advancing', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const complete = vi.fn();
+  const profile = controllerProfiles.find(({ id }) => id === 'xbox-series-x')!;
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn(), profile);
+  const progress = element.querySelector<HTMLElement>('[data-capture-progress]');
+  expect(progress?.textContent).toContain('0 / 6');
+  clock.tick();
+
+  function checkAxis(index: number, value: number, neutral: number) {
+    clock.tick();
+    pad.axes[index] = value;
+    clock.tick(3);
+    expect(progress?.textContent).toContain(`${verified} / 6`);
+    pad.axes[index] = neutral;
+    clock.tick();
+    verified++;
+    expect(progress?.textContent).toContain(`${verified} / 6`);
+  }
+  function checkButton(index: number) {
+    clock.tick();
+    pad.buttons[index]!.value = 1;
+    pad.buttons[index]!.pressed = true;
+    clock.tick(3);
+    expect(progress?.textContent).toContain(`${verified} / 6`);
+    pad.buttons[index]!.value = 0;
+    pad.buttons[index]!.pressed = false;
+    clock.tick();
+    verified++;
+    expect(progress?.textContent).toContain(`${verified} / 6`);
+  }
+
+  let verified = 0;
+  checkAxis(0, -1, 0);
+  checkAxis(0, 1, 0);
+  checkButton(7);
+  checkButton(6);
+  checkButton(4);
+  checkButton(5);
+  expect(complete).not.toHaveBeenCalled();
+
+  const save = [...element.querySelectorAll('button')]
+    .find((button) => button.textContent === messages.saveCalibration);
+  expect(save?.disabled).toBe(false);
+  save?.click();
+  expect(complete).toHaveBeenCalledWith(calibrationForProfile('xbox-series-x', pad.id));
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('does not verify preset movement from a reversed direction or short spike', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const profile = controllerProfiles.find(({ id }) => id === 'xbox-series-x')!;
+  const complete = vi.fn();
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn(), profile);
+  const progress = element.querySelector<HTMLElement>('[data-capture-progress]');
+
+  clock.tick();
+  pad.axes[0] = 1;
+  clock.tick(3);
+  expect(progress?.textContent).toContain('0 / 6');
+  pad.axes[0] = 0;
+  clock.tick();
+  pad.axes[0] = -1;
+  clock.tick();
+  pad.axes[0] = 0;
+  clock.tick(3);
+  expect(progress?.textContent).toContain('0 / 6');
+  expect(complete).not.toHaveBeenCalled();
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('does not verify a pedal whose preset axis is active at rest and reversed when pressed', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const profile = controllerProfiles.find(({ id }) => id === 'logitech-g29')!;
+  const complete = vi.fn();
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn(), profile);
+  const progress = element.querySelector<HTMLElement>('[data-capture-progress]');
+
+  clock.tick();
+  pad.axes[0] = -1;
+  clock.tick(3);
+  pad.axes[0] = 0;
+  clock.tick();
+  clock.tick();
+  pad.axes[0] = 1;
+  clock.tick(3);
+  pad.axes[0] = 0;
+  clock.tick();
+  expect(progress?.textContent).toContain('2 / 6');
+
+  pad.axes[1] = 1;
+  clock.tick(3);
+  pad.axes[1] = -1;
+  clock.tick();
+  expect(progress?.textContent).toContain('2 / 6');
+  expect(complete).not.toHaveBeenCalled();
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('invalidates preset verification on missing samples and device replacement', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const profile = controllerProfiles.find(({ id }) => id === 'xbox-series-x')!;
+  const complete = vi.fn();
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn(), profile);
+  const progress = element.querySelector<HTMLElement>('[data-capture-progress]');
+
+  clock.tick();
+  pad.axes[0] = -1;
+  clock.tick(3);
+  pad.axes[0] = 0;
+  clock.tick();
+  expect(progress?.textContent).toContain('1 / 6');
+  pad.axes.length = 0;
+  clock.tick();
+  expect(progress?.textContent).toContain('0 / 6');
+  expect(complete).not.toHaveBeenCalled();
+
+  pad.axes.splice(0, 0, 0, 0, 0);
+  clock.tick();
+  pad.axes[0] = -1;
+  clock.tick(3);
+  pad.axes[0] = 0;
+  clock.tick();
+  expect(progress?.textContent).toContain('1 / 6');
+  pad.id = 'replacement';
+  clock.tick();
+  expect(progress?.textContent).toContain('0 / 6');
+  expect(element.querySelector('[role="alert"]')?.textContent)
+    .toContain(messages.controllerReplaced);
+  expect(complete).not.toHaveBeenCalled();
+  unmount();
   vi.restoreAllMocks();
 });
 

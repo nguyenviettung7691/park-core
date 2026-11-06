@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ControllerCalibration } from '../contracts';
 import { normalizePedal, normalizeSteering, validateCalibration } from './calibration';
 import { createInputController, type InputController } from './controller';
+import { calibrationForProfile, controllerProfiles, findControllerProfile } from './profiles';
 import { testGamepad } from '../test/gamepad';
 
 const wheel = { version: 1, deviceId: 'w', steeringAxis: 0, steeringLeft: -0.6,
@@ -14,6 +15,55 @@ const wheel = { version: 1, deviceId: 'w', steeringAxis: 0, steeringLeft: -0.6,
 const combined: ControllerCalibration = { ...wheel,
   throttle: { kind: 'axis', index: 2, released: 0, pressed: 1 },
   brake: { kind: 'axis', index: 2, released: 0, pressed: -1 } };
+
+describe('controller profiles', () => {
+  it('provides valid device-bound profiles for the supported model list', () => {
+    expect(controllerProfiles.map(({ id }) => id).sort()).toEqual([
+      '8bitdo-ultimate-2c', 'logitech-g29', 'logitech-g920', 'logitech-g923',
+      'thrustmaster-t300-rs-gt', 'xbox-series-x',
+    ]);
+
+    for (const { id } of controllerProfiles) {
+      const calibration = calibrationForProfile(id, 'device-17');
+      expect(calibration.deviceId).toBe('device-17');
+      expect(validateCalibration(calibration)).toEqual(calibration);
+    }
+
+    expect(calibrationForProfile('xbox-series-x', 'xbox-pad').throttle)
+      .toEqual({ kind: 'button', index: 7, released: 0, pressed: 1 });
+    expect(calibrationForProfile('logitech-g29', 'wheel').brake)
+      .toEqual({ kind: 'axis', index: 2, released: -1, pressed: 1 });
+  });
+
+  it('matches named gamepads only with the standard mapping', () => {
+    expect(findControllerProfile({
+      id: 'Xbox Wireless Controller Series X', mapping: 'standard',
+    })?.id).toBe('xbox-series-x');
+    expect(findControllerProfile({
+      id: '8BitDo Ultimate 2C Wireless Controller', mapping: 'standard',
+    })?.id).toBe('8bitdo-ultimate-2c');
+    expect(findControllerProfile({
+      id: 'Xbox Wireless Controller Series X', mapping: '',
+    })).toBeNull();
+    expect(findControllerProfile({ id: 'Unknown standard pad', mapping: 'standard' }))
+      .toBeNull();
+  });
+
+  it('matches candidate wheels by exact model token without adjacent models', () => {
+    expect(findControllerProfile({
+      id: 'Logitech G29 Driving Force Racing Wheel', mapping: '',
+    })?.id).toBe('logitech-g29');
+    expect(findControllerProfile({
+      id: 'Thrustmaster T300 RS GT', mapping: '',
+    })?.id).toBe('thrustmaster-t300-rs-gt');
+    expect(findControllerProfile({ id: 'Logitech G27 Racing Wheel', mapping: '' }))
+      .toBeNull();
+    expect(findControllerProfile({ id: 'Logitech G290 Racing Wheel', mapping: '' }))
+      .toBeNull();
+    expect(findControllerProfile({ id: 'Logitech G9230 Racing Wheel', mapping: '' }))
+      .toBeNull();
+  });
+});
 
 describe('calibration', () => {
   it('maps inverted axis pedals and asymmetric steering', () => {

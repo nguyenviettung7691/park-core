@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { ControllerProfileId } from './input/profiles';
 import type {
   AppState,
   AttemptSummary,
@@ -153,6 +154,7 @@ export type ScreenAction =
   | { readonly type: 'cancel-history-reset' }
   | { readonly type: 'select-stage'; readonly stageId: StageId }
   | { readonly type: 'verify-saved-calibration' }
+  | { readonly type: 'open-profile-verification'; readonly profileId: ControllerProfileId }
   | { readonly type: 'request-reset'; readonly record: PersistenceRecord }
   | { readonly type: 'confirm-reset'; readonly record: PersistenceRecord }
   | { readonly type: 'cancel-reset' }
@@ -190,6 +192,7 @@ export interface ShellView {
   readonly state: AppState;
   readonly preview: PreviewPhase;
   readonly calibrating?: boolean;
+  readonly calibrationProfileId?: ControllerProfileId | null;
   readonly pauseReason?: PreviewPauseReason | null;
   readonly assetLoadProgress?: AssetLoadProgress | null;
 }

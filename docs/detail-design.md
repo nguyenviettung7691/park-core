@@ -340,18 +340,26 @@ selected Gamepad API device and check array lengths and connection state.
 The stated axes/buttons mapping is a default for standard-mapped devices,
 not a guarantee that every Sim Wheel exposes it.
 
-Before enabling an unfamiliar/nonstandard device, provide a Vietnamese setup
-screen to identify steering, brake and throttle controls, including axis-based
-pedals, inversion, center and endpoints. Capture released and fully pressed
-pedals; map each to `[0,1]`. Reject identical endpoints, missing controls and
-non-finite samples with a visible explanation and keyboard fallback.
+Offer profile suggestions when reported device names match the Xbox Series X,
+8BitDo Ultimate 2C, Logitech G29/G920/G923, or Thrustmaster T300 RS GT
+candidates. These names are suggestions, not validated hardware compatibility.
+Never apply a profile automatically: require an explicit choice and verify
+steering left/right, throttle, brake, reverse and drive, with a neutral baseline
+and return to neutral for every control.
+
+Keep an illustrated manual fallback available for every device. It captures
+steering endpoints and center, released and pressed pedal values (including
+axis-based pedals and inversion), and reverse/drive controls. Map pedals to
+`[0,1]`. Reject identical endpoints, missing controls and non-finite samples
+with a visible explanation and keyboard fallback.
 
 Steering calibration records center and both locks, applies a 0.02 normalized
 dead zone and rescales the remainder. Store calibration locally by reported
 controller ID as a convenience, but ask the learner to verify it on reconnect;
 the browser ID is not a unique physical-device identity.
 
-> **Phase 3 clarification:** until persistence (Task 7), accepted calibration and the selected device live only in session memory; nothing is stored by controller ID yet.
+Accepted calibration is persisted locally by reported ID only after verification
+or a valid manual capture; the selected device must still be verified on reconnect.
 
 Select keyboard or a calibrated controller explicitly. Never combine throttle
 from one source and steering from another. Mouse and HUD actions remain usable
