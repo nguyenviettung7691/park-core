@@ -339,8 +339,13 @@ test('keeps visual proximity warnings when AudioContext is unavailable', async (
 });
 
 test('shows all graphics settings and persists manual choices across reload', async ({ page }) => {
+  const benchmarkModuleRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/src/benchmark/page.ts')) benchmarkModuleRequests.push(request.url());
+  });
   await page.goto('/');
   await enterLessonMenu(page);
+  expect(benchmarkModuleRequests).toHaveLength(0);
   await openSettings(page, 'view');
 
   const graphics = page.locator('#graphics-controls');
@@ -363,6 +368,16 @@ test('shows all graphics settings and persists manual choices across reload', as
   await expect(page.locator('#anti-aliasing')).toBeChecked();
   await expect(page.locator('#mirror-quality')).toHaveValue('high');
   await expect(page.locator('#overhead-quality')).toHaveValue('high');
+
+  const benchmarkRoot = page.locator('#graphics-benchmark-root');
+  await expect(benchmarkRoot).toBeHidden();
+  await page.locator('#graphics-benchmark-toggle').click();
+  await expect(benchmarkRoot).toBeVisible();
+  await expect(benchmarkRoot.locator('#benchmark-start')).toBeVisible();
+  await expect.poll(() => benchmarkModuleRequests.length).toBeGreaterThan(0);
+  await expect(benchmarkRoot.locator('#benchmark-status')).toBeHidden();
+  await page.locator('#graphics-benchmark-toggle').click();
+  await expect(benchmarkRoot).toBeHidden();
 
   await page.locator('#resolution-scale').selectOption('0.75');
   await expect(page.locator('#graphics-preset')).toHaveValue('custom');

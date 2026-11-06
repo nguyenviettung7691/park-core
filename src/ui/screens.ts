@@ -3,7 +3,7 @@ import type {
 } from '../contracts';
 import { vi } from '../messages';
 import type {
-  AttemptHistoryStatus, PersistenceRecord, ScreenAction, ScreenContext, ShellView,
+  AttemptHistoryStatus, PersistenceRecord, ScreenAction, ScreenContext, SettingsSaveV1, ShellView,
 } from '../runtime-types';
 import { scenarios } from '../lessons/scenarios';
 import { createParkingIllustration } from './illustrations';
@@ -106,6 +106,7 @@ export function mountScreen(
   onAction: (action: ScreenAction) => void,
   view?: ShellView,
   input?: InputSetup,
+  getSettings: () => SettingsSaveV1 = () => context.settings,
 ): () => void {
   const screen = document.createElement('main');
   const preview = view?.preview ?? 'closed';
@@ -114,6 +115,7 @@ export function mountScreen(
   if (preview === 'paused') screen.classList.add('preview-paused');
   const listeners = new AbortController();
   let unmountSettings: (() => void) | undefined;
+  let unmountBenchmark: (() => void) | undefined;
 
   function text(tag: 'h1' | 'h2' | 'p', value: string, parent: HTMLElement = screen) {
     const element = document.createElement(tag);
@@ -302,6 +304,28 @@ export function mountScreen(
         unmountSettings = mountViewSettings(screen, context.settings, overlay.tab, onAction, {
           graphicsDisabled,
         });
+        if (!graphicsDisabled) {
+          const benchmarkRoot = screen.querySelector<HTMLElement>('#graphics-benchmark-root');
+          const benchmarkToggle = screen.querySelector<HTMLButtonElement>('#graphics-benchmark-toggle');
+          if (benchmarkRoot && benchmarkToggle) {
+            let loading = false;
+            benchmarkToggle.addEventListener('click', () => {
+              if (benchmarkRoot.hidden || loading || benchmarkRoot.childElementCount > 0) return;
+              loading = true;
+              void import('../benchmark/page').then(({ mountBenchmarkPanel }) => {
+                if (listeners.signal.aborted) return;
+                unmountBenchmark = mountBenchmarkPanel(benchmarkRoot, getSettings).dispose;
+              }).catch(() => {
+                if (listeners.signal.aborted) return;
+                const error = document.createElement('p');
+                error.className = 'bm-alert';
+                error.setAttribute('role', 'alert');
+                error.textContent = 'Không thể tải công cụ đo hiệu năng. Hãy tải lại trang rồi thử lại.';
+                benchmarkRoot.replaceChildren(error);
+              });
+            }, { signal: listeners.signal });
+          }
+        }
       }
       persistenceNotices();
     }
@@ -590,6 +614,7 @@ export function mountScreen(
     (target ?? screen.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();
   }
   return () => {
+    unmountBenchmark?.();
     unmountSettings?.();
     listeners.abort();
     screen.remove();

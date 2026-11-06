@@ -132,7 +132,19 @@ function mountGraphicsSettings(
   );
   const benchmarkRoot = document.createElement('div');
   benchmarkRoot.id = 'graphics-benchmark-root';
-  group.append(benchmarkRoot);
+  benchmarkRoot.hidden = true;
+  const benchmarkToggle = document.createElement('button');
+  benchmarkToggle.id = 'graphics-benchmark-toggle';
+  benchmarkToggle.type = 'button';
+  benchmarkToggle.textContent = vi.graphicsBenchmarkTitle;
+  benchmarkToggle.disabled = disabled;
+  benchmarkToggle.setAttribute('aria-controls', benchmarkRoot.id);
+  benchmarkToggle.setAttribute('aria-expanded', 'false');
+  benchmarkToggle.addEventListener('click', () => {
+    benchmarkRoot.hidden = !benchmarkRoot.hidden;
+    benchmarkToggle.setAttribute('aria-expanded', String(!benchmarkRoot.hidden));
+  }, { signal: listeners.signal });
+  group.append(benchmarkToggle, benchmarkRoot);
   root.append(group);
   syncControls();
   return () => { listeners.abort(); group.remove(); };

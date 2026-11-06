@@ -629,6 +629,27 @@ it('shows all graphics controls together, applies presets, and marks manual edit
   expect(preset.value).toBe('custom');
 });
 
+it('shows the optional benchmark only after the learner opens it', async () => {
+  const element = root();
+  const state = { kind: 'menu' } as const;
+  const view: ShellView = {
+    state, preview: 'closed',
+    overlay: { kind: 'settings', tab: 'view', returnTo: { kind: 'menu' } },
+  };
+  const unmount = mountScreen(element, state, context, vi.fn(), view, undefined, () => context.settings);
+  const toggle = element.querySelector<HTMLButtonElement>('#graphics-benchmark-toggle');
+  const benchmarkRoot = element.querySelector<HTMLElement>('#graphics-benchmark-root');
+  expect(toggle?.textContent).toBe(messages.graphicsBenchmarkTitle);
+  expect(benchmarkRoot?.hidden).toBe(true);
+
+  toggle?.click();
+  expect(benchmarkRoot?.hidden).toBe(false);
+  await vi.waitFor(() => expect(benchmarkRoot?.querySelector('#benchmark-start')).not.toBeNull());
+  expect(benchmarkRoot?.querySelector('#benchmark-start')).not.toBeNull();
+  expect(benchmarkRoot?.querySelector<HTMLElement>('#benchmark-export')?.hidden).toBe(true);
+  unmount();
+});
+
 it('disables graphics controls when the settings overlay returns to a paused preview', () => {
   const element = root();
   const action = vi.fn();
@@ -647,6 +668,7 @@ it('disables graphics controls when the settings overlay returns to a paused pre
     'anti-aliasing',
     'mirror-quality',
     'overhead-quality',
+    'graphics-benchmark-toggle',
   ]) {
     expect(element.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.disabled)
       .toBe(true);

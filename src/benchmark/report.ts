@@ -148,27 +148,40 @@ export interface BenchmarkReport {
   readonly disclaimer: string;
 }
 
-export function validateMachine(raw: Record<string, string>, zoomConfirmed: boolean): {
+export function validateMachine(
+  raw: Record<string, string>,
+  zoomConfirmed: boolean,
+  options: { readonly allowNonReference?: boolean } = {},
+): {
   readonly machine: MachineMetadata | null; readonly errors: string[];
 } {
+  const allowNonReference = options.allowNonReference ?? false;
   const text = (key: string) => (raw[key] ?? '').trim();
   const errors: string[] = [];
   const labels: [string, string][] = [
     ['cpu', 'CPU'], ['gpu', 'GPU'], ['ram', 'RAM'], ['os', 'Hệ điều hành (kèm bản dựng)'],
     ['driver', 'Phiên bản driver GPU'], ['browser', 'Trình duyệt và phiên bản'],
   ];
-  for (const [key, label] of labels) if (!text(key)) errors.push(`Thiếu thông tin: ${label}.`);
-  const refreshHz = Number(text('refresh'));
-  if (text('refresh') === '' || !Number.isFinite(refreshHz)) errors.push('Thiếu tần số quét thực tế (Hz).');
-  else if (refreshHz !== REQUIRED_REFRESH_HZ) {
+  for (const [key, label] of labels) {
+    if (!allowNonReference && !text(key)) errors.push(`Thiếu thông tin: ${label}.`);
+  }
+  const refreshText = text('refresh');
+  const refreshHz = refreshText === '' ? 0 : Number(refreshText);
+  if ((!allowNonReference && refreshText === '') || !Number.isFinite(refreshHz)) {
+    errors.push('Thiếu tần số quét thực tế (Hz).');
+  } else if (refreshText !== '' && refreshHz <= 0) {
+    errors.push('Tần số quét thực tế phải là số dương.');
+  } else if (!allowNonReference && refreshHz !== REQUIRED_REFRESH_HZ) {
     errors.push(`Giao thức phiên bản 1 yêu cầu màn hình đặt ở ${REQUIRED_REFRESH_HZ} Hz.`);
   }
-  if (!zoomConfirmed) errors.push('Hãy xác nhận trình duyệt đang ở mức thu phóng 100%.');
+  if (!allowNonReference && !zoomConfirmed) {
+    errors.push('Hãy xác nhận trình duyệt đang ở mức thu phóng 100%.');
+  }
   if (errors.length > 0) return { machine: null, errors };
   return {
     machine: {
       cpu: text('cpu'), gpu: text('gpu'), ram: text('ram'), os: text('os'), driver: text('driver'),
-      browser: text('browser'), refreshHz, zoom100Confirmed: true,
+      browser: text('browser'), refreshHz, zoom100Confirmed: zoomConfirmed,
     },
     errors,
   };

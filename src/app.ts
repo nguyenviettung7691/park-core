@@ -237,7 +237,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     } else if (view.preview === 'running') {
       unmountScreen = undefined;
     } else {
-      unmountScreen = mountScreen(layer, view.state, context, onAction, view, inputSetup());
+      unmountScreen = mountScreen(
+        layer, view.state, context, onAction, view, inputSetup(), () => context.settings,
+      );
     }
   }
   function restoreOverlayFocus(label: string | null) {
