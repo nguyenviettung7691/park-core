@@ -1,22 +1,23 @@
 # Phase 8 Original 3D Asset Catalog
 
-Captured and measured: 2026-11-05. These are actual GLTFLoader/WebGL renders,
+Captured and measured: 2026-11-06. These are actual GLTFLoader/WebGL renders,
 not the earlier concept drawings. Artwork uses shaped low-poly geometry,
 vertex colors and unlit materials; there are no image textures, downloaded
 meshes, dynamic shadows or custom shaders.
 
 ## Vehicles
 
-The amethyst sedan has a low three-box body, rounded hood and separate angular
-trunk. The ivory/charcoal CUV has a taller cabin, roof rails, wheel-arch cladding,
-an upright hatch and vertical rear lamps. Both include handles, door seams,
-grilles, bumpers, static lamp colors, mirror housings and independently animated
-alloy wheels. Designs are generic and unbranded.
+The amethyst sedan has a low three-box body, a longer rounded hood and a
+distinct shorter angular trunk. The ivory/charcoal CUV has a taller cabin, roof
+rails, wheel-arch cladding, an upright hatch and vertical rear lamps. Both
+include handles, door seams, grilles, bumpers, static lamp colors, mirror
+housings and independently animated alloy wheels. Designs are generic and
+unbranded.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 2,854 | 30 / 21 | 200,548 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 2,970 | 30 / 21 | 209,464 |
+| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 3,204 | 36 / 27 | 230,500 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 3,330 | 35 / 26 | 239,288 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden. Both are below the 10,000-triangle vehicle gate.
@@ -35,10 +36,11 @@ even when one is hidden. Both are below the 10,000-triangle vehicle gate.
 
 ### Cockpits and mirrors
 
-Both cockpits contain a dashboard, simple instrument rings/needles, steering
-wheel with spokes/hub, front seats/headrests, rear-seat silhouette, console,
-floor and roof lining. Captures look slightly downward to show controls;
-application camera controls and default poses are unchanged.
+Both cockpits contain a dashboard, static instrument dials/needles and indicator
+lamps, pedals, a center console/storage, door panels, floor, roof lining,
+front seats/headrests and a rear seat. Updated driver-view captures show the
+dials through the steering-wheel opening; application camera controls and
+default poses are unchanged.
 
 ![Sedan cockpit with controls and working rearview RenderTarget](images/phase-8/sedan-cockpit.png)
 
@@ -58,10 +60,11 @@ The physical profiles, eye anchors and mirror-camera anchors are unchanged:
 | CUV | 0.62 | (-0.36, 0.68, -0.8462) | (0, 0.80, -1.5962) | (+/-0.965, 0.48, -0.7462) |
 
 Mirror anchor yaw remains rear 180 degrees, left +105 degrees and right
--105 degrees. The smaller rearview **display mesh** is placed inside the
-cabin, offset from its unchanged virtual camera by (-0.25, -0.075, +0.52) m.
-It is a view proxy, not a newly calibrated optical mirror. Planar mirror
-surfaces now have UVs; updates retain the existing 15 FPS cap.
+-105 degrees. The smaller 0.09 x 0.035 m rearview **display mesh** is placed
+inside the cabin, offset from its unchanged virtual camera by
+(-0.22, -0.075, +0.52) m. It is a view proxy, not a newly calibrated optical
+mirror. Planar mirror surfaces now have UVs; updates retain the existing 15 FPS
+cap.
 Side housings sit behind their reflective planes relative to the driver.
 Loaded-mesh 9 x 9 ray grids verify both side faces are unobstructed from
 each fixed eye; this does not establish optical calibration.
@@ -130,10 +133,10 @@ All GLBs are self-contained and use no external image/buffer resources.
 
 | Selected pair | Uncompressed bytes |
 |---|---:|
-| Sedan + garage | 383,172 |
-| Sedan + roadside | 363,344 |
-| CUV + garage | 392,088 |
-| CUV + roadside | 372,260 |
+| Sedan + garage | 413,124 |
+| Sedan + roadside | 393,296 |
+| CUV + garage | 421,912 |
+| CUV + roadside | 402,084 |
 
 All pairs are below the 5,000,000-byte gate.
 
@@ -144,15 +147,15 @@ The table reports an auxiliary-update frame at 80 ms:
 
 | Scene | Main calls / triangles | Three mirror calls | Overhead calls | Composite calls | Full-frame calls |
 |---|---:|---|---:|---:|---:|
-| Sedan + garage | 26 / 3,218 | 27 + 16 + 16 | 31 | 1 | 117 |
-| Sedan + roadside | 22 / 3,038 | 25 + 16 + 16 | 31 | 1 | 111 |
-| CUV + garage | 26 / 3,334 | 27 + 16 + 16 | 31 | 1 | 117 |
-| CUV + roadside | 22 / 3,154 | 25 + 16 + 16 | 31 | 1 | 111 |
-| Stage 1, CUV | 57 / 7,970 | 27 + 18 + 18 | 31 | 1 | 152 |
-| Stage 2, CUV | 22 / 3,170 | 62 + 18 + 18 | 31 | 1 | 152 |
-| Stage 3, CUV | 32 / 4,226 | 45 + 17 + 26 | 48 | 1 | 169 |
-| Stage 4, CUV | 23 / 3,182 | 47 + 18 + 21 | 32 | 1 | 142 |
-| Stage 5, CUV | 26 / 3,274 | 43 + 17 + 26 | 47 | 1 | 160 |
+| Sedan + garage | 30 / 3,518 | 32 + 18 + 18 | 37 | 1 | 136 |
+| Sedan + roadside | 26 / 3,338 | 30 + 18 + 18 | 37 | 1 | 130 |
+| CUV + garage | 30 / 3,646 | 31 + 18 + 18 | 36 | 1 | 134 |
+| CUV + roadside | 26 / 3,466 | 29 + 18 + 18 | 36 | 1 | 128 |
+| Stage 1, CUV | 61 / 8,282 | 31 + 20 + 20 | 36 | 1 | 169 |
+| Stage 2, CUV | 26 / 3,482 | 66 + 20 + 20 | 36 | 1 | 169 |
+| Stage 3, CUV | 36 / 4,538 | 49 + 19 + 28 | 53 | 1 | 186 |
+| Stage 4, CUV | 27 / 3,494 | 51 + 20 + 23 | 37 | 1 | 159 |
+| Stage 5, CUV | 29 / 3,578 | 47 + 19 + 28 | 52 | 1 | 176 |
 
 The gates are <=100 **main-pass** calls in sandbox and <=140 in lessons,
 not limits on the sum of all camera passes. These sampled poses pass; their
@@ -176,12 +179,10 @@ part of the production app. See [asset pipeline](asset-pipeline.md).
 
 ## Verification limits
 
-Final software checks passed: 487 unit/DOM/physics/asset tests, 37 explicitly
-selected generator/loader checks, typecheck, production build, 40 Chromium
-browser checks (including both five-stage journeys) and five production
-checks. The explicit asset selection overlaps the ordinary suite; these
-numbers are not additive. No lint script exists. The existing bundle-size
-warning remains.
+For the Issue #12 redesign, 49 focused generator/loader tests and all 10
+Chromium Phase 8 asset-render cases passed, including the five parked-lesson
+scenes. Project-wide tests, typecheck, build and production-browser results
+are recorded in the Issue #12 change record. No lint script exists.
 
 The branch includes the current Phase 7 learner experience. Its app captures
 follow the real tutorial/menu/settings/briefing flow rather than bypassing it.
