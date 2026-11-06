@@ -296,7 +296,13 @@ export function mountScreen(
       }
       screen.append(tabs);
       if (overlay.tab === 'input') inputControls();
-      else unmountSettings = mountViewSettings(screen, context.settings, overlay.tab, onAction);
+      else {
+        const graphicsDisabled = overlay.returnTo.kind === 'paused' ||
+          (overlay.returnTo.kind === 'onboarding' && overlay.returnTo.origin === 'paused');
+        unmountSettings = mountViewSettings(screen, context.settings, overlay.tab, onAction, {
+          graphicsDisabled,
+        });
+      }
       persistenceNotices();
     }
     button(vi.tutorialBack, () => onAction({ type: 'close-overlay' }));

@@ -571,6 +571,88 @@ it('keeps moved settings labeled and preserves edits across view and audio tabs'
   expect(element.children.length).toBe(0);
 });
 
+it('shows all graphics controls together, applies presets, and marks manual edits custom', () => {
+  const element = root();
+  const action = vi.fn();
+  mountViewSettings(element, context.settings, 'view', action);
+
+  const ids = [
+    'graphics-preset',
+    'resolution-scale',
+    'frame-rate-cap',
+    'anti-aliasing',
+    'mirror-quality',
+    'overhead-quality',
+  ];
+  for (const id of ids) {
+    expect(element.querySelector(`#${id}`)).not.toBeNull();
+    expect(element.querySelector(`label[for="${id}"]`)?.textContent).not.toBe('');
+  }
+  expect(element.querySelector('#graphics-benchmark-root')).not.toBeNull();
+
+  const preset = element.querySelector<HTMLSelectElement>('#graphics-preset')!;
+  const scale = element.querySelector<HTMLSelectElement>('#resolution-scale')!;
+  const cap = element.querySelector<HTMLSelectElement>('#frame-rate-cap')!;
+  const antialias = element.querySelector<HTMLInputElement>('#anti-aliasing')!;
+  const mirror = element.querySelector<HTMLSelectElement>('#mirror-quality')!;
+  const overhead = element.querySelector<HTMLSelectElement>('#overhead-quality')!;
+  expect(preset.value).toBe('high');
+  expect(scale.value).toBe('1');
+  expect(cap.value).toBe('display');
+  expect(antialias.checked).toBe(true);
+  expect(mirror.value).toBe('high');
+  expect(overhead.value).toBe('high');
+
+  preset.value = 'balanced';
+  preset.dispatchEvent(new Event('change'));
+  const balanced = {
+    ...context.settings,
+    preset: 'balanced',
+    resolutionScale: 0.75,
+    frameRateCap: 60,
+    mirrorQuality: 'low',
+    overheadQuality: 'low',
+  } as const;
+  expect(action).toHaveBeenLastCalledWith({ type: 'update-settings', settings: balanced });
+  expect(scale.value).toBe('0.75');
+  expect(cap.value).toBe('60');
+  expect(antialias.checked).toBe(true);
+  expect(mirror.value).toBe('low');
+  expect(overhead.value).toBe('low');
+
+  scale.value = '1';
+  scale.dispatchEvent(new Event('change'));
+  expect(action).toHaveBeenLastCalledWith({
+    type: 'update-settings',
+    settings: { ...balanced, preset: 'custom', resolutionScale: 1 },
+  });
+  expect(preset.value).toBe('custom');
+});
+
+it('disables graphics controls when the settings overlay returns to a paused preview', () => {
+  const element = root();
+  const action = vi.fn();
+  const state = { kind: 'menu' } as const;
+  const view: ShellView = {
+    state,
+    preview: 'paused',
+    overlay: { kind: 'settings', tab: 'view', returnTo: { kind: 'paused' } },
+  };
+  mountScreen(element, state, context, action, view);
+
+  for (const id of [
+    'graphics-preset',
+    'resolution-scale',
+    'frame-rate-cap',
+    'anti-aliasing',
+    'mirror-quality',
+    'overhead-quality',
+  ]) {
+    expect(element.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.disabled)
+      .toBe(true);
+  }
+});
+
 it('updates a stable coach without stealing driving focus or showing running settings', () => {
   const element = root();
   const focus = document.createElement('canvas');

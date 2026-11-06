@@ -338,6 +338,65 @@ test('keeps visual proximity warnings when AudioContext is unavailable', async (
   expect(errors).toEqual([]);
 });
 
+test('shows all graphics settings and persists manual choices across reload', async ({ page }) => {
+  await page.goto('/');
+  await enterLessonMenu(page);
+  await openSettings(page, 'view');
+
+  const graphics = page.locator('#graphics-controls');
+  await expect(graphics).toBeVisible();
+  for (const id of [
+    'graphics-preset',
+    'resolution-scale',
+    'frame-rate-cap',
+    'anti-aliasing',
+    'mirror-quality',
+    'overhead-quality',
+  ]) {
+    await expect(graphics.locator(`#${id}`)).toBeVisible();
+    await expect(graphics.locator(`#${id}`)).toBeEnabled();
+  }
+  await expect(graphics.locator('details')).toHaveCount(0);
+  await expect(page.locator('#graphics-preset')).toHaveValue('high');
+  await expect(page.locator('#resolution-scale')).toHaveValue('1');
+  await expect(page.locator('#frame-rate-cap')).toHaveValue('display');
+  await expect(page.locator('#anti-aliasing')).toBeChecked();
+  await expect(page.locator('#mirror-quality')).toHaveValue('high');
+  await expect(page.locator('#overhead-quality')).toHaveValue('high');
+
+  await page.locator('#resolution-scale').selectOption('0.75');
+  await expect(page.locator('#graphics-preset')).toHaveValue('custom');
+  await closeSettings(page);
+  await page.reload();
+  await enterLessonMenu(page);
+  await openSettings(page, 'view');
+  await expect(page.locator('#resolution-scale')).toHaveValue('0.75');
+  await expect(page.locator('#graphics-preset')).toHaveValue('custom');
+});
+
+test('keeps graphics settings read-only from a paused free-drive preview', async ({ page }) => {
+  await open(page);
+  await waitForPointerLock(page);
+  await page.keyboard.press('Escape');
+  const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });
+  await expect(resume).toBeVisible();
+  await openSettings(page, 'view');
+
+  for (const id of [
+    'graphics-preset',
+    'resolution-scale',
+    'frame-rate-cap',
+    'anti-aliasing',
+    'mirror-quality',
+    'overhead-quality',
+  ]) {
+    await expect(page.locator(`#${id}`)).toBeDisabled();
+  }
+  expect(await page.evaluate(() => document.pointerLockElement === null)).toBe(true);
+  await closeSettings(page);
+  await expect(resume).toBeVisible();
+});
+
 test('renders camera modes, bounded look, resized overhead, trajectory and mirror updates', async ({ browser, page }) => {
   test.setTimeout(60000);
   const errors: string[] = [];

@@ -1,9 +1,147 @@
 import { vi } from '../messages';
 import type { ScreenAction, SettingsSaveV1 } from '../runtime-types';
+import {
+  applyGraphicsPreset,
+  DEFAULT_GRAPHICS_CAPABILITIES,
+  getGraphicsOptions,
+  updateGraphicsSettings,
+  type GraphicsOptions,
+  type GraphicsPreset,
+  type GraphicsSettings,
+} from '../views/graphics-settings';
+
+function mountGraphicsSettings(
+  root: HTMLElement,
+  initial: SettingsSaveV1,
+  onAction: (action: ScreenAction) => void,
+  disabled: boolean,
+): () => void {
+  let settings = { ...initial };
+  const listeners = new AbortController();
+  const group = document.createElement('div');
+  group.id = 'graphics-controls';
+  group.className = 'settings-controls';
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', vi.graphicsSettings);
+  const capabilities = DEFAULT_GRAPHICS_CAPABILITIES;
+  const options: GraphicsOptions = getGraphicsOptions(capabilities);
+
+  function field(id: string, text: string, control: HTMLInputElement | HTMLSelectElement) {
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    control.id = id;
+    control.name = id;
+    label.append(document.createTextNode(text), control);
+    group.append(label);
+  }
+  function select(
+    id: string,
+    text: string,
+    choices: readonly { readonly value: string; readonly label: string; readonly disabled?: boolean }[],
+    value: string,
+    update: (value: string) => void,
+  ) {
+    const control = document.createElement('select');
+    for (const choice of choices) {
+      const option = document.createElement('option');
+      option.value = choice.value;
+      option.textContent = choice.label;
+      option.disabled = choice.disabled ?? false;
+      control.append(option);
+    }
+    control.value = value;
+    control.disabled = disabled;
+    control.addEventListener('change', () => update(control.value), { signal: listeners.signal });
+    field(id, text, control);
+    return control;
+  }
+  function syncControls() {
+    preset.value = settings.preset;
+    scale.value = String(settings.resolutionScale);
+    frameRate.value = String(settings.frameRateCap);
+    antialias.checked = settings.antialias;
+    mirror.value = settings.mirrorQuality;
+    overhead.value = settings.overheadQuality;
+  }
+  function saveGraphics(graphics: GraphicsSettings) {
+    settings = { ...settings, ...graphics };
+    syncControls();
+    onAction({ type: 'update-settings', settings });
+  }
+  function changeGraphics(patch: Partial<Omit<GraphicsSettings, 'preset'>>) {
+    saveGraphics(updateGraphicsSettings(settings, patch, capabilities));
+  }
+
+  const preset = select('graphics-preset', vi.graphicsPreset, [
+    { value: 'custom', label: vi.graphicsPresetCustom, disabled: true },
+    { value: 'high', label: vi.graphicsPresetHigh },
+    { value: 'balanced', label: vi.graphicsPresetBalanced },
+    { value: 'performance', label: vi.graphicsPresetPerformance },
+  ], settings.preset, (value) => {
+    if (value === 'high' || value === 'balanced' || value === 'performance') {
+      saveGraphics(applyGraphicsPreset(value as Exclude<GraphicsPreset, 'custom'>, capabilities));
+    } else syncControls();
+  });
+  const scale = select('resolution-scale', vi.renderScale,
+    options.resolutionScales.map((value) => ({
+      value: String(value), label: `${Math.round(value * 100)}%`,
+    })),
+    String(settings.resolutionScale),
+    (value) => {
+      const next = options.resolutionScales.find((candidate) => String(candidate) === value);
+      if (next !== undefined) changeGraphics({ resolutionScale: next });
+      else syncControls();
+    });
+  const frameRate = select('frame-rate-cap', vi.frameRateCap,
+    options.frameRateCaps.map((value) => ({
+      value: String(value),
+      label: value === 'display' ? vi.displaySync : `${value} FPS`,
+    })),
+    String(settings.frameRateCap),
+    (value) => {
+      const next = options.frameRateCaps.find((candidate) => String(candidate) === value);
+      if (next !== undefined) changeGraphics({ frameRateCap: next });
+      else syncControls();
+    });
+  const antialias = document.createElement('input');
+  antialias.type = 'checkbox';
+  antialias.checked = settings.antialias;
+  antialias.disabled = disabled || !options.antialiasSupported;
+  antialias.addEventListener('change', () => changeGraphics({ antialias: antialias.checked }), {
+    signal: listeners.signal,
+  });
+  field('anti-aliasing', vi.antialiasing, antialias);
+  const qualityChoices = (values: GraphicsOptions['mirrorQualities']) => values.map((value) => ({
+    value,
+    label: value === 'high' ? vi.graphicsHigh : vi.graphicsLow,
+  }));
+  const mirror = select('mirror-quality', vi.mirrorQuality, qualityChoices(options.mirrorQualities),
+    settings.mirrorQuality, (value) => {
+      if (value === 'high' || value === 'low') changeGraphics({ mirrorQuality: value });
+      else syncControls();
+    });
+  const overhead = select(
+    'overhead-quality',
+    vi.overheadQuality,
+    qualityChoices(options.overheadQualities),
+    settings.overheadQuality,
+    (value) => {
+      if (value === 'high' || value === 'low') changeGraphics({ overheadQuality: value });
+      else syncControls();
+    },
+  );
+  const benchmarkRoot = document.createElement('div');
+  benchmarkRoot.id = 'graphics-benchmark-root';
+  group.append(benchmarkRoot);
+  root.append(group);
+  syncControls();
+  return () => { listeners.abort(); group.remove(); };
+}
 
 export function mountViewSettings(
   root: HTMLElement, initial: SettingsSaveV1, tab: 'view' | 'audio',
   onAction: (action: ScreenAction) => void,
+  options: { readonly graphicsDisabled?: boolean } = {},
 ): () => void {
   let settings = { ...initial };
   const listeners = new AbortController();
@@ -64,5 +202,12 @@ export function mountViewSettings(
     checkbox('mute-audio', vi.muteWarnings, settings.muted, (muted) => change({ muted }));
   }
   root.append(group);
-  return () => { listeners.abort(); group.remove(); };
+  const unmountGraphics = tab === 'view'
+    ? mountGraphicsSettings(root, initial, onAction, options.graphicsDisabled ?? false)
+    : undefined;
+  return () => {
+    listeners.abort();
+    group.remove();
+    unmountGraphics?.();
+  };
 }
