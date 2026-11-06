@@ -174,6 +174,41 @@ describe('phase 5 scene asset loading', () => {
     } finally { assets.dispose(); }
   });
 
+  it.each(['sedan', 'cuv'])('keeps %s cockpit details inside the body bounds', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const bodyBounds = new Box3().setFromObject(assets.vehicle.getObjectByName('Body'));
+      for (const name of ['InstrumentCluster', 'PedalSet', 'CenterConsole', 'DoorPanels', 'Floor', 'SeatsAndInterior']) {
+        const detail = assets.vehicle.getObjectByName(name);
+        expect(detail, name).toBeTruthy();
+        if (!detail) continue;
+        const bounds = new Box3().setFromObject(detail);
+        expect(bounds.min.x, `${name} left`).toBeGreaterThanOrEqual(bodyBounds.min.x - 0.001);
+        expect(bounds.max.x, `${name} right`).toBeLessThanOrEqual(bodyBounds.max.x + 0.001);
+        expect(bounds.min.y, `${name} bottom`).toBeGreaterThanOrEqual(bodyBounds.min.y - 0.001);
+        expect(bounds.max.y, `${name} top`).toBeLessThanOrEqual(bodyBounds.max.y + 0.001);
+        expect(bounds.min.z, `${name} front`).toBeGreaterThanOrEqual(bodyBounds.min.z - 0.001);
+        expect(bounds.max.z, `${name} rear`).toBeLessThanOrEqual(bodyBounds.max.z + 0.001);
+      }
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('keeps the %s rearview display smaller and above the driver eye', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const display = new Box3().setFromObject(assets.vehicle.getObjectByName('MirrorSurfaceRear'));
+      const size = display.getSize(new Vector3());
+      const center = display.getCenter(new Vector3());
+      expect(size.x).toBeLessThan(0.12);
+      expect(size.y).toBeLessThan(0.05);
+      expect(center.y).toBeGreaterThan(profiles[id].driverEyeLocalM[1]);
+    } finally { assets.dispose(); }
+  });
+
   it.each(['garage', 'roadside'])('keeps %s details on the appropriate camera layers', async (id) => {
     mockedFetch();
     const assets = await loadSceneAssets(id, 'sedan', new AbortController().signal);

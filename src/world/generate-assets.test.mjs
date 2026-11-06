@@ -151,6 +151,17 @@ describe('phase 5 original GLB generator', () => {
     }
   });
 
+  it.each(['sedan', 'cuv'])('includes the complete static cockpit node set for %s', (assetId) => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-cockpit-nodes-'));
+    temporaryRoots.push(root);
+    generate(root);
+    const names = readGlb(assetPath(root, assetId)).nodes.map((node) => node.name);
+    expect(names).toEqual(expect.arrayContaining([
+      'InstrumentCluster', 'PedalSet', 'CenterConsole', 'DoorPanels', 'Floor',
+      'SeatsAndInterior', 'Dashboard', 'SteeringWheel',
+    ]));
+  });
+
   it.each(['sedan', 'cuv'])('keeps the hood below the driver eye for %s', (assetId) => {
     const root = mkdtempSync(join(tmpdir(), 'park-core-cockpit-'));
     temporaryRoots.push(root);

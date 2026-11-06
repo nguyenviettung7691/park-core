@@ -139,6 +139,52 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   addMesh('ExteriorDetails', body, mergeGeometry(detail), paint);
   const cockpit = addNode('Cockpit', root, { translation: [0, -data.comHeightM, 0] });
   box('Dashboard', cockpit, [0, belt - 0.06, eyeZ - 0.52], [1.46, 0.16, 0.26], palette.trim);
+  box('Floor', cockpit, [0, data.clearanceM + 0.035, (frontFoot + rearFoot) / 2],
+    [1.5, 0.05, rearFoot - frontFoot - 0.12], palette.trim);
+  const instrumentParts = [part([0.66, 0.18, 0.04], [-0.36, belt + 0.03, eyeZ - 0.36], palette.trim)];
+  const dialFace = (x, y, z, radius, color) => facesGeometry(
+    Array.from({ length: 12 }, (_, index) => {
+      const a = index * Math.PI / 6, b = (index + 1) * Math.PI / 6;
+      return { color, points: [[x, y, z],
+        [x + Math.cos(a) * radius, y + Math.sin(a) * radius, z],
+        [x + Math.cos(b) * radius, y + Math.sin(b) * radius, z]] };
+    }),
+  );
+  const dialY = belt + 0.04, dialZ = eyeZ - 0.32;
+  for (const x of [-0.53, -0.36, -0.19]) {
+    instrumentParts.push(dialFace(x, dialY, dialZ, 0.046, [0.06, 0.055, 0.07]));
+    instrumentParts.push(transformGeometry(
+      torusGeometry(0.048, 0.006, palette.marking, 12, 4), [x, dialY, dialZ],
+    ));
+    instrumentParts.push(part([0.006, 0.04, 0.008], [x, dialY + 0.012, dialZ], palette.marking));
+  }
+  for (const [index, color] of [[0, palette.light], [1, palette.light],
+    [2, [0.68, 0.08, 0.13]], [3, palette.marking]]) {
+    instrumentParts.push(part([0.045, 0.016, 0.01],
+      [-0.53 + index * 0.12, belt - 0.055, dialZ], color));
+  }
+  addMesh('InstrumentCluster', cockpit, mergeGeometry(instrumentParts), palette.trim);
+  const pedals = [
+    part([0.035, 0.14, 0.04], [-0.45, data.clearanceM + 0.17, eyeZ - 0.45], palette.trim),
+    part([0.1, 0.045, 0.075], [-0.45, data.clearanceM + 0.24, eyeZ - 0.48], palette.metal),
+    part([0.035, 0.12, 0.04], [-0.23, data.clearanceM + 0.16, eyeZ - 0.43], palette.trim),
+    part([0.1, 0.045, 0.075], [-0.23, data.clearanceM + 0.22, eyeZ - 0.46], palette.metal),
+  ];
+  addMesh('PedalSet', cockpit, mergeGeometry(pedals), palette.trim);
+  const doorPanels = [];
+  for (const side of [-1, 1]) {
+    doorPanels.push(part([0.16, 0.42, rearFoot - frontFoot - 0.2],
+      [side * 0.68, windowBottomY - 0.24, (frontFoot + rearFoot) / 2], palette.trim));
+    doorPanels.push(part([0.13, 0.025, 0.12],
+      [side * 0.68, windowBottomY - 0.19, eyeZ - 0.1], palette.metal));
+  }
+  addMesh('DoorPanels', cockpit, mergeGeometry(doorPanels), palette.trim);
+  const console = [
+    part([0.26, 0.18, 0.92], [0, data.clearanceM + 0.38, 0.08], palette.trim),
+    part([0.21, 0.06, 0.26], [0, data.clearanceM + 0.5, eyeZ - 0.27], palette.metal),
+    part([0.08, 0.11, 0.08], [0, data.clearanceM + 0.58, eyeZ - 0.23], palette.trim),
+  ];
+  addMesh('CenterConsole', cockpit, mergeGeometry(console), palette.trim);
   const cabinParts = [part([1.42, 0.07, roofRear - roofFront], [0, roofY - 0.075, (roofRear + roofFront) / 2], palette.trim)];
   for (const x of [-0.36, 0.36]) {
     cabinParts.push(part([0.49, 0.12, 0.58], [x, 0.43, 0.14], [0.19, 0.17, 0.2]));
@@ -146,12 +192,9 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     cabinParts.push(part([0.24, 0.16, 0.12], [x, 1.02, 0.44], palette.trim));
   }
   cabinParts.push(part([1.35, 0.42, 0.16], [0, 0.65, roofRear - 0.05], palette.trim));
-  cabinParts.push(part([0.19, 0.28, 0.64], [0, 0.44, -0.2], palette.trim));
-  cabinParts.push(part([0.3, 0.09, 0.025], [-0.36, belt + 0.02, eyeZ - 0.4], [0.08, 0.08, 0.1]));
-  for (const x of [-0.43, -0.29]) {
-    cabinParts.push(transformGeometry(torusGeometry(0.035, 0.004, [0.75, 0.72, 0.69], 12, 4),
-      [x, belt + 0.02, eyeZ - 0.38]));
-    cabinParts.push(part([0.003, 0.025, 0.006], [x, belt + 0.025, eyeZ - 0.375], palette.marking));
+  cabinParts.push(part([1.32, 0.12, 0.42], [0, 0.42, roofRear - 0.28], palette.trim));
+  for (const x of [-0.38, 0.38]) {
+    cabinParts.push(part([0.22, 0.16, 0.12], [x, 0.97, roofRear - 0.12], palette.trim));
   }
   addMesh('SeatsAndInterior', cockpit, mergeGeometry(cabinParts), palette.trim);
   addMesh('SteeringWheel', cockpit, mergeGeometry([torusGeometry(0.17, 0.024, palette.trim),
@@ -179,8 +222,8 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   for (const [name, position, yaw] of mirrors) {
     addNode(`Mirror${name}`, root, { translation: position, rotation: yawQuaternion(yaw) });
     const display = name === 'Rear'
-      ? [-0.25, position[1] - 0.075, position[2] + 0.52] : position;
-    const size = name === 'Rear' ? [0.12, 0.05, 0.025] : [0.18, 0.1, 0.035];
+      ? [-0.22, position[1] - 0.075, position[2] + 0.52] : position;
+    const size = name === 'Rear' ? [0.09, 0.035, 0.025] : [0.18, 0.1, 0.035];
     const surface = {
       positions: [-size[0] / 2, -size[1] / 2, 0, size[0] / 2, -size[1] / 2, 0,
         size[0] / 2, size[1] / 2, 0, -size[0] / 2, size[1] / 2, 0],
