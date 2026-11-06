@@ -10,6 +10,7 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   const roofY = height - (cuv ? 0.075 : 0);
   const half = length / 2, belt = cuv ? 0.99 : 0.83;
   const windowBottomY = belt - 0.1;
+  const rearDeckY = cuv ? belt - 0.09 : belt - 0.025;
   const frontZ = -(1 - data.frontWeightFraction) * data.wheelbaseM;
   const rearZ = data.frontWeightFraction * data.wheelbaseM;
   const eyeZ = frontZ + 0.25;
@@ -29,8 +30,13 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   const lowerAt = (z) => Math.max(data.clearanceM, ...[frontZ, rearZ].map((axle) =>
     Math.abs(z - axle) <= archRadius
       ? data.tireRadiusM + Math.sqrt(Math.max(0, archRadius ** 2 - (z - axle) ** 2)) : 0));
-  const upperAt = (z) => z < frontFoot
-    ? belt - 0.15 + Math.min(1, (z + half) / 0.5) * 0.05 : windowBottomY;
+  const upperAt = (z) => {
+    if (z < frontFoot) return belt - 0.15 + Math.min(1, (z + half) / 0.5) * 0.05;
+    if (z < rearFoot) {
+      return windowBottomY + (z - frontFoot) / (rearFoot - frontFoot) * (rearDeckY - windowBottomY);
+    }
+    return rearDeckY;
+  };
   const faces = [];
   for (const side of [-1, 1]) {
     for (let i = 0; i < zValues.length - 1; i++) {
@@ -42,7 +48,8 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   faces.push({ color: palette.trim, points: [[-0.7, data.clearanceM, -half], [0.7, data.clearanceM, -half],
     [0.7, data.clearanceM, half], [-0.7, data.clearanceM, half]] });
   for (const z of [-half, half]) faces.push({ color: paint, points: [[-widthAt(z), data.clearanceM, z],
-    [widthAt(z), data.clearanceM, z], [widthAt(z), belt - 0.13, z], [-widthAt(z), belt - 0.13, z]] });
+    [widthAt(z), data.clearanceM, z], [widthAt(z), z === half ? rearDeckY : belt - 0.13, z],
+    [-widthAt(z), z === half ? rearDeckY : belt - 0.13, z]] });
   faces.push({ color: paint, points: [[-0.69, roofY, roofFront], [0.69, roofY, roofFront],
     [0.69, roofY, roofRear], [-0.69, roofY, roofRear]] });
   const rails = cuv ? [-1, 1].map((s) => part([0.065, 0.075, 1.65],
@@ -80,12 +87,13 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     pillar(s, rearFoot, windowBottomY, roofRear, roofY - 0.05, cuv ? 0.12 : 0.075))), paint);
   const glazing = addNode('ParkedGlazing', body);
   const glassFaces = [
-    { points: [[-0.7, windowBottomY, frontFoot], [0.7, windowBottomY, frontFoot],
-      [0.69, roofY - 0.04, roofFront], [-0.69, roofY - 0.04, roofFront]], color: palette.glass },
-    { points: [[-0.7, windowBottomY, rearFoot], [0.7, windowBottomY, rearFoot],
-      [0.69, roofY - 0.04, roofRear], [-0.69, roofY - 0.04, roofRear]], color: palette.glass },
-    ...[-1, 1].map((s) => ({ points: [[s * 0.73, windowBottomY, frontFoot], [s * 0.73, windowBottomY, rearFoot],
-      [s * 0.69, roofY - 0.04, roofRear], [s * 0.69, roofY - 0.04, roofFront]], color: palette.glass })),
+    { points: [[-widthAt(frontFoot), windowBottomY, frontFoot], [widthAt(frontFoot), windowBottomY, frontFoot],
+      [0.69, roofY, roofFront], [-0.69, roofY, roofFront]], color: palette.glass },
+    { points: [[-widthAt(rearFoot), rearDeckY, rearFoot], [widthAt(rearFoot), rearDeckY, rearFoot],
+      [0.69, roofY, roofRear], [-0.69, roofY, roofRear]], color: palette.glass },
+    ...[-1, 1].map((s) => ({ points: [[s * widthAt(frontFoot), windowBottomY, frontFoot],
+      [s * widthAt(rearFoot), rearDeckY, rearFoot], [s * 0.69, roofY, roofRear],
+      [s * 0.69, roofY, roofFront]], color: palette.glass })),
   ];
   addMesh('StaticWindowFaces', glazing, facesGeometry(glassFaces), palette.glass);
   const exteriorGlass = addNode('ExteriorGlazing', body);
@@ -96,19 +104,11 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   addMesh('ExteriorWindowFaces', exteriorGlass, outerGlass, palette.glass);
   const detail = [];
   if (cuv) {
-    detail.push(part([1.66, 0.1, half - rearFoot],
+    detail.push(part([width, 0.1, half - rearFoot],
       [0, belt - 0.04, (half + rearFoot) / 2], paint));
   } else {
-    const trunkTop = facesGeometry([{
-      color: paint,
-      points: [
-        [-widthAt(rearFoot), belt - 0.025, rearFoot],
-        [-widthAt(half), belt - 0.025, half],
-        [widthAt(half), belt - 0.025, half],
-        [widthAt(rearFoot), belt - 0.025, rearFoot],
-      ],
-    }]);
-    addMesh('Trunk', body, trunkTop, paint);
+    box('Trunk', body, [0, rearDeckY - 0.015, (half + rearFoot) / 2],
+      [widthAt(half) * 2 + 0.01, 0.03, half - rearFoot], paint);
   }
   for (const side of [-1, 1]) {
     detail.push(part([0.025, 0.035, length - 0.4], [side * 0.885, belt - 0.23, 0], palette.trim));
@@ -141,7 +141,10 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   box('Dashboard', cockpit, [0, belt - 0.06, eyeZ - 0.52], [1.46, 0.16, 0.26], palette.trim);
   box('Floor', cockpit, [0, data.clearanceM + 0.035, (frontFoot + rearFoot) / 2],
     [1.5, 0.05, rearFoot - frontFoot - 0.12], palette.trim);
-  const instrumentParts = [part([0.66, 0.18, 0.04], [-0.36, belt + 0.03, eyeZ - 0.36], palette.trim)];
+  const instrumentParts = [
+    part([0.66, 0.16, 0.04], [-0.36, data.eyeHeightM - 0.1, eyeZ - 0.34], palette.trim),
+    part([0.2, 0.2, 0.1], [-0.36, data.eyeHeightM - 0.28, eyeZ - 0.41], palette.trim),
+  ];
   const dialFace = (x, y, z, radius, color) => facesGeometry(
     Array.from({ length: 12 }, (_, index) => {
       const a = index * Math.PI / 6, b = (index + 1) * Math.PI / 6;
@@ -150,8 +153,8 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
         [x + Math.cos(b) * radius, y + Math.sin(b) * radius, z]] };
     }),
   );
-  const dialY = belt + 0.04, dialZ = eyeZ - 0.32;
-  for (const x of [-0.43, -0.36, -0.29]) {
+  const dialY = data.eyeHeightM - 0.08, dialZ = eyeZ - 0.31;
+  for (const x of [-0.5, -0.36, -0.22]) {
     instrumentParts.push(dialFace(x, dialY, dialZ, 0.046, [0.06, 0.055, 0.07]));
     instrumentParts.push(transformGeometry(
       torusGeometry(0.048, 0.006, palette.marking, 12, 4), [x, dialY, dialZ],
@@ -161,7 +164,7 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   for (const [index, color] of [[0, palette.light], [1, palette.light],
     [2, [0.68, 0.08, 0.13]], [3, palette.marking]]) {
     instrumentParts.push(part([0.045, 0.016, 0.01],
-      [-0.53 + index * 0.12, belt - 0.055, dialZ], color));
+      [-0.53 + index * 0.12, data.eyeHeightM - 0.16, dialZ], color));
   }
   addMesh('InstrumentCluster', cockpit, mergeGeometry(instrumentParts), palette.trim);
   const pedals = [
@@ -222,7 +225,12 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   for (const [name, position, yaw] of mirrors) {
     addNode(`Mirror${name}`, root, { translation: position, rotation: yawQuaternion(yaw) });
     const display = name === 'Rear'
-      ? [-0.22, position[1] - 0.075, position[2] + 0.52] : position;
+      ? [-0.22, position[1] - 0.025, position[2] + 0.52] : position;
+    const displayYaw = name === 'Rear' ? 0
+      : Math.atan2(eye[0] - display[0], eye[2] - display[2]);
+    const displayNode = addNode(`MirrorDisplay${name}`, exterior, {
+      translation: display, rotation: yawQuaternion(displayYaw),
+    });
     const size = name === 'Rear' ? [0.09, 0.035, 0.025] : [0.18, 0.1, 0.035];
     const surface = {
       positions: [-size[0] / 2, -size[1] / 2, 0, size[0] / 2, -size[1] / 2, 0,
@@ -230,8 +238,8 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
       normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
       colors: Array(12).fill(1), indices: [0, 1, 2, 0, 2, 3], uvs: [0, 0, 1, 0, 1, 1, 0, 1],
     };
-    addMesh(`MirrorSurface${name}`, root, surface, [1, 1, 1], display);
-    addMesh(`MirrorHousing${name}`, exterior, boxGeometry(size.map((v) => v + 0.025), palette.trim),
-      palette.trim, [display[0], display[1], display[2] + (name === 'Rear' ? -0.04 : 0.04)]);
+    addMesh(`MirrorSurface${name}`, displayNode, surface, [1, 1, 1]);
+    addMesh(`MirrorHousing${name}`, displayNode, boxGeometry(size.map((v) => v + 0.025), palette.trim),
+      palette.trim, [0, 0, -0.04]);
   }
 }

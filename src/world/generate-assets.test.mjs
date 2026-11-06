@@ -130,11 +130,16 @@ describe('phase 5 original GLB generator', () => {
       if (index < 0) return null;
       const primitive = meshes[nodes[index].mesh].primitives[0];
       const bounds = accessors[primitive.attributes.POSITION];
-      let zOffset = 0;
+      const offset = [0, 0, 0];
       for (let parentIndex = index; parentIndex !== undefined; parentIndex = parents.get(parentIndex)) {
-        zOffset += nodes[parentIndex].translation?.[2] ?? 0;
+        for (let axis = 0; axis < 3; axis++) {
+          offset[axis] += nodes[parentIndex].translation?.[axis] ?? 0;
+        }
       }
-      return [bounds.min[2] + zOffset, bounds.max[2] + zOffset];
+      return {
+        min: bounds.min.map((value, axis) => value + offset[axis]),
+        max: bounds.max.map((value, axis) => value + offset[axis]),
+      };
     };
     const hood = boundsFor('Hood');
     const trunk = boundsFor('Trunk');
@@ -142,12 +147,13 @@ describe('phase 5 original GLB generator', () => {
     expect(hood).not.toBeNull();
     expect(trunk).not.toBeNull();
     if (!hood || !trunk) return;
-    expect(hood[1] - hood[0]).toBeGreaterThan(0);
-    expect(trunk[1] - trunk[0]).toBeGreaterThan(0);
-    expect(hood[1] - hood[0]).toBeGreaterThan(trunk[1] - trunk[0]);
-    for (const [minZ, maxZ] of [hood, trunk]) {
-      expect(minZ).toBeGreaterThanOrEqual(-2.3);
-      expect(maxZ).toBeLessThanOrEqual(2.3);
+    expect(hood.max[2] - hood.min[2]).toBeGreaterThan(0);
+    expect(trunk.max[2] - trunk.min[2]).toBeGreaterThan(0);
+    expect(trunk.max[1] - trunk.min[1]).toBeGreaterThan(0.01);
+    expect(hood.max[2] - hood.min[2]).toBeGreaterThan(trunk.max[2] - trunk.min[2]);
+    for (const bounds of [hood, trunk]) {
+      expect(bounds.min[2]).toBeGreaterThanOrEqual(-2.3);
+      expect(bounds.max[2]).toBeLessThanOrEqual(2.3);
     }
   });
 

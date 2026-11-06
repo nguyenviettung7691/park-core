@@ -130,10 +130,12 @@ async function setup() {
       studioFloor.visible = studio;
       content.scene.background = new Color(studio ? '#b8b0a5' : environment === 'roadside' ? '#b7b3af' : '#211e25');
       if (shot === 'driver') {
+        views.setOverhead(false);
         views.setCamera('driver');
         views.recenter();
         views.look(0, 80);
         views.render(frame, time += 100);
+        views.setOverhead(true);
         return;
       }
       const origin = assets.vehicle.position;

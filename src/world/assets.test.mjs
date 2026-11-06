@@ -174,6 +174,76 @@ describe('phase 5 scene asset loading', () => {
     } finally { assets.dispose(); }
   });
 
+  it.each(['sedan', 'cuv'])('closes the %s cabin window line from the exterior', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const exterior = assets.vehicle.getObjectByName('Exterior');
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      const assertExteriorHit = (origin, direction, label) => {
+        const ray = new Raycaster(origin, direction.normalize(), 0, 3);
+        ray.layers.enable(1);
+        let object = ray.intersectObjects(meshes, false)[0]?.object;
+        while (object && object !== exterior) object = object.parent;
+        expect(object, label).toBe(exterior);
+      };
+      const heights = id === 'sedan' ? [0.25, 0.4, 0.55, 0.7, 0.85] : [0.31, 0.45, 0.6, 0.75, 0.88];
+      for (const side of [-1, 1]) {
+        for (const z of [-0.5, 0, 0.5]) {
+          for (const y of heights) {
+            assertExteriorHit(new Vector3(side * 1.2, y, z), new Vector3(-side, 0, 0),
+              `${side} side ray at ${y},${z}`);
+            assertExteriorHit(new Vector3(side * 0.84, 1.5, z), new Vector3(0, -1, 0),
+              `${side} top ray at ${z}`);
+          }
+        }
+        for (const z of id === 'sedan' ? [-1.5, 1] : [-1.4, 1.5]) {
+          assertExteriorHit(new Vector3(side * 0.84, 1.5, z), new Vector3(0, -1, 0),
+            `${side} front/rear glass ray at ${z}`);
+        }
+      }
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('closes the %s rear deck from side, rear and oblique views', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const exterior = assets.vehicle.getObjectByName('Exterior');
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      const assertExteriorHit = (origin, target, label) => {
+        const direction = target.clone().sub(origin);
+        const distance = direction.length();
+        const ray = new Raycaster(origin, direction.normalize(), 0, distance + 0.05);
+        ray.layers.enable(1);
+        let object = ray.intersectObjects(meshes, false)[0]?.object;
+        while (object && object !== exterior) object = object.parent;
+        expect(object, label).toBe(exterior);
+      };
+      const rearEdge = id === 'sedan' ? 2.3 : 2.175;
+      const sideZ = id === 'sedan' ? [2.1, 2.2] : [2.0, 2.1];
+      const heights = id === 'sedan' ? [0.19, 0.22, 0.25, 0.28] : [0.25, 0.26, 0.275, 0.28];
+      for (const side of [-1, 1]) {
+        for (const z of sideZ) {
+          for (const y of heights) {
+            assertExteriorHit(new Vector3(side * 1.2, y, z), new Vector3(side * 0.7, y, z),
+              `${side} side at ${y},${z}`);
+          }
+        }
+        for (const y of heights) {
+          assertExteriorHit(new Vector3(0, y, rearEdge + 0.5), new Vector3(0, y, rearEdge - 0.1),
+            `rear at ${y}`);
+          assertExteriorHit(new Vector3(side * 1.2, y, rearEdge + 0.5),
+            new Vector3(side * 0.7, y, rearEdge - 0.1), `${side} rear corner at ${y}`);
+        }
+      }
+    } finally { assets.dispose(); }
+  });
+
   it.each(['sedan', 'cuv'])('keeps %s cockpit details inside the body bounds', async (id) => {
     mockedFetch();
     const assets = await loadSceneAssets('garage', id, new AbortController().signal);
@@ -205,20 +275,70 @@ describe('phase 5 scene asset loading', () => {
       const center = display.getCenter(new Vector3());
       expect(size.x).toBeLessThan(0.12);
       expect(size.y).toBeLessThan(0.05);
-      expect(center.y).toBeGreaterThan(profiles[id].driverEyeLocalM[1]);
+      expect(center.y).toBeGreaterThan(profiles[id].driverEyeLocalM[1] + 0.08);
     } finally { assets.dispose(); }
   });
 
-  it.each(['sedan', 'cuv'])('shows a visible instrument dial from the %s driver eye', async (id) => {
+  it.each(['sedan', 'cuv'])('shows all three instrument dials from the %s driver eye', async (id) => {
     mockedFetch();
     const assets = await loadSceneAssets('garage', id, new AbortController().signal);
     try {
       assets.vehicle.updateMatrixWorld(true);
       const cluster = assets.vehicle.getObjectByName('InstrumentCluster');
       const bounds = new Box3().setFromObject(cluster);
-      const center = bounds.getCenter(new Vector3());
       const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
-      const target = new Vector3(eye.x - 0.07, center.y + 0.06, bounds.max.z - 0.006);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      for (const offset of [-0.14, 0, 0.14]) {
+        const target = new Vector3(eye.x + offset, eye.y - 0.08, bounds.max.z - 0.006);
+        const direction = target.clone().sub(eye);
+        expect(Math.atan2(direction.y, Math.hypot(direction.x, direction.z))).toBeGreaterThan(-Math.PI / 6);
+        expect(Math.abs(Math.atan2(direction.x, -direction.z))).toBeLessThan(Math.PI / 4);
+        const ray = new Raycaster(eye, direction.clone().normalize(), 0.1, direction.length() + 0.1);
+        ray.layers.enable(1);
+        const hit = ray.intersectObjects(meshes, false)[0];
+        expect(hit?.object.name).toBe('InstrumentCluster');
+        expect(hit?.face).toBeDefined();
+        if (!hit?.face) continue;
+        const colors = hit.object.geometry.getAttribute('color');
+        const brightness = [hit.face.a, hit.face.b, hit.face.c]
+          .reduce((sum, index) => sum + colors.getX(index), 0) / 3;
+        expect(brightness).toBeGreaterThan(0.5);
+      }
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('keeps the %s dial face ahead of the steering-wheel hub', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const cluster = assets.vehicle.getObjectByName('InstrumentCluster');
+      const bounds = new Box3().setFromObject(cluster);
+      const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
+      const target = new Vector3(eye.x, eye.y - 0.08, bounds.max.z - 0.006);
+      const direction = target.clone().sub(eye);
+      const ray = new Raycaster(eye, direction.normalize(), 0.1, direction.length() + 0.1);
+      ray.layers.enable(1);
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      const hits = ray.intersectObjects(meshes, false);
+      const dial = hits.find((hit) => hit.object.name === 'InstrumentCluster');
+      const wheel = hits.find((hit) => hit.object.name === 'SteeringWheel');
+      expect(dial).toBeDefined();
+      if (wheel && dial) expect(wheel.distance - dial.distance).toBeGreaterThan(0.002);
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('leaves a visible gap between adjacent %s instrument dials', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const cluster = assets.vehicle.getObjectByName('InstrumentCluster');
+      const bounds = new Box3().setFromObject(cluster);
+      const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
+      const target = new Vector3(eye.x - 0.07, eye.y - 0.11, bounds.max.z - 0.006);
       const direction = target.clone().sub(eye);
       const ray = new Raycaster(eye, direction.clone().normalize(), 0.1, direction.length() + 0.1);
       ray.layers.enable(1);
@@ -226,11 +346,64 @@ describe('phase 5 scene asset loading', () => {
       assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
       const hit = ray.intersectObjects(meshes, false)[0];
       expect(hit?.object.name).toBe('InstrumentCluster');
+      expect(hit?.face).toBeDefined();
       if (!hit?.face) return;
       const colors = hit.object.geometry.getAttribute('color');
       const brightness = [hit.face.a, hit.face.b, hit.face.c]
         .reduce((sum, index) => sum + colors.getX(index), 0) / 3;
-      expect(brightness).toBeGreaterThan(0.5);
+      expect(brightness).toBeGreaterThan(0.1);
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('shows %s indicator lamps in the default driver view', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const cluster = assets.vehicle.getObjectByName('InstrumentCluster');
+      const bounds = new Box3().setFromObject(cluster);
+      const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      for (const x of [-0.53, -0.41, -0.29, -0.17]) {
+        const target = new Vector3(x, eye.y - 0.16, bounds.max.z - 0.006);
+        const direction = target.clone().sub(eye);
+        const angle = Math.atan2(direction.y, Math.hypot(direction.x, direction.z));
+        expect(angle).toBeGreaterThan(-Math.PI / 6);
+        expect(Math.abs(Math.atan2(direction.x, -direction.z))).toBeLessThan(Math.PI / 4);
+        const ray = new Raycaster(eye, direction.clone().normalize(), 0.1, direction.length() + 0.1);
+        ray.layers.enable(1);
+        const hit = ray.intersectObjects(meshes, false)[0];
+        expect(hit?.object.name).toBe('InstrumentCluster');
+        expect(hit?.face).toBeDefined();
+        if (!hit?.face) continue;
+        const colors = hit.object.geometry.getAttribute('color');
+        const brightness = [hit.face.a, hit.face.b, hit.face.c]
+          .reduce((sum, index) => sum + colors.getX(index), 0) / 3;
+        expect(brightness).toBeGreaterThan(0.5);
+      }
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('faces %s side mirrors toward the driver', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const eye = new Vector3(...profiles[id].driverEyeLocalM);
+      for (const side of ['Left', 'Right']) {
+        const surface = assets.vehicle.getObjectByName(`MirrorSurface${side}`);
+        const center = surface.getWorldPosition(new Vector3());
+        const normal = new Vector3(0, 0, 1).transformDirection(surface.matrixWorld);
+        const towardEye = eye.clone().sub(center).normalize();
+        expect(normal.dot(towardEye), `${side} mirror face angle`).toBeGreaterThan(0.5);
+        surface.geometry.computeBoundingBox();
+        const bounds = surface.geometry.boundingBox;
+        const left = new Vector3(bounds.min.x, 0, 0).applyMatrix4(surface.matrixWorld);
+        const right = new Vector3(bounds.max.x, 0, 0).applyMatrix4(surface.matrixWorld);
+        const angularWidth = eye.clone().sub(left).angleTo(eye.clone().sub(right));
+        expect(angularWidth, `${side} mirror projected width`).toBeGreaterThan(0.06);
+      }
     } finally { assets.dispose(); }
   });
 

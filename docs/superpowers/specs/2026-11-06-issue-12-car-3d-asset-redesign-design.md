@@ -1,7 +1,8 @@
 # Issue #12 Design: Car 3D Asset Redesign
 
-**Status:** Approved  
-**Date:** 2026-11-06  
+**Status:** Approved
+
+**Date:** 2026-11-06
 **Issue:** [#12 — Redesign the car 3D assets](https://github.com/nguyenviettung7691/park-core/issues/12)
 
 ## Intent
