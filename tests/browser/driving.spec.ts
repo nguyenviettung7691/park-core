@@ -389,6 +389,38 @@ test('shows all graphics settings and persists manual choices across reload', as
   await expect(page.locator('#graphics-preset')).toHaveValue('custom');
 });
 
+test('measures selected graphics on a non-reference setup and keeps tuning manual', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/');
+  await enterLessonMenu(page);
+  await openSettings(page, 'view');
+  await page.locator('#resolution-scale').selectOption('0.5');
+  await page.locator('#graphics-benchmark-toggle').click();
+
+  const benchmarkRoot = page.locator('#graphics-benchmark-root');
+  await benchmarkRoot.locator('#benchmark-start').click();
+  await expect(benchmarkRoot.locator('#benchmark-lock')).toBeVisible({ timeout: 60000 });
+  await benchmarkRoot.locator('#benchmark-lock').click();
+  const canvas = benchmarkRoot.locator('#benchmark-canvas');
+  await expect(canvas).toBeVisible();
+  await expect.poll(async () => canvas.evaluate((node: HTMLCanvasElement) => node.width))
+    .toBe(640);
+  await expect.poll(async () => canvas.evaluate((node: HTMLCanvasElement) => node.height))
+    .toBe(360);
+
+  const result = benchmarkRoot.locator('[data-case-id="sedan-driver"][data-status="complete"]');
+  await expect(result).toBeVisible({ timeout: 90000 });
+  await expect(result).toContainText('p95');
+  await expect(result).toContainText('không so sánh với mục tiêu tham khảo');
+  await expect(result).not.toContainText('đạt mục tiêu tham khảo');
+  await expect(canvas).toHaveCount(0);
+
+  await page.locator('#resolution-scale').selectOption('0.75');
+  await expect(page.locator('#graphics-preset')).toHaveValue('custom');
+  await expect(page.locator('#screen-layer > main')).toHaveAttribute('data-screen', 'settings');
+});
+
 test('keeps graphics settings read-only from a paused free-drive preview', async ({ page }) => {
   await open(page);
   await waitForPointerLock(page);
