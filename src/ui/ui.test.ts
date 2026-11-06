@@ -34,6 +34,19 @@ function root() {
   return element;
 }
 
+it('renders a decorative parking mark beside the accessible menu heading', () => {
+  const element = root();
+  mountScreen(element, { kind: 'menu' }, context, vi.fn());
+
+  const heading = element.querySelector('h1');
+  const mark = element.querySelector<HTMLImageElement>('.brand-mark');
+  expect(heading?.textContent).toBe('Park-Core');
+  expect(mark?.getAttribute('src')).toBe('/park-core-mark.svg');
+  expect(mark?.getAttribute('alt')).toBe('');
+  expect(mark?.getAttribute('aria-hidden')).toBe('true');
+  expect(mark?.parentElement?.contains(heading)).toBe(true);
+});
+
 it('renders five stages, keeps locked stages disabled, and starts Stage 1 with the selected vehicle', () => {
   const element = root();
   const action = vi.fn();

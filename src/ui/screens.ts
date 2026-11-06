@@ -457,7 +457,16 @@ export function mountScreen(
     screen.classList.add('lesson-hub');
     let selectedStageId = context.selectedStageId;
     let selectedVehicleId = context.selectedVehicleId;
-    text('h1', vi.appTitle);
+    const brand = document.createElement('header');
+    brand.className = 'brand-lockup';
+    const mark = document.createElement('img');
+    mark.className = 'brand-mark';
+    mark.src = '/park-core-mark.svg';
+    mark.alt = '';
+    mark.setAttribute('aria-hidden', 'true');
+    brand.append(mark);
+    text('h1', vi.appTitle, brand);
+    screen.append(brand);
     text('p', vi.menuTitle);
     const hero = document.createElement('section');
     hero.className = 'lesson-hero';

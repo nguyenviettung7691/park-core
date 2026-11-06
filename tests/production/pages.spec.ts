@@ -8,6 +8,20 @@ const glbPaths = [
   '/assets/environments/garage.glb',
 ];
 
+test('built app serves the shared menu logo and favicon', async ({ page, request }) => {
+  await page.goto('/');
+  await enterLessonMenu(page);
+
+  const logo = page.locator('.brand-mark');
+  await expect(logo).toBeVisible();
+  await expect(logo).toHaveAttribute('src', '/park-core-mark.svg');
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/park-core-mark.svg');
+
+  const response = await request.get('/park-core-mark.svg');
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toMatch(/image\/svg\+xml/i);
+});
+
 test('built app serves assets and enters Stage 1', async ({ page, request, baseURL }) => {
   test.setTimeout(60000);
   const errors: string[] = [];
