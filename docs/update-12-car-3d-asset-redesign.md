@@ -45,13 +45,13 @@ needles, pedals, console, seats and static controls remain artwork only, not
 simulator telemetry. Loaded-GLB regressions check the wheel ring, dial faces,
 indicator visibility and steering-wheel clearance.
 
-Reduced the rearview display surface from 0.12 x 0.05 m to 0.09 x 0.035 m and
-raised it inside the cabin. Its offset from the unchanged `MirrorRear` camera
-anchor is (-0.22, -0.025, +0.52) m. The visible side-mirror display meshes
-face the fixed driver eye; separate pale exterior faces make the mirror bodies
-read in outside views. Camera anchors and yaw remain unchanged, and housings
-sit behind the driver-facing display planes. Render-target behavior, UVs, and
-the 15 FPS update cap remain unchanged. Displays are view proxies, not
+Reduced the rearview display surface from 0.12 x 0.05 m to 0.07 x 0.025 m and
+raised it inside the cabin, within the driver's forward view. Its offset from
+the unchanged `MirrorRear` camera anchor is (-0.28, -0.06, +0.52) m. Side-mirror
+display meshes face the fixed driver eye; separate pale exterior faces make the
+mirror bodies read in outside views. Camera anchors and yaw remain unchanged;
+housings sit behind the driver-facing display planes. Render-target behavior,
+UVs and the 15 FPS update cap remain unchanged. Displays are view proxies, not
 calibrated optical mirrors.
 
 The following runtime and geometry contracts remain unchanged:
@@ -74,8 +74,8 @@ cockpit and glazing variants, including hidden variants.
 
 | Asset | Triangles | Nodes / meshes | GLB bytes |
 |---|---:|---:|---:|
-| Sedan | 3,270 | 43 / 31 | 240,248 |
-| CUV | 3,390 | 42 / 30 | 248,460 |
+| Sedan | 3,270 | 43 / 31 | 240,280 |
+| CUV | 3,390 | 42 / 30 | 248,452 |
 
 Both vehicles remain below the 10,000-triangle limit. Selected vehicle and
 environment payloads remain below 5 MB:

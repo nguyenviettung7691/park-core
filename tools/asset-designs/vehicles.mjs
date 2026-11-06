@@ -225,7 +225,7 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   for (const [name, position, yaw] of mirrors) {
     addNode(`Mirror${name}`, root, { translation: position, rotation: yawQuaternion(yaw) });
     const display = name === 'Rear'
-      ? [0, eye[1] + 0.2, eye[2] - 0.02]
+      ? [eye[0] + 0.08, eye[1] + 0.06, eye[2] - 0.23]
       : [(name === 'Left' ? -1 : 1) * (width / 2 + 0.14),
         data.mirrorHeightM - data.comHeightM + 0.1, eyeZ - 0.02];
     const displayYaw = name === 'Rear' ? 0
@@ -233,15 +233,18 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     const displayNode = addNode(`MirrorDisplay${name}`, exterior, {
       translation: display, rotation: yawQuaternion(displayYaw),
     });
-    const size = name === 'Rear' ? [0.09, 0.035, 0.025] : [0.17, 0.09, 0.035];
+    const size = name === 'Rear' ? [0.07, 0.025, 0.025] : [0.17, 0.09, 0.035];
     const surface = {
       positions: [-size[0] / 2, -size[1] / 2, 0, size[0] / 2, -size[1] / 2, 0,
         size[0] / 2, size[1] / 2, 0, -size[0] / 2, size[1] / 2, 0],
       normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
       colors: Array(12).fill(1), indices: [0, 1, 2, 0, 2, 3], uvs: [0, 0, 1, 0, 1, 1, 0, 1],
     };
+    const housingSize = name === 'Rear'
+      ? [size[0] + 0.005, size[1] + 0.005, size[2] + 0.025]
+      : size.map((value) => value + 0.025);
     addMesh(`MirrorSurface${name}`, displayNode, surface, [1, 1, 1]);
-    addMesh(`MirrorHousing${name}`, displayNode, boxGeometry(size.map((v) => v + 0.025), palette.trim),
+    addMesh(`MirrorHousing${name}`, displayNode, boxGeometry(housingSize, palette.trim),
       palette.trim, [0, 0, -0.04]);
     if (name !== 'Rear') {
       const exteriorFaceSize = [size[0] - 0.035, size[1] - 0.035, 0.004];

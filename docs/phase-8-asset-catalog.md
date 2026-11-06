@@ -19,8 +19,8 @@ rear-side gaps.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 3,270 | 43 / 31 | 240,248 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 3,390 | 42 / 30 | 248,460 |
+| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 3,270 | 43 / 31 | 240,280 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 3,390 | 42 / 30 | 248,452 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden. Both are below the 10,000-triangle vehicle gate.
@@ -68,13 +68,13 @@ The physical profiles, eye anchors and mirror-camera anchors are unchanged:
 | CUV | 0.62 | (-0.36, 0.68, -0.8462) | (0, 0.80, -1.5962) | (+/-0.965, 0.48, -0.7462) |
 
 Mirror anchor yaw remains rear 180 degrees, left +105 degrees and right
--105 degrees. The smaller 0.09 x 0.035 m rearview **display mesh** is placed
-inside the cabin, offset from its unchanged virtual camera by
-(-0.22, -0.025, +0.52) m. It is a view proxy, not a newly calibrated optical
-mirror. Side displays face the driver while their virtual camera anchors and
-yaw remain unchanged; separate pale exterior reflector faces make the side
-mirrors legible from outside, and housings remain behind the driver-facing
-display planes.
+-105 degrees. The smaller 0.07 x 0.025 m rearview **display mesh** is placed
+inside the cabin, within the driver's forward view, offset from its unchanged
+virtual camera by (-0.28, -0.06, +0.52) m. It is a view proxy, not a newly
+calibrated optical mirror. Side displays face the driver; their virtual camera
+anchors and yaw remain unchanged. Separate pale exterior reflector faces make
+the side mirrors legible from outside, while housings remain behind the
+driver-facing display planes.
 Planar mirror surfaces have UVs and updates retain the existing 15 FPS cap.
 Loaded-mesh 9 x 9 ray grids verify both side faces are unobstructed from each
 fixed eye; separate projected-width and angle checks reject edge-on displays.

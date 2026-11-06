@@ -1,4 +1,4 @@
-import { Box3, BufferGeometry, Mesh, Raycaster, Vector3 } from 'three';
+import { Box3, BufferGeometry, Mesh, PerspectiveCamera, Raycaster, Vector3 } from 'three';
 import { profiles } from '../vehicle/profiles.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildGlb } from '../../tools/generate-assets.mjs';
@@ -341,7 +341,7 @@ describe('phase 5 scene asset loading', () => {
     } finally { assets.dispose(); }
   });
 
-  it.each(['sedan', 'cuv'])('keeps the %s rearview display smaller and above the driver eye', async (id) => {
+  it.each(['sedan', 'cuv'])('keeps the %s rearview display visible from the driver eye', async (id) => {
     mockedFetch();
     const assets = await loadSceneAssets('garage', id, new AbortController().signal);
     try {
@@ -352,8 +352,45 @@ describe('phase 5 scene asset loading', () => {
       const eye = assets.vehicle.getObjectByName('DriverEye').getWorldPosition(new Vector3());
       expect(size.x).toBeLessThan(0.12);
       expect(size.y).toBeLessThan(0.05);
-      expect(Math.abs(center.x)).toBeLessThan(0.1);
-      expect(center.y).toBeGreaterThan(eye.y + 0.15);
+      expect(center.y).toBeGreaterThan(eye.y + 0.05);
+
+      const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 100);
+      camera.position.copy(eye);
+      camera.lookAt(eye.clone().add(new Vector3(0, 0, -1)));
+      camera.updateMatrixWorld(true);
+      const projected = center.clone().project(camera);
+      expect(Math.abs(projected.x)).toBeLessThan(1);
+      expect(Math.abs(projected.y)).toBeLessThan(1);
+      expect(projected.z).toBeGreaterThan(-1);
+      expect(projected.z).toBeLessThan(1);
+
+      const housing = new Box3().setFromObject(assets.vehicle.getObjectByName('MirrorHousingRear'));
+      const { min, max } = housing;
+      const corners = [
+        [min.x, min.y, min.z], [min.x, min.y, max.z],
+        [min.x, max.y, min.z], [min.x, max.y, max.z],
+        [max.x, min.y, min.z], [max.x, min.y, max.z],
+        [max.x, max.y, min.z], [max.x, max.y, max.z],
+      ];
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const point of corners) {
+        const corner = new Vector3(...point).project(camera);
+        expect(Math.abs(corner.x)).toBeLessThan(0.8);
+        expect(Math.abs(corner.y)).toBeLessThan(0.8);
+        minX = Math.min(minX, corner.x);
+        maxX = Math.max(maxX, corner.x);
+        minY = Math.min(minY, corner.y);
+        maxY = Math.max(maxY, corner.y);
+      }
+      expect(maxX - minX).toBeLessThan(0.34);
+      expect(maxY - minY).toBeLessThan(0.4);
+
+      const meshes = [];
+      assets.vehicle.traverseVisible((node) => { if (node instanceof Mesh) meshes.push(node); });
+      const toDisplay = center.clone().sub(eye);
+      const ray = new Raycaster(eye, toDisplay.clone().normalize(), 0.05, toDisplay.length() + 0.01);
+      ray.layers.enable(1);
+      expect(ray.intersectObjects(meshes, false)[0]?.object.name).toBe('MirrorSurfaceRear');
     } finally { assets.dispose(); }
   });
 
