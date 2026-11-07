@@ -1,4 +1,5 @@
 import './style.css';
+import './benchmark/style.css';
 import { createApp } from './app';
 import { dispatchAppObservation } from './app-observation';
 

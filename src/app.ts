@@ -22,6 +22,10 @@ import { createAttemptHistoryStore } from './storage/attempt-history';
 import { scenarios } from './lessons/scenarios';
 import type { AppObservation, AppObservationPayload } from './app-observation';
 import { controllerProfiles, findControllerProfile } from './input/profiles';
+import {
+  DEFAULT_GRAPHICS_CAPABILITIES,
+  parseGraphicsSettings,
+} from './views/graphics-settings';
 
 export interface AppDeps {
   createOnboarding: () => OnboardingStore;
@@ -36,6 +40,18 @@ export interface AppDeps {
 export interface AppHandle {
   dispose(): void;
   recordConfirmedStageSuccess(stageId: StageId): PersistenceResult;
+}
+
+function graphicsSettingsEqual(
+  left: ScreenContext['settings'],
+  right: ScreenContext['settings'],
+): boolean {
+  return left.preset === right.preset &&
+    left.resolutionScale === right.resolutionScale &&
+    left.frameRateCap === right.frameRateCap &&
+    left.antialias === right.antialias &&
+    left.mirrorQuality === right.mirrorQuality &&
+    left.overheadQuality === right.overheadQuality;
 }
 
 export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): AppHandle {
@@ -221,7 +237,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     } else if (view.preview === 'running') {
       unmountScreen = undefined;
     } else {
-      unmountScreen = mountScreen(layer, view.state, context, onAction, view, inputSetup());
+      unmountScreen = mountScreen(
+        layer, view.state, context, onAction, view, inputSetup(), () => context.settings,
+      );
     }
   }
   function restoreOverlayFocus(label: string | null) {
@@ -819,10 +837,18 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         drawScreen();
         break;
       case 'update-settings': {
+        const nextSettings = {
+          ...action.settings,
+          ...parseGraphicsSettings(action.settings, DEFAULT_GRAPHICS_CAPABILITIES),
+        };
+        if (view.preview === 'running' ||
+            (view.preview === 'paused' && !graphicsSettingsEqual(context.settings, nextSettings))) {
+          return;
+        }
         const previousStatus = context.recordStatus.settings;
         const focusedId = document.activeElement?.id;
-        context = { ...context, settings: action.settings };
-        reportPersistence(persistence.saveSettings(action.settings));
+        context = { ...context, settings: nextSettings };
+        reportPersistence(persistence.saveSettings(nextSettings));
         refreshPersistence();
         preview?.updateSettings(context.settings);
         hud.updateSettings(context.settings);

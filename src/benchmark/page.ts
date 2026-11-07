@@ -1,8 +1,9 @@
 import type { Preview, PreviewEvents, PreviewFrameSample } from '../render/preview';
 import { createPreview as defaultCreatePreview } from '../render/preview';
-import type { SceneAssets } from '../runtime-types';
+import type { SceneAssets, SettingsSaveV1 } from '../runtime-types';
 import { loadSceneAssets as defaultLoadSceneAssets } from '../world/assets';
 import { createMeasurement, type Measurement, type MeasurementTiming } from './metrics';
+import { getGraphicsSuggestions, isReferenceComparable } from './results';
 import {
   BENCHMARK_CASES, MAX_INVALID_ATTEMPTS, REQUIRED_DRAWING_BUFFER, WORKLOAD_VERSION,
   buildReport, validateMachine, workloadSettings,
@@ -26,7 +27,15 @@ export interface BenchmarkPageOptions {
   readonly buildRevision?: string;
   /** Delay after pointer-lock acquisition before the case starts; default 300 ms. */
   readonly lockSettleMs?: number;
+  /** Enables non-reference measurements for the learner settings panel. */
+  readonly embedded?: boolean;
+  /** Read when a case starts so a mounted panel uses the latest saved choices. */
+  readonly getSettings?: () => SettingsSaveV1;
+  readonly onSettingsLockChange?: (locked: boolean) => void;
 }
+
+type BenchmarkGraphicsSettings = Pick<SettingsSaveV1,
+  'preset' | 'resolutionScale' | 'frameRateCap' | 'antialias' | 'mirrorQuality' | 'overheadQuality'>;
 
 export function createEnvironmentReader(): () => EnvironmentInfo {
   let renderer: EnvironmentInfo['renderer'] | undefined;
@@ -99,6 +108,7 @@ type PageState = 'setup' | 'loading' | 'ready' | 'starting' | 'running' | 'close
 export function createBenchmarkPage(
   root: HTMLElement, options: BenchmarkPageOptions = {},
 ): { dispose(): void } {
+  const embedded = options.embedded ?? false;
   const createPreview = options.createPreview ?? defaultCreatePreview;
   const loadSceneAssets = options.loadSceneAssets ?? defaultLoadSceneAssets;
   const now = options.now ?? (() => performance.now());
@@ -128,6 +138,8 @@ export function createBenchmarkPage(
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   const outcomes = new Map<string, CaseOutcome>();
   const invalidAttempts: InvalidAttempt[] = [];
+  let suiteSettings: BenchmarkGraphicsSettings | null = null;
+  let settingsLocked = false;
 
   const status = element('p', { id: 'benchmark-status', className: 'bm-status' });
   status.setAttribute('role', 'status');
@@ -137,16 +149,25 @@ export function createBenchmarkPage(
   alertBox.setAttribute('role', 'alert');
   const inputs = new Map<string, HTMLInputElement>();
   const fieldset = element('fieldset', { className: 'bm-fields' },
-    element('legend', { textContent: 'Thông tin máy thực tế (không tự điền)' }));
+    element('legend', {
+      textContent: embedded
+        ? 'Thông tin máy thực tế (không tự điền; có thể để trống nếu không rõ)'
+        : 'Thông tin máy thực tế (không tự điền)',
+    }));
   for (const field of FIELDS) {
     const input = element('input', {
-      id: `meta-${field.key}`, type: field.type ?? 'text', autocomplete: 'off', required: true,
+      id: `meta-${field.key}`, type: field.type ?? 'text', autocomplete: 'off', required: !embedded,
     });
     input.setAttribute('aria-describedby', `meta-${field.key}-hint`);
     inputs.set(field.key, input);
     fieldset.append(element('div', { className: 'bm-field' },
       element('label', { htmlFor: input.id, textContent: field.label }), input,
-      element('small', { id: `${input.id}-hint`, textContent: field.hint })));
+      element('small', {
+        id: `${input.id}-hint`,
+        textContent: embedded && field.key === 'refresh'
+          ? 'Nhập số dương; để trống nếu không rõ'
+          : field.hint,
+      })));
   }
   const zoom = element('input', { id: 'meta-confirm-zoom', type: 'checkbox' });
   fieldset.append(element('label', { className: 'bm-check' }, zoom,
@@ -157,29 +178,50 @@ export function createBenchmarkPage(
     textContent: 'Khóa con trỏ và bắt đầu đo',
   });
   const exportButton = element('button', {
-    id: 'benchmark-export', type: 'button', disabled: true, textContent: 'Xuất báo cáo JSON',
+    id: 'benchmark-export', type: 'button', disabled: true, hidden: embedded,
+    textContent: 'Xuất báo cáo JSON',
+  });
+  const editSettings = element('button', {
+    id: 'benchmark-edit-settings',
+    type: 'button',
+    hidden: true,
+    textContent: 'Thay đổi cài đặt đồ họa',
   });
   const results = element('section', { id: 'benchmark-results', className: 'bm-results' });
+  const introduction = embedded
+    ? 'Phép đo dùng cài đặt đồ họa hiện đã chọn, không tự thay đổi hay lưu lại gợi ý. ' +
+      'Mỗi lượt gồm 4 tình huống cố định; mỗi tình huống khởi động 10 giây rồi đo 60 giây.'
+    : 'Công cụ chẩn đoán dùng cùng bộ mô phỏng thật, không lưu tiến độ học viên. ' +
+      'Mỗi lần chạy gồm 4 tình huống cố định (Sedan/CUV, góc nhìn người lái/camera bám xe), ' +
+      'mỗi tình huống khởi động 10 giây rồi đo 60 giây. Chỉ đo khung hình đã hiển thị và thời gian ' +
+      'vật lý bị bỏ; đây không phải đo hiệu năng GPU.';
+  const instructions = embedded
+    ? [
+      'Bạn có thể xem số đo trên mọi cấu hình; chỉ hiện kết luận mục tiêu khi vùng vẽ đạt 2560×1440, ' +
+        'màn hình 60 Hz, thu phóng 100% và có đủ thông tin máy.',
+      'Trong lúc đo, không chạm chuột, phím hay tay lái; Esc để hủy.',
+    ]
+    : [
+      'Màn hình đặt ở 60 Hz, trình duyệt ở mức thu phóng 100%, âm thanh tắt.',
+      'Cần vùng vẽ thực tế 2560×1440; kích thước khác sẽ bị tính là không hợp lệ.',
+      'Trong lúc đo, không chạm chuột, phím hay tay lái; Esc để hủy.',
+      'Chạy riêng một bộ trên Chrome và một bộ trên Firefox.',
+    ];
   const intro = element('div', { className: 'bm-intro' },
-    element('h1', { textContent: 'Park-Core — Kiểm tra hiệu năng' }),
+    element('h1', { textContent: embedded ? 'Đo hiệu năng đồ họa' : 'Park-Core — Kiểm tra hiệu năng' }),
     element('p', {
-      textContent: 'Công cụ chẩn đoán dùng cùng bộ mô phỏng thật, không lưu tiến độ học viên. ' +
-        'Mỗi lần chạy gồm 4 tình huống cố định (Sedan/CUV, góc nhìn người lái/camera bám xe), ' +
-        'mỗi tình huống khởi động 10 giây rồi đo 60 giây. Chỉ đo khung hình đã hiển thị và thời gian ' +
-        'vật lý bị bỏ; đây không phải đo hiệu năng GPU.',
+      textContent: introduction,
     }),
-    element('ul', {},
-      element('li', { textContent: 'Màn hình đặt ở 60 Hz, trình duyệt ở mức thu phóng 100%, âm thanh tắt.' }),
-      element('li', { textContent: 'Cần vùng vẽ thực tế 2560×1440; kích thước khác sẽ bị tính là không hợp lệ.' }),
-      element('li', { textContent: 'Trong lúc đo, không chạm chuột, phím hay tay lái; Esc để hủy.' }),
-      element('li', { textContent: 'Chạy riêng một bộ trên Chrome và một bộ trên Firefox.' })),
+    element('ul', {}, ...instructions.map((text) => element('li', { textContent: text }))),
     ...(timing.testOnly ? [element('p', {
       className: 'bm-alert', textContent: 'Chế độ thử nghiệm: kết quả không hợp lệ làm bằng chứng hiệu năng.',
     })] : []));
   const panel = element('main', { className: 'bm-panel' },
     intro, alertBox, fieldset,
-    element('div', { className: 'bm-actions' }, start, lock, exportButton), results);
+    element('div', { className: 'bm-actions' }, start, lock, exportButton, editSettings), results);
   const stage = element('div', { id: 'benchmark-stage', className: 'bm-stage', hidden: true });
+  root.classList.add('bm-root');
+  if (embedded) root.dataset.embedded = 'true';
   root.append(bar, panel, stage);
 
   function setStatus(text: string) { status.textContent = text; }
@@ -189,6 +231,11 @@ export function createBenchmarkPage(
     setStatus(text);
   }
   function clearError() { alertBox.textContent = ''; alertBox.hidden = true; }
+  function setSettingsLocked(locked: boolean) {
+    if (settingsLocked === locked) return;
+    settingsLocked = locked;
+    options.onSettingsLockChange?.(locked);
+  }
   function nextCase(): BenchmarkCase | null {
     return BENCHMARK_CASES.find((c) => outcomes.get(c.id)?.result.phase !== 'complete') ?? null;
   }
@@ -202,12 +249,25 @@ export function createBenchmarkPage(
     lock.hidden = state !== 'ready';
     cancel.disabled = state === 'setup' || state === 'closed';
     exportButton.disabled = outcomes.size === 0;
+    editSettings.hidden = !embedded || state !== 'setup' || suiteSettings === null;
     fieldset.disabled = state !== 'setup' || [...outcomes.values()].some((o) => o.result.phase === 'complete');
     panel.hidden = state === 'starting' || state === 'running';
     stage.hidden = !panel.hidden;
+    bar.hidden = embedded && state === 'setup';
   }
   function renderResults() {
     results.replaceChildren(element('h2', { textContent: 'Kết quả' }));
+    if (embedded && suiteSettings) {
+      const cap = suiteSettings.frameRateCap === 'display'
+        ? 'đồng bộ màn hình'
+        : `${suiteSettings.frameRateCap} FPS`;
+      results.append(element('p', {
+        textContent: `Cấu hình được đo: ${Math.round(suiteSettings.resolutionScale * 100)}%, ` +
+          `${cap}, khử răng cưa ${suiteSettings.antialias ? 'bật' : 'tắt'}, ` +
+          `gương ${suiteSettings.mirrorQuality === 'high' ? 'cao' : 'thấp'}, ` +
+          `camera trên cao ${suiteSettings.overheadQuality === 'high' ? 'cao' : 'thấp'}.`,
+      }));
+    }
     const list = element('ul', {});
     for (const definition of BENCHMARK_CASES) {
       const outcome = outcomes.get(definition.id);
@@ -217,11 +277,40 @@ export function createBenchmarkPage(
       item.dataset.caseId = definition.id;
       item.dataset.status = result.phase === 'complete' ? 'complete' : 'invalid';
       if (result.phase === 'complete') {
-        const verdict = timing.testOnly ? 'chế độ thử nghiệm, không có kết luận'
-          : result.verdict ? 'đạt mục tiêu' : 'không đạt mục tiêu';
-        item.textContent = `${caseLabel(definition)}: hoàn tất (${verdict}) — p95 ` +
-          `${result.p95Ms?.toFixed(2)} ms, trung bình ${result.meanFps?.toFixed(1)} FPS, ` +
-          `${result.intervalCount} khoảng, mất ${result.totalLossS.toFixed(3)} s.`;
+        const comparable = isReferenceComparable({
+          drawingWidthPx: outcome.drawingBuffer?.width ?? null,
+          drawingHeightPx: outcome.drawingBuffer?.height ?? null,
+          refreshHz: machine && machine.refreshHz > 0 ? machine.refreshHz : null,
+          browserZoomPercent: machine?.zoom100Confirmed ? 100 : null,
+          machineDetailsProvided: machine !== null &&
+            [machine.cpu, machine.gpu, machine.ram, machine.os, machine.driver, machine.browser]
+              .every((value) => value.trim().length > 0),
+        });
+        item.dataset.comparable = String(comparable);
+        const verdict = embedded && !comparable ? 'không so sánh với mục tiêu tham khảo'
+          : timing.testOnly ? 'chế độ thử nghiệm, không có kết luận'
+            : result.verdict ? (embedded ? 'đạt mục tiêu tham khảo' : 'đạt mục tiêu')
+              : (embedded ? 'không đạt mục tiêu tham khảo' : 'không đạt mục tiêu');
+        const metrics = `p95 ${result.p95Ms?.toFixed(2)} ms, ` +
+          `trung bình ${result.meanFps?.toFixed(1)} FPS, ${result.intervalCount} khoảng`;
+        if (embedded) {
+          const losses = `mất catch-up ${result.catchUpLossS.toFixed(3)} s, ` +
+            `clamp ${result.clampLossS.toFixed(3)} s`;
+          const suggestions = getGraphicsSuggestions(
+            result, suiteSettings?.frameRateCap ?? 'display',
+          ).map((suggestion) =>
+            suggestion === 'lower-render-scale'
+              ? 'giảm tỷ lệ kết xuất rồi đo lại'
+              : suggestion === 'lower-auxiliary-quality'
+                ? 'giảm chất lượng gương hoặc camera trên cao rồi đo lại'
+                : 'chọn giới hạn ít nhất 60 FPS hoặc đồng bộ màn hình rồi đo lại');
+          const advice = suggestions.length > 0
+            ? ` Gợi ý thủ công: ${suggestions.join('; ')}.` : '';
+          item.textContent = `${caseLabel(definition)}: hoàn tất (${verdict}) — ${metrics}, ${losses}.${advice}`;
+        } else {
+          item.textContent = `${caseLabel(definition)}: hoàn tất (${verdict}) — ${metrics}, ` +
+            `mất ${result.totalLossS.toFixed(3)} s.`;
+        }
       } else {
         item.textContent = `${caseLabel(definition)}: không hợp lệ — ${result.invalidReason ?? 'chưa hoàn tất'}`;
       }
@@ -262,7 +351,14 @@ export function createBenchmarkPage(
     outcomes.set(targetCase.id, {
       caseId: targetCase.id,
       result: complete ? snapshot : { ...snapshot, samples: [] },
-      drawingBuffer: complete ? { ...REQUIRED_DRAWING_BUFFER } : null,
+      drawingBuffer: complete
+        ? embedded && snapshot.samples.length > 0
+          ? {
+            width: snapshot.samples[snapshot.samples.length - 1]!.drawingWidthPx,
+            height: snapshot.samples[snapshot.samples.length - 1]!.drawingHeightPx,
+          }
+          : { ...REQUIRED_DRAWING_BUFFER }
+        : null,
     });
     if (!complete) {
       invalidAttempts.push({ caseId: targetCase.id, reason });
@@ -294,8 +390,8 @@ export function createBenchmarkPage(
       invalidateRun('Kích thước cửa sổ hoặc tỉ lệ điểm ảnh (DPR) đã thay đổi.');
       return;
     }
-    if (sample.drawingWidthPx !== REQUIRED_DRAWING_BUFFER.width ||
-        sample.drawingHeightPx !== REQUIRED_DRAWING_BUFFER.height) {
+    if (!embedded && (sample.drawingWidthPx !== REQUIRED_DRAWING_BUFFER.width ||
+        sample.drawingHeightPx !== REQUIRED_DRAWING_BUFFER.height)) {
       invalidateRun(`Vùng vẽ ${sample.drawingWidthPx}×${sample.drawingHeightPx}, cần ` +
         `${REQUIRED_DRAWING_BUFFER.width}×${REQUIRED_DRAWING_BUFFER.height}.`);
       return;
@@ -359,7 +455,7 @@ export function createBenchmarkPage(
   function readMachine(): MachineMetadata | null {
     const raw: Record<string, string> = {};
     for (const [key, input] of inputs) raw[key] = input.value;
-    const validation = validateMachine(raw, zoom.checked);
+    const validation = validateMachine(raw, zoom.checked, { allowNonReference: embedded });
     if (!validation.machine) {
       showError(validation.errors.join(' '));
       return null;
@@ -372,6 +468,20 @@ export function createBenchmarkPage(
     if (!next) return;
     const validated = readMachine();
     if (!validated) return;
+    if (embedded && !suiteSettings) {
+      const selected = options.getSettings?.();
+      if (selected) {
+        suiteSettings = {
+          preset: selected.preset,
+          resolutionScale: selected.resolutionScale,
+          frameRateCap: selected.frameRateCap,
+          antialias: selected.antialias,
+          mirrorQuality: selected.mirrorQuality,
+          overheadQuality: selected.overheadQuality,
+        };
+      }
+    }
+    setSettingsLocked(suiteSettings !== null);
     machine = validated;
     readEnvironment();
     clearError();
@@ -421,11 +531,22 @@ export function createBenchmarkPage(
     canvas = element('canvas', { id: 'benchmark-canvas', tabIndex: 0 });
     canvas.setAttribute('aria-label', 'Khung mô phỏng đang đo hiệu năng');
     stage.append(canvas);
+    const selectedSettings = embedded ? suiteSettings : undefined;
     try {
       preview = createPreview(canvas, stage, events, {
         environmentId: 'garage', vehicleId: definition.vehicleId, sceneAssets: owned,
         source: 'keyboard', gamepadIndex: null, calibration: null, getGamepads: () => [],
-        settings: workloadSettings(definition.cameraMode),
+        settings: {
+          ...workloadSettings(definition.cameraMode),
+          ...(selectedSettings ? {
+            preset: selectedSettings.preset,
+            resolutionScale: selectedSettings.resolutionScale,
+            frameRateCap: selectedSettings.frameRateCap,
+            antialias: selectedSettings.antialias,
+            mirrorQuality: selectedSettings.mirrorQuality,
+            overheadQuality: selectedSettings.overheadQuality,
+          } : {}),
+        },
       }, {}, { kind: 'sandbox' });
     } catch {
       owned.dispose();
@@ -478,8 +599,19 @@ export function createBenchmarkPage(
       default: break;
     }
   }
+  function onEditSettings() {
+    if (!embedded || state !== 'setup' || suiteSettings === null) return;
+    outcomes.clear();
+    invalidAttempts.length = 0;
+    suiteSettings = null;
+    setSettingsLocked(false);
+    clearError();
+    renderResults();
+    refreshControls();
+    setStatus('Số đo đã xóa. Thay đổi cài đặt đồ họa rồi bắt đầu lại.');
+  }
   function onExport() {
-    if (outcomes.size === 0 || !machine || !runEnvironment) return;
+    if (embedded || outcomes.size === 0 || !machine || !runEnvironment) return;
     const report = buildReport({
       machine, environment: runEnvironment, buildRevision, timing,
       generatedAt: new Date().toISOString(), outcomes: [...outcomes.values()], invalidAttempts,
@@ -492,6 +624,7 @@ export function createBenchmarkPage(
   lock.addEventListener('click', onLock);
   cancel.addEventListener('click', onCancel);
   exportButton.addEventListener('click', onExport);
+  editSettings.addEventListener('click', onEditSettings);
   refreshControls();
   setStatus('Điền thông tin máy thực tế để bắt đầu.');
 
@@ -499,6 +632,7 @@ export function createBenchmarkPage(
     dispose() {
       if (state === 'closed') return;
       state = 'closed';
+      setSettingsLocked(false);
       attempt++;
       controller?.abort();
       assets?.dispose();
@@ -508,7 +642,18 @@ export function createBenchmarkPage(
       lock.removeEventListener('click', onLock);
       cancel.removeEventListener('click', onCancel);
       exportButton.removeEventListener('click', onExport);
+      editSettings.removeEventListener('click', onEditSettings);
       root.replaceChildren();
+      root.classList.remove('bm-root');
+      delete root.dataset.embedded;
     },
   };
+}
+
+export function mountBenchmarkPanel(
+  root: HTMLElement,
+  getSettings: () => SettingsSaveV1,
+  onSettingsLockChange?: (locked: boolean) => void,
+): { dispose(): void } {
+  return createBenchmarkPage(root, { embedded: true, getSettings, onSettingsLockChange });
 }

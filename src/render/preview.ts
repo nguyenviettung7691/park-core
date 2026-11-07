@@ -39,8 +39,8 @@ export interface PreviewDeps {
   now(): number;
   requestFrame(cb: (time: number) => void): number;
   cancelFrame(id: number): void;
-  createRenderer(canvas: HTMLCanvasElement): PreviewRenderer;
-  createContext(canvas: HTMLCanvasElement): PreviewContext | null;
+  createRenderer(canvas: HTMLCanvasElement, antialias: boolean): PreviewRenderer;
+  createContext(canvas: HTMLCanvasElement, antialias: boolean): PreviewContext | null;
   createWorld(): World;
   requestPointerLock(canvas: HTMLCanvasElement): PointerLockRequest;
   exitPointerLock(): void;
@@ -137,8 +137,8 @@ export function createPreview(
     now: () => performance.now(),
     requestFrame: (cb) => requestAnimationFrame(cb),
     cancelFrame: (id) => cancelAnimationFrame(id),
-    createContext: (element) => element.getContext('webgl2'),
-    createRenderer: (element) => new WebGLRenderer({ canvas: element }),
+    createContext: (element, antialias) => element.getContext('webgl2', { antialias }),
+    createRenderer: (element, antialias) => new WebGLRenderer({ canvas: element, antialias }),
     createWorld,
     requestPointerLock: (element) => {
       const request = element.requestPointerLock;
@@ -154,9 +154,9 @@ export function createPreview(
   let content: AssetScene | null = null;
   let ownsAssets = false;
   try {
-    context = deps.createContext(canvas);
+    context = deps.createContext(canvas, prototype.settings.antialias);
     if (!context) throw new PreviewStartError('webgl-unsupported');
-    renderer = deps.createRenderer(canvas);
+    renderer = deps.createRenderer(canvas, prototype.settings.antialias);
   } catch (error) {
     context?.getExtension('WEBGL_lose_context')?.loseContext();
     if (error instanceof PreviewStartError) throw error;
@@ -243,6 +243,10 @@ export function createPreview(
     }
     const views: ViewSystem = createViews(
       renderer, sceneContent.scene, prototype.sceneAssets, profile, boxes,
+      {
+        mirrorQuality: prototype.settings.mirrorQuality,
+        overheadQuality: prototype.settings.overheadQuality,
+      },
     );
     cleanups.push(() => views.dispose());
     let currentSettings = prototype.settings;
@@ -258,6 +262,7 @@ export function createPreview(
     if (prototype.calibration) input.setCalibration(prototype.calibration);
     input.selectSource(prototype.source, prototype.gamepadIndex ?? undefined);
     let lastTime = deps.now();
+    let lastRenderTime = Number.NEGATIVE_INFINITY;
     let lastTelemetry = -Infinity;
     let latestSensors: SensorSnapshot | null = null;
     let audio: AudioOutput | null = null;
@@ -434,16 +439,20 @@ export function createPreview(
         }
         lastTime = time;
         if (!running || disposed || faulted) return;
-        sceneContent.apply({ previous, current, alpha });
-        views.render({ previous, current, alpha }, time);
-        events.onFrame?.({
-          completedAtMs: deps.now(),
-          elapsedS,
-          droppedTimeS,
-          clampedTimeS: Math.max(0, elapsedS - 0.1),
-          drawingWidthPx: drawingSize?.width ?? canvas.width,
-          drawingHeightPx: drawingSize?.height ?? canvas.height,
-        });
+        const frameRateCap = currentSettings.frameRateCap;
+        if (frameRateCap === 'display' || time - lastRenderTime >= 1000 / frameRateCap) {
+          sceneContent.apply({ previous, current, alpha });
+          views.render({ previous, current, alpha }, time);
+          lastRenderTime = time;
+          events.onFrame?.({
+            completedAtMs: deps.now(),
+            elapsedS,
+            droppedTimeS,
+            clampedTimeS: Math.max(0, elapsedS - 0.1),
+            drawingWidthPx: drawingSize?.width ?? canvas.width,
+            drawingHeightPx: drawingSize?.height ?? canvas.height,
+          });
+        }
         if (time - lastTelemetry >= 50) {
           lastTelemetry = time;
           events.onTelemetry(current.telemetry);
@@ -556,6 +565,7 @@ export function createPreview(
         pending = [];
         clock.reset();
         lastTime = deps.now();
+        lastRenderTime = Number.NEGATIVE_INFINITY;
         running = true;
         frameId = deps.requestFrame(tick);
         return true;

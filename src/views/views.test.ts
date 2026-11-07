@@ -7,6 +7,7 @@ import type { BodyPose, VehicleTelemetry } from '../contracts';
 import type { ColliderBox, RenderFrame } from '../runtime-types';
 import { buildPrototypeScene } from '../render/prototype';
 import { profiles } from '../vehicle/profiles';
+import type { GraphicsSettings } from './graphics-settings';
 import { createViews } from './cameras';
 import { renderAuxiliaryPass, type RendererPort } from './auxiliary';
 
@@ -134,11 +135,17 @@ function makeFrame(
   return { previous: snapshot, current: snapshot, alpha: 0 };
 }
 
-function makeFixture(boxes: ColliderBox[] = []) {
+function makeFixture(
+  boxes: ColliderBox[] = [],
+  quality: Pick<GraphicsSettings, 'mirrorQuality' | 'overheadQuality'> = {
+    mirrorQuality: 'high',
+    overheadQuality: 'high',
+  },
+) {
   const profile = profiles.sedan;
   const content = buildPrototypeScene(profile, boxes);
   const renderer = new FakeRenderer();
-  const views = createViews(renderer, content.scene, content.assets, profile, boxes);
+  const views = createViews(renderer, content.scene, content.assets, profile, boxes, quality);
   const draw = (timeMs: number, frame = makeFrame()) => {
     content.apply(frame, new PerspectiveCamera());
     views.render(frame, timeMs);
@@ -236,7 +243,10 @@ describe('camera and auxiliary views', () => {
       surface.name = `MirrorSurface${id[0]!.toUpperCase()}${id.slice(1)}`;
     }
 
-    const views = createViews(renderer, content.scene, content.assets, profile, []);
+    const views = createViews(renderer, content.scene, content.assets, profile, [], {
+      mirrorQuality: 'high',
+      overheadQuality: 'high',
+    });
     for (const id of ['rear', 'left', 'right'] as const) {
       const surface = content.assets.vehicle.getObjectByName(
         `MirrorSurface${id[0]!.toUpperCase()}${id.slice(1)}`,
@@ -344,6 +354,22 @@ describe('camera and auxiliary views', () => {
     expect(overhead.every((call) => (call.layerMask & (1 << 2)) === 0)).toBe(true);
     expect(calls.filter((call) => call.camera.name.startsWith('mirror-'))
       .every((call) => (call.layerMask & (1 << 1)) === 0)).toBe(true);
+  });
+
+  it('halves mirror and overhead render-target dimensions at low quality', () => {
+    const fixture = makeFixture([], { mirrorQuality: 'low', overheadQuality: 'low' });
+    fixtures.push(fixture);
+    fixture.views.setOverhead(true);
+    fixture.draw(0);
+
+    expect(fixture.renderer.calls
+      .filter((call) => call.camera.name.startsWith('mirror-'))
+      .map((call) => [call.target?.width, call.target?.height]))
+      .toEqual([[256, 64], [128, 128], [128, 128]]);
+    const overhead = fixture.renderer.calls.find(
+      (call) => call.camera.name === 'overhead-camera',
+    );
+    expect([overhead?.target?.width, overhead?.target?.height]).toEqual([160, 160]);
   });
 
   it('keeps all mirror surfaces in the driver frustum and faces them away from housings', () => {

@@ -450,6 +450,24 @@ it('persists vehicle and setting changes through only their matching records', a
   app.dispose();
 });
 
+it('rejects graphics updates from a paused preview settings overlay', async () => {
+  const f = fixture();
+  const persistence = appPersistence();
+  const app = f.app({ createPersistence: () => persistence.store });
+  await f.openPreview();
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
+
+  const scale = f.root.querySelector<HTMLSelectElement>('#resolution-scale')!;
+  expect(scale.disabled).toBe(true);
+  scale.value = '0.75';
+  scale.dispatchEvent(new Event('change'));
+
+  expect(persistence.saveSettings).not.toHaveBeenCalled();
+  expect(f.previews[0]!.updateSettings).not.toHaveBeenCalled();
+  app.dispose();
+});
+
 it('saves calibration by stable device ID and never records success from preview actions', async () => {
   const f = fixture();
   const pad = testGamepad();

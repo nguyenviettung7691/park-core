@@ -2,6 +2,9 @@ import type {
   ControllerCalibration, ProgressSaveV1, StageId, VehicleId,
 } from '../contracts';
 import { validateCalibration } from '../input/calibration';
+import {
+  createDefaultGraphicsSettings, DEFAULT_GRAPHICS_CAPABILITIES, parseGraphicsSettings,
+} from '../views/graphics-settings';
 import type {
   PersistenceRecord, PersistenceResult, PersistenceSnapshot, RecordStatus, SettingsSaveV1,
 } from '../runtime-types';
@@ -25,7 +28,7 @@ const DEFAULT_SETTINGS: SettingsSaveV1 = {
   overhead: false,
   trajectory: false,
   inputSource: 'keyboard',
-  resolutionScale: 1,
+  ...createDefaultGraphicsSettings(DEFAULT_GRAPHICS_CAPABILITIES),
 };
 
 export interface StoragePort {
@@ -79,9 +82,8 @@ function validateSettings(value: unknown): SettingsSaveV1 | null {
       value.driverFovDeg < 50 || value.driverFovDeg > 80 ||
       (value.cameraMode !== 'driver' && value.cameraMode !== 'chase') ||
       typeof value.overhead !== 'boolean' || typeof value.trajectory !== 'boolean' ||
-      (value.inputSource !== 'keyboard' && value.inputSource !== 'gamepad') ||
-      (value.resolutionScale !== 1 && value.resolutionScale !== 0.75 &&
-        value.resolutionScale !== 0.5)) return null;
+      (value.inputSource !== 'keyboard' && value.inputSource !== 'gamepad')) return null;
+  const graphics = parseGraphicsSettings(value, DEFAULT_GRAPHICS_CAPABILITIES);
   return {
     version: 1,
     volume: value.volume,
@@ -91,7 +93,7 @@ function validateSettings(value: unknown): SettingsSaveV1 | null {
     overhead: value.overhead,
     trajectory: value.trajectory,
     inputSource: value.inputSource,
-    resolutionScale: value.resolutionScale,
+    ...graphics,
   };
 }
 

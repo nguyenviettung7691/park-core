@@ -19,6 +19,11 @@ const initialSettings: SettingsSaveV1 = {
   trajectory: false,
   inputSource: 'keyboard',
   resolutionScale: 1,
+  preset: 'high',
+  frameRateCap: 'display',
+  antialias: true,
+  mirrorQuality: 'high',
+  overheadQuality: 'high',
 };
 
 const calibration: ControllerCalibration = {

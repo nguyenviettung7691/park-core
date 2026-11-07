@@ -19,6 +19,7 @@ import {
 } from 'three';
 import type { CameraMode, Vec3Data, VehicleProfile, VehicleTelemetry } from '../contracts';
 import type { ColliderBox, RenderFrame, SceneAssets } from '../runtime-types';
+import type { GraphicsSettings } from './graphics-settings';
 import { MIRROR_EXCLUDED_LAYER, OVERHEAD_EXCLUDED_LAYER } from '../runtime-types';
 import { sampleTrajectory, type TrajectorySample } from './trajectory';
 import { renderAuxiliaryPass, type RendererPort } from './auxiliary';
@@ -213,6 +214,7 @@ export function createViews(
   assets: SceneAssets,
   profile: VehicleProfile,
   boxes: readonly ColliderBox[],
+  quality: Pick<GraphicsSettings, 'mirrorQuality' | 'overheadQuality'>,
 ): ViewSystem {
   const driverCamera = new PerspectiveCamera(60, 1, 0.1, 100);
   driverCamera.name = 'driver-camera';
@@ -230,16 +232,19 @@ export function createViews(
 
   const mirrorTargets = {} as Record<MirrorId, WebGLRenderTarget>;
   const mirrorCameras = {} as Record<MirrorId, PerspectiveCamera>;
+  const mirrorScale = quality.mirrorQuality === 'high' ? 1 : 0.5;
   for (const id of MIRROR_IDS) {
     const spec = MIRROR_SPECS[id];
-    const target = new WebGLRenderTarget(spec.width, spec.height);
+    const width = Math.round(spec.width * mirrorScale);
+    const height = Math.round(spec.height * mirrorScale);
+    const target = new WebGLRenderTarget(width, height);
     target.texture.wrapS = RepeatWrapping;
     target.texture.repeat.x = -1;
     target.texture.offset.x = 1;
     target.texture.generateMipmaps = false;
     mirrorTargets[id] = target;
 
-    const camera = new PerspectiveCamera(spec.fov, spec.width / spec.height, 0.05, 100);
+    const camera = new PerspectiveCamera(spec.fov, width / height, 0.05, 100);
     camera.name = `mirror-${id}-camera`;
     camera.layers.mask = MIRROR_LAYERS;
     mirrorCameras[id] = camera;
@@ -254,7 +259,8 @@ export function createViews(
     surface.material.needsUpdate = true;
   }
 
-  const overheadTarget = new WebGLRenderTarget(320, 320);
+  const overheadSize = quality.overheadQuality === 'high' ? 320 : 160;
+  const overheadTarget = new WebGLRenderTarget(overheadSize, overheadSize);
   overheadTarget.texture.generateMipmaps = false;
   const overlayScene = new Scene();
   const overlayGeometry = new PlaneGeometry(2, 2);
@@ -376,12 +382,11 @@ export function createViews(
 
       if (nowMs - lastMirrorTime >= MIRROR_INTERVAL_MS) {
         for (const id of MIRROR_IDS) {
-          const spec = MIRROR_SPECS[id];
           renderAuxiliaryPass(renderer, {
             scene,
             camera: mirrorCameras[id],
             target: mirrorTargets[id],
-            viewport: [0, 0, spec.width, spec.height],
+            viewport: [0, 0, mirrorTargets[id].width, mirrorTargets[id].height],
             scissor: null,
             scissorTest: false,
             layerMask: MIRROR_LAYERS,
@@ -400,7 +405,7 @@ export function createViews(
             scene,
             camera: overheadCamera,
             target: overheadTarget,
-            viewport: [0, 0, 320, 320],
+            viewport: [0, 0, overheadTarget.width, overheadTarget.height],
             scissor: null,
             scissorTest: false,
             layerMask: OVERHEAD_LAYERS,

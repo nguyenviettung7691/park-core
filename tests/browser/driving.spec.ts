@@ -338,6 +338,116 @@ test('keeps visual proximity warnings when AudioContext is unavailable', async (
   expect(errors).toEqual([]);
 });
 
+test('shows all graphics settings and persists manual choices across reload', async ({ page }) => {
+  const benchmarkModuleRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/src/benchmark/page.ts')) benchmarkModuleRequests.push(request.url());
+  });
+  await page.goto('/');
+  await enterLessonMenu(page);
+  expect(benchmarkModuleRequests).toHaveLength(0);
+  await openSettings(page, 'view');
+
+  const graphics = page.locator('#graphics-controls');
+  await expect(graphics).toBeVisible();
+  for (const id of [
+    'graphics-preset',
+    'resolution-scale',
+    'frame-rate-cap',
+    'anti-aliasing',
+    'mirror-quality',
+    'overhead-quality',
+  ]) {
+    await expect(graphics.locator(`#${id}`)).toBeVisible();
+    await expect(graphics.locator(`#${id}`)).toBeEnabled();
+  }
+  await expect(graphics.locator('details')).toHaveCount(0);
+  await expect(page.locator('#graphics-preset')).toHaveValue('high');
+  await expect(page.locator('#resolution-scale')).toHaveValue('1');
+  await expect(page.locator('#frame-rate-cap')).toHaveValue('display');
+  await expect(page.locator('#anti-aliasing')).toBeChecked();
+  await expect(page.locator('#mirror-quality')).toHaveValue('high');
+  await expect(page.locator('#overhead-quality')).toHaveValue('high');
+
+  const benchmarkRoot = page.locator('#graphics-benchmark-root');
+  await expect(benchmarkRoot).toBeHidden();
+  await page.locator('#graphics-benchmark-toggle').click();
+  await expect(benchmarkRoot).toBeVisible();
+  await expect(benchmarkRoot.locator('#benchmark-start')).toBeVisible();
+  await expect.poll(() => benchmarkModuleRequests.length).toBeGreaterThan(0);
+  await expect(benchmarkRoot.locator('#benchmark-status')).toBeHidden();
+  await page.locator('#graphics-benchmark-toggle').click();
+  await expect(benchmarkRoot).toBeHidden();
+
+  await page.locator('#resolution-scale').selectOption('0.75');
+  await expect(page.locator('#graphics-preset')).toHaveValue('custom');
+  await closeSettings(page);
+  await page.reload();
+  await enterLessonMenu(page);
+  await openSettings(page, 'view');
+  await expect(page.locator('#resolution-scale')).toHaveValue('0.75');
+  await expect(page.locator('#graphics-preset')).toHaveValue('custom');
+});
+
+test('measures selected graphics on a non-reference setup and keeps tuning manual', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/');
+  await enterLessonMenu(page);
+  await openSettings(page, 'view');
+  await page.locator('#resolution-scale').selectOption('0.5');
+  await page.locator('#graphics-benchmark-toggle').click();
+
+  const benchmarkRoot = page.locator('#graphics-benchmark-root');
+  await benchmarkRoot.locator('#benchmark-start').click();
+  await expect(benchmarkRoot.locator('#benchmark-lock')).toBeVisible({ timeout: 60000 });
+  await expect(page.locator('#resolution-scale')).toBeDisabled();
+  await benchmarkRoot.locator('#benchmark-lock').click();
+  const canvas = benchmarkRoot.locator('#benchmark-canvas');
+  await expect(canvas).toBeVisible();
+  await expect.poll(async () => canvas.evaluate((node: HTMLCanvasElement) => node.width))
+    .toBe(640);
+  await expect.poll(async () => canvas.evaluate((node: HTMLCanvasElement) => node.height))
+    .toBe(360);
+
+  const result = benchmarkRoot.locator('[data-case-id="sedan-driver"][data-status="complete"]');
+  await expect(result).toBeVisible({ timeout: 90000 });
+  await expect(result).toContainText('p95');
+  await expect(result).toContainText('không so sánh với mục tiêu tham khảo');
+  await expect(result).not.toContainText('đạt mục tiêu tham khảo');
+  await expect(canvas).toHaveCount(0);
+
+  await benchmarkRoot.locator('#benchmark-edit-settings').click();
+  await expect(result).toHaveCount(0);
+  await expect(page.locator('#resolution-scale')).toBeEnabled();
+  await page.locator('#resolution-scale').selectOption('0.75');
+  await expect(page.locator('#graphics-preset')).toHaveValue('custom');
+  await expect(page.locator('#screen-layer > main')).toHaveAttribute('data-screen', 'settings');
+});
+
+test('keeps graphics settings read-only from a paused free-drive preview', async ({ page }) => {
+  await open(page);
+  await waitForPointerLock(page);
+  await page.keyboard.press('Escape');
+  const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });
+  await expect(resume).toBeVisible();
+  await openSettings(page, 'view');
+
+  for (const id of [
+    'graphics-preset',
+    'resolution-scale',
+    'frame-rate-cap',
+    'anti-aliasing',
+    'mirror-quality',
+    'overhead-quality',
+  ]) {
+    await expect(page.locator(`#${id}`)).toBeDisabled();
+  }
+  expect(await page.evaluate(() => document.pointerLockElement === null)).toBe(true);
+  await closeSettings(page);
+  await expect(resume).toBeVisible();
+});
+
 test('renders camera modes, bounded look, resized overhead, trajectory and mirror updates', async ({ browser, page }) => {
   test.setTimeout(60000);
   const errors: string[] = [];

@@ -20,7 +20,9 @@ const context: ScreenContext = {
   settings: {
     version: 1, volume: 0.5, muted: false, driverFovDeg: 60,
     cameraMode: 'driver', overhead: false, trajectory: false,
-    inputSource: 'keyboard', resolutionScale: 1,
+    inputSource: 'keyboard', preset: 'high', resolutionScale: 1,
+    frameRateCap: 'display', antialias: true,
+    mirrorQuality: 'high', overheadQuality: 'high',
   },
   selectedStageId: 1,
   selectedVehicleId: 'sedan',
@@ -545,7 +547,7 @@ it('keeps moved settings labeled and preserves edits across view and audio tabs'
 
   element.querySelector<HTMLButtonElement>('#recenter-view')!.click();
   expect(action).toHaveBeenLastCalledWith({ type: 'recenter-view' });
-  unmountView();
+  unmountView.dispose();
   const unmountAudio = mountViewSettings(element, { ...context.settings, cameraMode: 'chase',
     overhead: true, trajectory: true, driverFovDeg: 75 }, 'audio', action);
   const volume = element.querySelector<HTMLInputElement>('#volume')!;
@@ -565,8 +567,138 @@ it('keeps moved settings labeled and preserves edits across view and audio tabs'
     settings: { ...context.settings, cameraMode: 'chase', overhead: true, trajectory: true,
       driverFovDeg: 75, volume: 0.25, muted: true },
   });
-  unmountAudio();
+  unmountAudio.dispose();
   expect(element.children.length).toBe(0);
+});
+
+it('shows all graphics controls together, applies presets, and marks manual edits custom', () => {
+  const element = root();
+  const action = vi.fn();
+  mountViewSettings(element, context.settings, 'view', action);
+
+  const ids = [
+    'graphics-preset',
+    'resolution-scale',
+    'frame-rate-cap',
+    'anti-aliasing',
+    'mirror-quality',
+    'overhead-quality',
+  ];
+  for (const id of ids) {
+    expect(element.querySelector(`#${id}`)).not.toBeNull();
+    expect(element.querySelector(`label[for="${id}"]`)?.textContent).not.toBe('');
+  }
+  expect(element.querySelector('#graphics-benchmark-root')).not.toBeNull();
+
+  const preset = element.querySelector<HTMLSelectElement>('#graphics-preset')!;
+  const scale = element.querySelector<HTMLSelectElement>('#resolution-scale')!;
+  const cap = element.querySelector<HTMLSelectElement>('#frame-rate-cap')!;
+  const antialias = element.querySelector<HTMLInputElement>('#anti-aliasing')!;
+  const mirror = element.querySelector<HTMLSelectElement>('#mirror-quality')!;
+  const overhead = element.querySelector<HTMLSelectElement>('#overhead-quality')!;
+  expect(preset.value).toBe('high');
+  expect(scale.value).toBe('1');
+  expect(cap.value).toBe('display');
+  expect(antialias.checked).toBe(true);
+  expect(mirror.value).toBe('high');
+  expect(overhead.value).toBe('high');
+
+  preset.value = 'balanced';
+  preset.dispatchEvent(new Event('change'));
+  const balanced = {
+    ...context.settings,
+    preset: 'balanced',
+    resolutionScale: 0.75,
+    frameRateCap: 60,
+    mirrorQuality: 'low',
+    overheadQuality: 'low',
+  } as const;
+  expect(action).toHaveBeenLastCalledWith({ type: 'update-settings', settings: balanced });
+  expect(scale.value).toBe('0.75');
+  expect(cap.value).toBe('60');
+  expect(antialias.checked).toBe(true);
+  expect(mirror.value).toBe('low');
+  expect(overhead.value).toBe('low');
+
+  scale.value = '1';
+  scale.dispatchEvent(new Event('change'));
+  expect(action).toHaveBeenLastCalledWith({
+    type: 'update-settings',
+    settings: { ...balanced, preset: 'custom', resolutionScale: 1 },
+  });
+  expect(preset.value).toBe('custom');
+});
+
+it('locks learner graphics controls during a benchmark suite', () => {
+  const element = root();
+  const mounted = mountViewSettings(element, context.settings, 'view', vi.fn());
+  const ids = [
+    'graphics-preset',
+    'resolution-scale',
+    'frame-rate-cap',
+    'anti-aliasing',
+    'mirror-quality',
+    'overhead-quality',
+    'graphics-benchmark-toggle',
+  ];
+
+  mounted.setGraphicsDisabled(true);
+  for (const id of ids) {
+    expect(element.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.disabled)
+      .toBe(true);
+  }
+  mounted.setGraphicsDisabled(false);
+  for (const id of ids) {
+    expect(element.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.disabled)
+      .toBe(false);
+  }
+  mounted.dispose();
+});
+
+it('shows the optional benchmark only after the learner opens it', async () => {
+  const element = root();
+  const state = { kind: 'menu' } as const;
+  const view: ShellView = {
+    state, preview: 'closed',
+    overlay: { kind: 'settings', tab: 'view', returnTo: { kind: 'menu' } },
+  };
+  const unmount = mountScreen(element, state, context, vi.fn(), view, undefined, () => context.settings);
+  const toggle = element.querySelector<HTMLButtonElement>('#graphics-benchmark-toggle');
+  const benchmarkRoot = element.querySelector<HTMLElement>('#graphics-benchmark-root');
+  expect(toggle?.textContent).toBe(messages.graphicsBenchmarkTitle);
+  expect(benchmarkRoot?.hidden).toBe(true);
+
+  toggle?.click();
+  expect(benchmarkRoot?.hidden).toBe(false);
+  await vi.waitFor(() => expect(benchmarkRoot?.querySelector('#benchmark-start')).not.toBeNull());
+  expect(benchmarkRoot?.querySelector('#benchmark-start')).not.toBeNull();
+  expect(benchmarkRoot?.querySelector<HTMLElement>('#benchmark-export')?.hidden).toBe(true);
+  unmount();
+});
+
+it('disables graphics controls when the settings overlay returns to a paused preview', () => {
+  const element = root();
+  const action = vi.fn();
+  const state = { kind: 'menu' } as const;
+  const view: ShellView = {
+    state,
+    preview: 'paused',
+    overlay: { kind: 'settings', tab: 'view', returnTo: { kind: 'paused' } },
+  };
+  mountScreen(element, state, context, action, view);
+
+  for (const id of [
+    'graphics-preset',
+    'resolution-scale',
+    'frame-rate-cap',
+    'anti-aliasing',
+    'mirror-quality',
+    'overhead-quality',
+    'graphics-benchmark-toggle',
+  ]) {
+    expect(element.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.disabled)
+      .toBe(true);
+  }
 });
 
 it('updates a stable coach without stealing driving focus or showing running settings', () => {

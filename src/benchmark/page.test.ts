@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMeasurement } from './metrics';
 import { createBenchmarkPage, downloadJson, type BenchmarkPageOptions } from './page';
-import { buildReport, type CaseOutcome } from './report';
+import { buildReport, workloadSettings, type CaseOutcome } from './report';
+import type { SettingsSaveV1 } from '../runtime-types';
 import type { Preview, PreviewEvents, PreviewFrameSample } from '../render/preview';
 import type { SceneAssets } from '../runtime-types';
 
@@ -99,7 +100,9 @@ function harness(extra: Partial<BenchmarkPageOptions> = {}) {
       drawingWidthPx: 2560, drawingHeightPx: 1440, ...over,
     });
   }
-  const finishFrames = () => { for (const t of [10, 20, 30, 40, 50, 60, 70]) frame(t); };
+  const finishFrames = (over: Partial<PreviewFrameSample> = {}) => {
+    for (const t of [10, 20, 30, 40, 50, 60, 70]) frame(t, over);
+  };
   const report = () => {
     $('benchmark-export').click();
     return JSON.parse(downloads[downloads.length - 1]!.text) as Record<string, any>;
@@ -123,6 +126,18 @@ afterEach(() => {
   current = null;
   vi.restoreAllMocks();
   history.replaceState(null, '', '/');
+});
+
+describe('benchmark workload compatibility', () => {
+  it('keeps anti-aliasing off for the existing version-one workload', () => {
+    expect(workloadSettings('driver')).toMatchObject({
+      resolutionScale: 1,
+      frameRateCap: 'display',
+      antialias: false,
+      mirrorQuality: 'high',
+      overheadQuality: 'high',
+    });
+  });
 });
 
 describe('setup validation', () => {
@@ -266,6 +281,139 @@ describe('four-case suite', () => {
     const report = h.report();
     expect(report.timing).toEqual({ warmupMs: 10000, measurementMs: 60000, testOnly: false });
     expect(report.cases[0].status).toBe('invalid');
+  });
+});
+
+describe('settings benchmark panel', () => {
+  it('uses one graphics-settings snapshot for every case in a suite', async () => {
+    const selectedSettings = {
+      ...workloadSettings('driver'),
+      preset: 'custom',
+      resolutionScale: 0.75,
+    } as const;
+    let currentSettings: SettingsSaveV1 = selectedSettings;
+    const getSettings = vi.fn(() => currentSettings);
+    const h = setup({ embedded: true, getSettings });
+    h.fill({ 'meta-refresh': '144' });
+    h.$<HTMLInputElement>('meta-confirm-zoom').checked = false;
+
+    await h.begin();
+    expect(h.live().prototype.settings).toMatchObject({ resolutionScale: 0.75 });
+    h.finishFrames({ drawingWidthPx: 1920, drawingHeightPx: 1080 });
+    expect(h.$('benchmark-results').textContent).toContain('Cấu hình được đo: 75%');
+
+    currentSettings = { ...selectedSettings, resolutionScale: 0.5 };
+    await h.begin();
+
+    expect(h.live().prototype.settings).toMatchObject({ resolutionScale: 0.75 });
+    expect(getSettings).toHaveBeenCalledOnce();
+  });
+
+  it('locks graphics settings until suite results are explicitly cleared', async () => {
+    const locks: boolean[] = [];
+    const h = setup({
+      embedded: true,
+      getSettings: () => workloadSettings('driver'),
+      onSettingsLockChange: (locked: boolean) => locks.push(locked),
+    });
+    h.fill({ 'meta-refresh': '144' });
+    h.$<HTMLInputElement>('meta-confirm-zoom').checked = false;
+
+    for (let index = 0; index < 4; index++) {
+      await h.begin();
+      expect(locks[locks.length - 1]).toBe(true);
+      h.finishFrames({ drawingWidthPx: 1920, drawingHeightPx: 1080 });
+    }
+
+    expect(locks).toEqual([true]);
+    h.$('benchmark-edit-settings').click();
+    expect(locks).toEqual([true, false]);
+    expect(h.$('benchmark-results').textContent).not.toContain('Sedan');
+  });
+
+  it('measures non-reference setups with selected graphics settings and no target verdict', async () => {
+    let selectedSettings: SettingsSaveV1 = workloadSettings('driver');
+    const getSettings = vi.fn(() => selectedSettings);
+    const h = setup({ embedded: true, getSettings });
+    selectedSettings = {
+      ...selectedSettings,
+      preset: 'custom',
+      resolutionScale: 0.75,
+      frameRateCap: 30,
+      antialias: false,
+      mirrorQuality: 'low',
+      overheadQuality: 'low',
+    };
+    h.fill({ 'meta-refresh': '144' });
+    h.$<HTMLInputElement>('meta-confirm-zoom').checked = false;
+    await h.begin();
+
+    expect(getSettings).toHaveBeenCalled();
+    expect(h.live().prototype.settings).toMatchObject({
+      resolutionScale: 0.75,
+      frameRateCap: 30,
+      antialias: false,
+      mirrorQuality: 'low',
+      overheadQuality: 'low',
+    });
+    for (const offset of [10, 20, 30, 40, 50, 60, 70]) {
+      h.frame(offset, { drawingWidthPx: 1920, drawingHeightPx: 1080 });
+    }
+
+    const text = h.$('benchmark-results').textContent ?? '';
+    expect(text).toContain('không so sánh');
+    expect(text).toContain('p95 10.00 ms');
+    expect(text).not.toMatch(/đạt mục tiêu|không đạt mục tiêu/);
+    expect(h.live().preview.dispose).toHaveBeenCalledOnce();
+    expect(selectedSettings).toMatchObject({
+      resolutionScale: 0.75, frameRateCap: 30, antialias: false,
+      mirrorQuality: 'low', overheadQuality: 'low',
+    });
+  });
+
+  it('shows manual suggestions for poor measurements without changing settings', async () => {
+    const selectedSettings = workloadSettings('driver');
+    const h = setup({ embedded: true, getSettings: () => selectedSettings });
+    h.fill();
+    await h.begin();
+    for (const offset of [10, 20, 40, 60, 80]) h.frame(offset);
+
+    const text = h.$('benchmark-results').textContent ?? '';
+    expect(text).toContain('Gợi ý thủ công');
+    expect(text).toContain('giảm tỷ lệ kết xuất');
+    expect(text).not.toMatch(/đạt mục tiêu|không đạt mục tiêu/);
+    expect(selectedSettings).toEqual(workloadSettings('driver'));
+  });
+
+  it('explains that a 30 FPS cap prevents reaching the reference target', async () => {
+    const h = setup({
+      embedded: true,
+      getSettings: () => ({ ...workloadSettings('driver'), frameRateCap: 30 }),
+    });
+    h.fill({ 'meta-refresh': '144' });
+    h.$<HTMLInputElement>('meta-confirm-zoom').checked = false;
+    await h.begin();
+    for (const offset of [10, 20, 40, 60, 80]) h.frame(offset);
+
+    const text = h.$('benchmark-results').textContent ?? '';
+    expect(text).toContain('ít nhất 60 FPS');
+    expect(text).not.toContain('giảm tỷ lệ kết xuất');
+  });
+
+  it('still measures when reference machine and display details are unavailable', async () => {
+    const h = setup({ embedded: true });
+    h.fill({
+      'meta-cpu': '', 'meta-gpu': '', 'meta-ram': '', 'meta-os': '',
+      'meta-driver': '', 'meta-browser': '', 'meta-refresh': '',
+    });
+    h.$<HTMLInputElement>('meta-confirm-zoom').checked = false;
+    await h.begin();
+    h.finishFrames({ drawingWidthPx: 1920, drawingHeightPx: 1080 });
+
+    expect(h.$('benchmark-results').textContent).toContain('p95 10.00 ms');
+    expect(h.$('benchmark-results').textContent).toContain('không so sánh');
+    expect(h.$<HTMLElement>('benchmark-results').querySelector('[data-comparable="false"]'))
+      .not.toBeNull();
   });
 });
 
