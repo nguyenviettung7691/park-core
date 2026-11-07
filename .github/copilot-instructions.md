@@ -50,7 +50,9 @@
 
 ## Development Phases Tracker
 
-When asked to implement a feature, follow this progression. The numbering differs from the technical design, which also includes planning phases.
+When asked to implement a feature, follow this implementation progression.
+The technical design describes the current architecture; it does not define
+phase numbering.
 
 1. **Phase 1:** Setup Vite, Three.js, Purple CSS theme.
 2. **Phase 2:** Cannon-es `RaycastVehicle` & Gamepad API loop.
@@ -59,5 +61,7 @@ When asked to implement a feature, follow this progression. The numbering differ
 5. **Phase 5:** Versioned local progress/settings/calibration, five-stage selection and contiguous unlock foundation; Phase 6 adds lesson outcomes.
 6. **Phase 6:** Five authored lessons, parking evaluation, persistent completed-attempt recaps, and success-only progression; free drive remains a separate sandbox.
 
-Mapping: the technical design's "Phase 2: Design & Scaffolding" corresponds to Phase 1 above, not to this list's Phase 2 (Cannon-es/Gamepad).
+The technical design is a current-state architecture reference, not an
+implementation phase list. Historical phase sequencing and implementation
+evidence remain in the implementation roadmap and phase-specific documents.
 Phase 5's asset/progression foundation is implemented with prototype GLBs and Stage 1 entry. Phase 6 is implemented and merged into local `main`; the remote was not updated, and non-software validation remains pending. See the [Phase 5 plan](../docs/phase-5-implementation-plan.md) and [Phase 6 plan](../docs/phase-6-implementation-plan.md).

@@ -37,8 +37,12 @@ guidance. Reserve green, yellow and red for proximity indicators; do not use
 blue, orange or green as the main UI accent.
 
 The approved benchmark target is 2560x1440 at 60 Hz: p95 frame interval
-<=17.5 ms, mean >=57 FPS and zero frame loss. This is a target, not a measured
-performance guarantee; 144 Hz is optional and unverified.
+<=17.5 ms, mean >=57 FPS and zero lost simulation time (combined catch-up and
+clamp loss). This is a target, not a measured performance guarantee; 144 Hz is
+optional and unverified.
+
+The browser target is desktop Chromium with WebGL2 on Windows 11 and Linux.
+Automated coverage does not certify compatibility across browsers or hardware.
 
 ## 3. Runtime architecture
 
@@ -58,12 +62,13 @@ events rather than reading one another's DOM.
 | Sensors/audio | Front/rear ray sampling, proximity classification and optional beeps |
 | UI/storage | Vietnamese screens and HUD, settings, progress, calibration and completed-attempt history |
 
-Advance physics at `h = 1 / 120 s`, with at most eight steps per rendered
-frame and a maximum incoming wall-clock delta of `0.1 s`. Poll input once per
-animation frame; consume discrete actions once, not once per physics substep.
-After each physics step, process failure before checkpoint and parking success.
-Pause suspends simulation time and clears held input; resuming requires an
-explicit action.
+Advance physics at `h = 1 / 120 s`, with at most eight steps per
+animation-frame callback and a maximum incoming wall-clock delta of `0.1 s`.
+The frame-rate cap gates rendering only; physics continues on callbacks that
+skip a render. Poll input once per callback; consume discrete actions once,
+not once per physics substep. After each physics step, process failure before
+checkpoint and parking success. Pause suspends simulation time and clears held
+input; resuming requires an explicit action.
 
 Bound mirror updates to 15 FPS, overhead-camera updates to 30 Hz, and sensor
 and regular DOM updates to 20 Hz. Render interpolated vehicle poses; do not
@@ -89,9 +94,10 @@ do not certify support for a physical wheel or controller.
 The driver camera is profile-anchored and supports bounded mouse-look. The
 chase camera adjusts around environmental obstructions. Rear and side mirrors
 use RenderTargets with a 15 FPS update cap. The overhead view uses one
-high-altitude orthographic camera and is composited into the HUD at no more
-than 30 Hz. Trajectory lines and camera views are aids, not proof that the
-learner observed an obstacle.
+high-altitude orthographic camera; its RenderTarget updates at no more than
+30 Hz, while the latest texture is drawn into the canvas inset on rendered
+frames under a DOM border and label. Trajectory lines and camera views are
+aids, not proof that the learner observed an obstacle.
 
 Front and rear bumper raycasters provide estimated proximity readings. The
 HUD presents labeled visual warnings using standard green/yellow/red
@@ -120,15 +126,22 @@ mirrors, to fit inside the target inset by `0.05 m`; heading error at most
 `5 degrees`; linear speed below `0.1 m/s`; angular speed below `0.05 rad/s`;
 gear P and the parking brake; and `2.0 s` of continuous compliance. Roadside
 lessons also use their authored `0.15-0.30 m` curb-side body-gap range. Failure
-boundaries include solid contact, leaving bounds, tipping beyond `30 degrees`,
-or exceeding `15 km/h` for one simulation second. A failure wins if failure
-and apparent success occur in the same step.
+boundaries include solid chassis/mirror contact, explicit wheel-side curb
+contact, leaving bounds, tipping beyond `30 degrees`, or exceeding `15 km/h`
+for one simulation second. Non-finite physics is an application error, not a
+learner failure. A failure wins if failure and apparent success occur in the
+same step.
 
 Completed outcomes include a measured recap and persist in browser-local
 attempt history. Only confirmed lesson success unlocks the next contiguous
 stage. `Lái tự do` remains a separate Garage sandbox and cannot award lesson
-progress. Progress, settings and controller calibration use separate
-versioned local records; there are no accounts or cloud synchronization.
+progress. In free drive, contact halts motion until Reset or Menu.
+
+Completed attempt history uses IndexedDB when available and retains a
+session-only recap if persistence fails. Progress, settings (including
+graphics settings), and controller calibration use separate versioned local
+records; onboarding completion uses its own `park-core.onboarding.v1` record.
+There are no accounts or cloud synchronization.
 
 ## 7. Learner interface
 
@@ -136,6 +149,11 @@ The journey includes an introductory tutorial, lesson selection, an explicit
 briefing/start boundary, a compact in-drive coach, pause/settings/help, and a
 success or failure recap. Free drive, attempt history and tutorial replay are
 separate navigation choices. Settings stay out of the active driving HUD.
+Graphics settings provide High, Balanced and Performance presets, render
+scale, frame-rate cap, anti-aliasing, and mirror/overhead quality controls.
+The settings screen can open an embedded `Đo hiệu năng` panel using the
+selected graphics configuration. The separate `/benchmark.html` page runs
+four fixed vehicle/view cases and supports JSON report export.
 
 Use semantic keyboard-operable controls, visible focus, clear Vietnamese
 labels and polite announcements for discrete lesson transitions. Keep
@@ -154,8 +172,9 @@ bakes. See the [asset pipeline](asset-pipeline.md) and
 provenance, payloads, render-call samples and software evidence.
 
 Application code, functional tooling and technical documentation are MIT
-licensed. The new artwork, its creative source definitions and
-artwork-focused images use CC BY-NC 4.0; earlier MIT grants remain valid.
+licensed. The artwork GLBs in `public/assets`, creative definitions in
+`tools/asset-designs`, and artwork-focused images in `docs/images/phase-8` use
+CC BY-NC 4.0; earlier MIT grants remain valid.
 License notices are in [`public/assets/LICENSE`](../public/assets/LICENSE),
 [`tools/asset-designs/LICENSE`](../tools/asset-designs/LICENSE) and
 [`docs/images/phase-8/LICENSE`](images/phase-8/LICENSE).
@@ -175,5 +194,7 @@ has not established a result on reference hardware. Supported-hardware,
 physical-wheel, instructor, learner, route-feasibility and training-readiness
 validation remain separate from software acceptance.
 
-See the [detailed design](detail-design.md) for current behavior and
-constraints, and the [README](../README.md) for developer setup and controls.
+See the [detailed design](detail-design.md) for approved product requirements,
+and the [README](../README.md) for current setup, controls and deployment.
+Current asset details and measurements are in the linked asset pipeline and
+catalog.

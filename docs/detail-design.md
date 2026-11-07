@@ -4,7 +4,7 @@ Date: 2026-11-02
 
 Status: Approved by the project owner on 2026-11-02; not an implementation or validated simulation
 
-Scope: Phase 0 of [the technical design](tech-design.md)
+Scope: Approved product behavior and constraints; see [the technical design](tech-design.md) for the current system overview.
 
 Implementation evidence (2026-11-05): Finding 3's ten-case software completion
 gap is closed by [Pages run 41981753519](https://github.com/nguyenviettung7691/park-core/actions/runs/41981753519)
@@ -81,10 +81,9 @@ Use plain lesson data and a small set of explicit checkpoint predicates, not a
 generic workflow engine, scripting language or generative instructor. Sensor
 warnings remain continuous and independent of lesson instructions.
 
-The existing technical design's implementation phase numbering remains
-authoritative for its planning documents. The repository instructions number
-only implementation phases, so their Phase 1 corresponds to technical-design
-Phase 2. This document covers technical-design Phase 0 only.
+The technical design is a current-state architecture overview, not an
+implementation-phase index. This document records approved product behavior
+and constraints; implementation evidence remains in the phase-specific plans.
 
 ## 3. Runtime boundaries and update order
 

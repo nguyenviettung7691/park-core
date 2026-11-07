@@ -27,6 +27,8 @@ Vietnamese.
   Free drive remains a separate garage sandbox.
 - **Driving views:** Driver and chase cameras, mirrors, an overhead view, and
   trajectory guidance.
+- **Graphics settings:** High, Balanced and Performance presets, plus render
+  scale, frame-rate cap, anti-aliasing, mirror and overhead quality controls.
 - **Input:** Keyboard controls and calibrated Gamepad API / simulation-wheel
   input.
 - **Parking sensors:** Front and rear proximity readings presented in the HUD.
@@ -37,10 +39,12 @@ Vietnamese.
   environments; `src/render` and `src/views` handle rendering and cameras;
   `src/input`, `src/lessons`, `src/sensors`, `src/storage`, and `src/ui`
   implement controls, lesson logic, proximity data, persistence, and interface.
-- **Performance benchmark:** `/benchmark.html` is a standalone page with four
-  fixed vehicle/view cases and JSON report export. The approved target is
-  1440p at 60 Hz (p95 frame time <=17.5 ms, mean >=57 FPS, and zero loss);
-  this is a benchmark target, not a measured performance guarantee.
+- **Performance measurement:** Pause settings include the `Đo hiệu năng` panel
+  for the selected graphics configuration. `/benchmark.html` is a standalone
+  page with four fixed vehicle/view cases and JSON report export. The approved
+  target is 1440p at 60 Hz (p95 frame interval <=17.5 ms, mean >=57 FPS, and zero
+  lost simulation time from catch-up or clamping); this is a target, not a
+  measured performance guarantee.
 
 ## Learning Experience
 

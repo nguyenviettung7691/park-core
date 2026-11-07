@@ -131,19 +131,12 @@ Keep telemetry out of frame-rate live announcements. The Menu exposes separate
 lesson, history, and `Lái tự do` actions. Recap history lists date, stage,
 vehicle, and result, with a detail view and confirmed reset.
 
-## Tier routing
+## Relationship to the current technical design
 
-Follow the project-defined tiers in `docs/tech-design.md`:
-
-- **Premium:** oriented-envelope geometry, curb-gap calculations, and
-  route/physics geometry.
-- **Standard:** checkpoint/failure/parking evaluation, typed state and storage
-  integration, and cross-system verification.
-- **Lightweight:** repetitive DOM/CSS scaffolding only after contracts and
-  behavior are fixed.
-
-These are task-routing requirements, not claims about which model executed
-each historical change.
+This document records the approved lesson behavior and values for Phase 6.
+The current system overview and global constraints are in
+[`docs/tech-design.md`](tech-design.md). This design does not prescribe model
+routing or claim which model implemented it.
 
 ## Validation boundary
 
