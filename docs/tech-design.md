@@ -1,119 +1,179 @@
-# Park-Core: Technical Design Document
+# Park-Core: Technical Design
 
-## 1. Project Overview & Architecture
+## 1. Product and current scope
 
-**Objective:** A web-based 3D first-person/third-person automatic car parking simulator focused on guidance and spatial training, supporting Sim Wheel devices via the HTML5 Gamepad API.
-**Development Constraint:** Architected strictly to remain under the GitHub Copilot Pro+ $70/month usage limit by aggressively optimizing 3D physics scope and avoiding complex real-time shader generation.
+Park-Core is a browser-based 3D parking simulator for practicing low-speed
+maneuvers and spatial awareness. The current prototype supports a tutorial-first
+journey, five authored parking lessons, a separate free-drive sandbox, and
+local learner progress and attempt history. Learner-facing instructions and
+controls are in Vietnamese.
 
-**Tech Stack:**
+The simulator uses simplified vehicle dynamics, estimated proximity sensors,
+authored scenario geometry and generic prototype artwork. It is not an official
+driving test or a substitute for qualified instruction or supervised practice.
+Software acceptance does not establish learner competence, training
+readiness, instructor approval, supported-hardware compatibility or
+reference-PC performance.
 
-* **Core Engine:** Three.js (WebGL rendering), targeting 1440p at 60 Hz (p95 <=17.5 ms, mean >=57 FPS, zero loss; 144 Hz is optional). The target is not yet measured on reference hardware; see the benchmark page `/benchmark.html` and `docs/detail-design.md`.
-* **Physics Engine:** Cannon-es (lightweight 3D physics) for rigid body dynamics, raycast vehicle physics, and bounding box collisions.
-* **Language & Tooling:** TypeScript and Vite for strict typing and rapid prototyping within VS Code/Cursor AI environments.
-* **UI Framework:** Vanilla DOM elements overlaying the WebGL canvas to minimize framework overhead.
-* **Design Language:** High-contrast minimalist UI utilizing Amethyst Purple (`#9B59B6`) for active UI states, target parking zones, and trajectory lines.
-* **Target Platforms:** Cross-platform browser support, ensuring WebGL compatibility across both Windows 11 and Linux environments.
+## 2. Stack and engineering constraints
 
-## 2. Vehicle Profiles & Physics
+- **Application:** strict TypeScript and Vite.
+- **Rendering:** Three.js with one WebGL renderer and vanilla HTML/CSS DOM
+  overlays.
+- **Physics:** Cannon-es `RaycastVehicle`, Ackermann steering and explicit
+  box colliders for the environments and lesson scenarios.
+- **Tests:** Vitest for unit/DOM/physics/asset checks and Playwright for
+  Chromium browser and production checks.
+- **Runtime:** Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`; dependencies and
+  commands are defined in `package.json`.
 
-The simulator restricts the drivetrain to automatic transmissions (P, R, N, D), heavily relying on simulated idle creep to mimic the low-speed maneuvering required for parking. Steering utilizes Ackermann geometry via the Cannon-es `RaycastVehicle`.
+Keep the renderer, physics loop and UI lightweight. Use static artwork,
+vertex-color or unlit materials and simple uncast lights. Do not add dynamic
+shadows, weather, procedural cities, custom shaders, a UI framework or a heavy
+graphics/architecture layer.
 
-**Vehicle Form Factors:**
+Use Amethyst Purple (`#9B59B6`) for active states, target zones and trajectory
+guidance. Reserve green, yellow and red for proximity indicators; do not use
+blue, orange or green as the main UI accent.
 
-* **Standard Sedan:** Lower center of gravity, longer wheelbase, and standard turning radius.
-* **B-Segment CUV (Crossover):** Elevated driver eye-level, higher ground clearance, and a shorter wheelbase, explicitly modeled around the spatial dimensions of modern urban crossovers like the Toyota Yaris Cross, Mitsubishi Xforce, or Honda HR-V.
+The approved benchmark target is 2560x1440 at 60 Hz: p95 frame interval
+<=17.5 ms, mean >=57 FPS and zero frame loss. This is a target, not a measured
+performance guarantee; 144 Hz is optional and unverified.
 
-## 3. Vision & Support Systems
+## 3. Runtime architecture
 
-* **Camera POVs:**
-* **1st Person:** Fixed at the driver's head position with mouse-look capability to check blind spots.
-* **3rd Person:** Orbit camera with collision detection against environmental walls.
+The application owns session transitions, asset loading, UI and disposal. A
+session uses one active vehicle, one environment, one renderer and one
+fixed-step simulation loop. Systems exchange typed commands, telemetry and
+events rather than reading one another's DOM.
 
+| Boundary | Responsibility |
+|---|---|
+| Application/session | Menu, loading, onboarding, briefing, pause, outcome, retry and resource lifecycle |
+| Input | Keyboard, selected Gamepad API device, calibration, discrete actions and normalized commands |
+| Vehicle | Profile-based physics, steering, drivetrain, wheel poses and telemetry |
+| Environment/scenario | GLB visuals, explicit collider metadata, bounds, spawn, target and lesson data |
+| Lessons/progression | Advisory checkpoints, parking evaluation, failure, recap and success-only unlocks |
+| Views | Driver/chase cameras, mirrors, overhead composition and trajectory guidance |
+| Sensors/audio | Front/rear ray sampling, proximity classification and optional beeps |
+| UI/storage | Vietnamese screens and HUD, settings, progress, calibration and completed-attempt history |
 
-* **Mirrors:** Low-resolution RenderTargets applied to plane geometries for the rearview and convex side mirrors, capped at 15 FPS to conserve draw calls.
-* **360-Degree Camera System:** Simulated using a single high-altitude orthographic camera looking directly down at the vehicle, composited into the HUD.
-* **Parking Sensors:** Raycasters mounted on the front and rear bumpers. The UI displays green/yellow/red proximity arcs with corresponding audio beeps based on distance to obstacles.
+Advance physics at `h = 1 / 120 s`, with at most eight steps per rendered
+frame and a maximum incoming wall-clock delta of `0.1 s`. Poll input once per
+animation frame; consume discrete actions once, not once per physics substep.
+After each physics step, process failure before checkpoint and parking success.
+Pause suspends simulation time and clears held input; resuming requires an
+explicit action.
 
-## 4. Hardware Input & Controls
+Bound mirror updates to 15 FPS, overhead-camera updates to 30 Hz, and sensor
+and regular DOM updates to 20 Hz. Render interpolated vehicle poses; do not
+add another renderer or simulation loop for auxiliary views.
 
-* **Standard Input:** WASD/Arrows for throttle and steering, Mouse for camera look.
-* **Sim Wheel / Gamepad API:**
-* `axes[0]`: Steering wheel input.
-* `buttons[6]` (L2): Brake pedal.
-* `buttons[7]` (R2): Throttle pedal.
-* `buttons[4]` requests R and `buttons[5]` requests D (explicit edge-triggered requests, not a toggle).
+## 4. Vehicles and controls
 
-## 5. Environments & Progression
+The two generic profiles are a Standard Sedan and a B-segment CUV. Vehicle
+roots use meters, +Y up, -Z forward and a center-of-mass origin. The automatic
+drivetrain has P, R, N and D; D includes simulated idle creep. Steering uses
+Ackermann geometry with Cannon-es `RaycastVehicle` mechanics. Physics and
+dimensions are prototype tuning values, not manufacturer specifications.
 
-The product target uses static lighting and five sequential parking lessons. Phase 5 delivered the asset-loading and progression foundation: four original prototype GLBs, validated asynchronous loading, versioned local records, and a stage selector. Phase 6 adds the five lesson runtimes and measured outcomes: Stage 1 is the Garage forward-bay lesson, and only confirmed success unlocks the next stage. `Lái tự do` retains the separate Garage sandbox without lesson completion. [Phase 8](phase-8-asset-catalog.md) replaces the blank artwork with original shaped vehicles, cockpits, environments and visible parked lesson cars. This does not claim production art, image-based light bakes, dynamically driveable routes, or validated training readiness.
+Keyboard is the default input: WASD or arrow keys for throttle, braking and
+steering, and mouse for camera look. Gamepad API input supports a selected and
+calibrated controller profile; `axes[0]` is steering, `buttons[6]` is brake,
+and `buttons[7]` is throttle. `buttons[4]` and `buttons[5]` are explicit,
+edge-triggered requests for R and D. Calibration and suggested profile names
+do not certify support for a physical wheel or controller.
 
-* **Environment 1: Urban Roadside.** Static daylight. Focuses on parallel parking between low-poly vehicles and navigating standard curbs.
-* **Environment 2: Underground Garage.** Static unlit concrete artwork with fixed vertex-color shading; no image bake or new lights. Focuses on reverse-perpendicular parking, tight concrete pillars, and spatial alignment using the 360-degree camera.
-* **Failure State:** In lessons, collision and other failure boundaries stop the attempt and show its recap; Retry starts a fresh attempt. Sandbox contact stops driving until Reset or Menu.
+## 5. Views and proximity guidance
 
-**Delivery:** The prototype is a static Vite build (`dist`) hosted at the root of `https://park-core.nguyenviettung.id.vn/` through GitHub Pages and Actions. Pull requests and `main` pushes are validated (unit, typecheck, build, Chromium browser tests and a production-preview smoke test of built JS/CSS/GLBs); only a passing `main` run deploys, with manual reruns. Firefox automated coverage is excluded by owner decision (2026-11-05), not a timing fix or compatibility certification. Setup, domain/DNS/HTTPS and recovery steps are in the README. Live availability remains unverified until the owner enables Pages and a deployment is observed.
+The driver camera is profile-anchored and supports bounded mouse-look. The
+chase camera adjusts around environmental obstructions. Rear and side mirrors
+use RenderTargets with a 15 FPS update cap. The overhead view uses one
+high-altitude orthographic camera and is composited into the HUD at no more
+than 30 Hz. Trajectory lines and camera views are aids, not proof that the
+learner observed an obstacle.
 
-## 6. AI Implementation Plan & Model Routing
+Front and rear bumper raycasters provide estimated proximity readings. The
+HUD presents labeled visual warnings using standard green/yellow/red
+proximity states; optional audio beeps require a deliberate user action to
+unlock and stop on pause, outcome or disposal. Sensors are guidance aids, not
+proof of safe clearance, and visual warnings remain available when audio is
+muted or unavailable.
 
-To maximize the Copilot Pro+ token budget, prompt tasks must be strictly routed based on model capability and cost.
+## 6. Environments, lessons and progression
 
-**AI Model Tier Strategy**
+The current environments are an urban roadside and an underground garage.
+They use static low-poly artwork and explicit collider metadata. Collision
+geometry comes from authored boxes, not render-mesh inference.
 
-* **Tier 1: Premium (e.g., Claude 3 Opus):** Highest token cost. Reserve strictly for complex 3D mathematics, physics tuning, and architectural foundations where hallucinations cause hours of debugging.
-* **Tier 2: Standard (e.g., Claude 3.5 Sonnet):** Best capability-to-cost ratio. Use for core game logic, state management, and UI integration.
-* **Tier 3: Lightweight (e.g., Claude 3 Haiku / GPT-4o-mini):** Lowest cost. Use for boilerplate generation, CSS styling, repetitive data structures, and file scaffolding.
+The five lessons are:
 
-Here is the detailed task breakdown mapped to the optimal AI model tiers.
+1. Garage forward-bay parking.
+2. Garage reverse-bay parking.
+3. Roadside reverse-parallel parking.
+4. Narrow garage reverse-bay parking.
+5. Adapted roadside parallel parking.
 
-**Phase 0: Draft Detail Design Document**
+Checkpoints provide advisory guidance; they do not prescribe one exact path.
+Parking success requires the complete oriented vehicle envelope, including
+mirrors, to fit inside the target inset by `0.05 m`; heading error at most
+`5 degrees`; linear speed below `0.1 m/s`; angular speed below `0.05 rad/s`;
+gear P and the parking brake; and `2.0 s` of continuous compliance. Roadside
+lessons also use their authored `0.15-0.30 m` curb-side body-gap range. Failure
+boundaries include solid contact, leaving bounds, tipping beyond `30 degrees`,
+or exceeding `15 km/h` for one simulation second. A failure wins if failure
+and apparent success occur in the same step.
 
-* **Define Physics Parameters & Kinematics:** Outline the mass, friction coefficients, suspension stiffness, and Ackermann steering formulas for the Sedan and CUV.
-* *Model:* Premium (Opus). Physics parameter relationships require deep reasoning to prevent unstable simulation behavior.
+Completed outcomes include a measured recap and persist in browser-local
+attempt history. Only confirmed lesson success unlocks the next contiguous
+stage. `Lái tự do` remains a separate Garage sandbox and cannot award lesson
+progress. Progress, settings and controller calibration use separate
+versioned local records; there are no accounts or cloud synchronization.
 
-* **Define Game State Interfaces:** Write the TypeScript interfaces for the progression system, vehicle telemetry, and sensor data structures.
-* *Model:* Standard.
+## 7. Learner interface
 
-* **UI/UX Blueprint:** Specify the DOM overlay hierarchy, CSS Grid layouts, and the implementation of the Amethyst Purple accent color for targets and HUD elements.
-* *Model:* Lightweight.
+The journey includes an introductory tutorial, lesson selection, an explicit
+briefing/start boundary, a compact in-drive coach, pause/settings/help, and a
+success or failure recap. Free drive, attempt history and tutorial replay are
+separate navigation choices. Settings stay out of the active driving HUD.
 
-**Phase 1: Draft Implement Plan Document**
+Use semantic keyboard-operable controls, visible focus, clear Vietnamese
+labels and polite announcements for discrete lesson transitions. Keep
+telemetry out of frame-rate announcements, preserve urgent visual warnings,
+and respect reduced-motion preferences. A 3D interface is not a claim of full
+nonvisual accessibility.
 
-* **Generate Prompt Templates:** Draft strict system prompts to be used in the implementation phase (e.g., "Write Three.js code without explanations, use TypeScript strict mode").
-* *Model:* Standard.
+## 8. Assets and licensing
 
-* **Task Sequencing & Chunking:** Break down the implementation into highly isolated files (e.g., `VehicleController.ts`, `RenderEngine.ts`) so context windows stay small during coding.
-* *Model:* Standard.
+The selected Sedan/CUV and garage/roadside GLBs use original, generic shaped
+geometry with static vertex colors and unlit materials. Parked lesson cars
+reuse vehicle artwork; they do not add physics vehicles. The assets use no
+external image resources, dynamic shadows, custom shaders or image-based light
+bakes. See the [asset pipeline](asset-pipeline.md) and
+[illustrated asset catalog](phase-8-asset-catalog.md) for dimensions,
+provenance, payloads, render-call samples and software evidence.
 
-* **Asset Pipeline Setup:** Define the exact export settings required for Blender (GLTF format, baked lighting textures, Z-up to Y-up conversion).
-* *Model:* Lightweight.
+Application code, functional tooling and technical documentation are MIT
+licensed. The new artwork, its creative source definitions and
+artwork-focused images use CC BY-NC 4.0; earlier MIT grants remain valid.
+License notices are in [`public/assets/LICENSE`](../public/assets/LICENSE),
+[`tools/asset-designs/LICENSE`](../tools/asset-designs/LICENSE) and
+[`docs/images/phase-8/LICENSE`](images/phase-8/LICENSE).
 
-**Phase 2: Design & Scaffolding**
+## 9. Deployment and validation boundaries
 
-* **Tasks:** Initialize Vite, TypeScript configuration, Three.js rendering loop, base Amethyst Purple CSS theme, and HUD DOM containers. Write TypeScript interfaces for game states and vehicle telemetry. Phase 2 delivers only a static, non-drivable renderer preview (no physics, input or assets); see [the phase design](phase-2-detail-design.md) and [the phase plan](phase-2-implementation-plan.md).
-* **Model Routing:** Lightweight (Claude 3 Haiku / GPT-4o-mini) for boilerplate and CSS. Standard (Claude 3.5 Sonnet) for TypeScript interfaces.
+The Pages workflow validates pull requests and pushes to `main` with unit
+tests, typecheck, production build, Chromium `@smoke` browser checks and
+production-preview checks. A passing run on `main` deploys the static `dist`
+build to [park-core.nguyenviettung.id.vn](https://park-core.nguyenviettung.id.vn/);
+the workflow can also be started manually. See the README for setup, domain,
+DNS, HTTPS and recovery guidance.
 
-**Phase 3: Physics & Input Mechanics**
+Automated browser coverage is Chromium-only and does not certify other
+browsers or physical controller support. The approved 1440p/60 Hz benchmark
+has not established a result on reference hardware. Supported-hardware,
+physical-wheel, instructor, learner, route-feasibility and training-readiness
+validation remain separate from software acceptance.
 
-* **Tasks:** Implement Cannon-es world, configure the `RaycastVehicle` (suspension, friction, Ackermann steering), and implement the Gamepad API polling loop.
-* **Phase 3 scope:** implemented drivable physics prototype (real `RaycastVehicle` for both vehicles, keyboard and explicitly calibrated Gamepad input, external follow camera, truthful telemetry); no lessons, mirrors, sensors or assets. See the approved [phase design](phase-3-detail-design.md), [phase plan](phase-3-implementation-plan.md) and [measurement report](phase-3-measurements.md), including the owner-approved version-specific braking correction. Software gates: 167 unit/DOM/physics tests, typecheck/build, 12 Chromium/Firefox tests; independent review and its verified correction complete, merged into local `main` with owner approval. Nothing pushed.
-* **Model Routing:** Premium (Claude 3 Opus) for Cannon-es physics tuning to prevent mathematical hallucinations. Standard for input polling.
-
-**Phase 4: Vision & Support Systems**
-
-* **Phase 4 scope:** Add profile-anchored driver and collision-adjusted chase views, bounded mouse-look with pointer-lock safety, rear/side mirrors, a simulated overhead view, estimated trajectory aids, and front/rear proximity sensors with labeled visual warnings and optional audio. Integrate them into the existing preview loop, renderer and Vietnamese HUD.
-* **Prototype boundary:** Current cockpit/mirror geometry and anchors are placeholders. Trajectory and sensors are guidance only; this phase does not deliver lessons, parking evaluation, release assets, validated vehicle/hardware support or training-readiness evidence. See [the phase detail design](phase-4-detail-design.md) and [the phase implementation plan](phase-4-implementation-plan.md).
-* **Constraints:** Keep one WebGL renderer and the preview's single simulation/animation loop. Bound mirror updates to 15 Hz, overhead updates to 30 Hz and sensor/DOM updates to 20 Hz. Audio unlocks only after a deliberate user action and stops on pause, outcome and disposal; visual warnings remain available when audio is muted or unavailable.
-* **Model Routing:** Premium for camera/projection and trajectory geometry; Standard for preview lifecycle, sensor/audio behavior and cross-system verification; Lightweight only for repetitive CSS/DOM scaffolding after interfaces and behavior are fixed.
-* **Validation status:** Prototype software gates pass; labeled mirror-landmark, garage-wall, supported-Node, asset, wheel and reference-hardware validation remain pending. See the [phase detail design](phase-4-detail-design.md) and [phase plan](phase-4-implementation-plan.md) for evidence and limits.
-
-**Phase 5: Assets & Progression Foundation — Implemented**
-
-* **Delivered:** Original deterministic Sedan, CUV, Roadside and Garage GLBs; named anchor/dimension validation; explicit collider metadata; cancellable selected-pair loading and disposal; versioned progress/settings/calibration storage; contiguous stage locks; Stage 1 Garage sandbox.
-* **Asset fidelity:** Phase 8 replaces the original box prototypes with shaped, original vertex-color vehicles and environments. See the [illustrated asset catalog](phase-8-asset-catalog.md) and [current pipeline](asset-pipeline.md). These remain generic game artwork, not validated manufacturer models or image-based light bakes.
-* **Validation status:** Software checks are recorded in the Phase 5 implementation plan. Mirror sightlines, environment clearance, route feasibility, real-wheel behavior, supported-Node execution, reference-PC performance, production art and instructor review remain pending.
-
-**Phase 6: Lessons & Parking Evaluation — Implemented and Merged Locally**
-
-* **Delivered:** Five authored lesson scenarios, advisory checkpoints, full-envelope parking evaluation, collision/failure outcomes, uniform durable recaps, IndexedDB history, retry, and success-only contiguous progression. `Lái tự do` remains a separate Garage sandbox that cannot unlock stages.
-* **Explicit boundary:** Geometric route witnesses and browser/software acceptance do not establish dynamic route drivability, instructor approval, vehicle or wheel support, reference-PC performance, production-art quality, learner competence, or training readiness.
-* **Status and evidence:** Implemented on the isolated `phase-6-lessons-parking-evaluation` branch and merged into local `main` as `1f372bd` after owner approval; nothing was pushed. See the [Phase 6 detail design](phase-6-detail-design.md), [implementation plan](phase-6-implementation-plan.md), and [approved design](superpowers/specs/2026-11-04-phase-6-lessons-parking-evaluation-design.md). External validation remains pending.
+See the [detailed design](detail-design.md) for current behavior and
+constraints, and the [README](../README.md) for developer setup and controls.

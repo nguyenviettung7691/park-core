@@ -47,9 +47,8 @@ Vietnamese.
 ![Illustrated Vietnamese introduction explaining the parking goal](docs/images/phase-7/onboarding.png)
 
 *A skippable, replayable introduction teaches the goal before the first drive.
-The updated Stage 1 capture above shows original CUVs and garage artwork;
-chase and overhead views were explicitly enabled. Settings stay out of the
-driving HUD.*
+The driving capture above shows the original CUV and garage artwork with
+chase and overhead views enabled. Settings stay outside the driving HUD.*
 
 ![Completed Stage 1 recap with a clear next action and optional detailed metrics](docs/images/phase-7/lesson-recap.png)
 
@@ -141,16 +140,12 @@ checks do not establish instructor approval, supported-hardware compatibility,
 learner competence, or training readiness. The simulator is not a substitute
 for qualified instruction or supervised real-world practice.
 
-## Project Documentation
+## Design and Asset References
 
 - [Technical design](docs/tech-design.md)
 - [Detailed design](docs/detail-design.md)
-- [Implementation roadmap and phase documents](docs/implementation-plan.md)
-- [Phase 3 physics measurements](docs/phase-3-measurements.md)
 - [Asset pipeline and provenance](docs/asset-pipeline.md)
-- [Phase 8 illustrated asset catalog](docs/phase-8-asset-catalog.md)
-- [Phase 7 UI/UX design and verification](docs/phase-7-ui-ux-improve.md)
-- [Production-readiness change history](PRODUCTION-READINESS-REVIEW.md)
+- [Original asset catalog](docs/phase-8-asset-catalog.md)
 
 ## License
 
