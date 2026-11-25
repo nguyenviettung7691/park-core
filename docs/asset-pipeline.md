@@ -118,6 +118,13 @@ generator/loader/view tests and the candidate browser review, using Playwright's
 existing local server. It fails on stale candidate bytes, test failures or missing
 browser tooling. It does not copy candidates into public assets or approve them.
 Install the project's locked dependencies and Playwright Chromium when missing.
+Known limitation: the focused unit run includes the "checked-in GLBs in sync"
+test. When the authoring source changes, that test fails until the approved GLB
+is promoted, so a pre-promotion `assets:review` stops before the browser step.
+Until the command handles this, run the focused unit tests (expecting only that
+failure) and run `asset-review.spec.ts` directly with the `PARK_CORE_REVIEW_*`
+variables. After promotion, rerun the full `assets:review`, which must pass.
+The sedan exterior redesign for issue #12 followed this path.
 If dimensional/anchor changes make the old public GLB incompatible with the new
 contract, the report labels its baseline unavailable. Use the pre-edit review for
 comparison; do not bypass validation just to obtain a before image.

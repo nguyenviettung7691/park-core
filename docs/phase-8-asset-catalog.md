@@ -7,15 +7,20 @@ meshes, dynamic shadows or custom shaders.
 
 ## Vehicles
 
-The amethyst sedan has a low three-box body, rounded hood and separate angular
-trunk. The ivory/charcoal CUV has a taller cabin, roof rails, wheel-arch cladding,
-an upright hatch and vertical rear lamps. Both include handles, door seams,
-grilles, bumpers, static lamp colors, mirror housings and independently animated
-alloy wheels. Designs are generic and unbranded.
+The amethyst sedan has a boxy three-box body. Its lower shell is closed: hood,
+belt ledges, trunk deck, fascias, floor and lined wheel wells all share edges.
+It has a faceted hood with a raised center panel, painted A/B/C pillars and
+roof rails meeting the glass, four doors with a front quarter window, dark
+wrap-around bumpers, a grille between rectangular headlamps, red/amber tail
+lamps, an amber rear side marker and an exhaust tip. The ivory/charcoal CUV has a
+taller cabin, roof rails, wheel-arch cladding, an upright hatch and vertical rear
+lamps. Both include handles, door seams, grilles, bumpers, static lamp colors,
+mirror housings and independently animated alloy wheels. Designs are generic and
+unbranded.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 2,854 | 30 / 21 | 200,548 |
+| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 3,364 | 30 / 21 | 237,844 |
 | [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 2,970 | 30 / 21 | 209,464 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
@@ -23,9 +28,20 @@ even when one is hidden. Both are below the 10,000-triangle vehicle gate.
 
 ### Sedan: front and rear
 
-![Amethyst sedan, rounded front hood and alloy wheels](images/phase-8/sedan-front.png)
+Sedan exterior redesigned for issue #12 (captured 2026-11-25). The windshield foot
+moved back to z = -1.68 m and the rear-window foot forward to 1.75 m. The hood is
+now 0.62 m (was 0.43 m) and the trunk deck 0.55 m (was 0.93 m). The roof rear
+moved to z = 0.85 m and the side glass leans in from 0.81 to 0.72 m half-width.
+These values are inferred from two reference views, not measured. The unchanged
+dashboard limits how far back the windshield can go, so the hood ratio is still
+shorter than the reference. The cockpit and its headliner, physical profile,
+wheel positions, eye and mirror anchors are unchanged. The visual/physical Z-extent
+mismatch is also unchanged. Each side mirror housing gains a low arm to the door
+belt, below the driver's sightline.
 
-![Sedan rear, separate trunk and horizontal red lamps](images/phase-8/sedan-rear.png)
+![Amethyst sedan, faceted hood, grille, headlamps and wrap-around bumper](images/phase-8/sedan-front.png)
+
+![Sedan rear, short trunk deck, red/amber tail lamps, plate and exhaust](images/phase-8/sedan-rear.png)
 
 ### CUV: front and rear
 
@@ -109,7 +125,7 @@ driving surface; they do not introduce traversable solid-looking buildings.
 Every existing lesson obstacle now has a visible stationary car, reusing the
 selected vehicle's exterior and wheels without its cockpit or live mirror
 surfaces. Each owns cloned geometry/materials and is fitted to the exact
-collider box before applying its yaw. Stationary geometry is 2,252 triangles
+collider box before applying its yaw. Stationary geometry is 2,754 triangles
 for sedan and 2,368 for CUV, below the 4,000-triangle gate.
 
 ![Stage 1 parked CUV obstacles beside the unchanged lesson target](images/phase-8/lesson-parked-cars.png)

@@ -17,6 +17,15 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   const exterior = addNode('Exterior', root);
   const part = (size, center, color, rotation) =>
     transformGeometry(boxGeometry(size, color), center, rotation);
+  if (!cuv) {
+    authorSedanExterior({ addNode, addMesh }, data,
+      { exterior, paint, part, frontZ, rearZ, half, belt, roofY, roofFront });
+    authorCockpit({ root, addNode, addMesh, box }, data,
+      { belt, eyeZ, roofRear, roofFront, roofY, part });
+    authorWheels({ root, addMesh }, data, { frontZ, rearZ, part });
+    authorMirrors({ root, addNode, addMesh }, data, exterior, true);
+    return;
+  }
   const widthAt = (z) => width / 2 - Math.max(0, -z - (half - 0.45)) * 0.38 -
     Math.max(0, z - (half - 0.2)) * 0.22;
   const archRadius = data.tireRadiusM + 0.075;
@@ -169,7 +178,190 @@ function authorWheels({ root, addMesh }, data, { frontZ, rearZ, part }) {
   }
 }
 
-function authorMirrors({ root, addNode, addMesh }, data, exterior) {
+// Sedan exterior shell: one closed lofted lower body (hood, belt ledges, trunk deck,
+// fascias, floor and lined wheel wells) plus a greenhouse whose glass and pillar
+// panels share edges, so no interior cavity shows from outside.
+// Inferred from a two-view reference: windshield foot is limited by the unchanged
+// dashboard, so the hood/trunk ratio is approximate. The roof front stays on the
+// cockpit headliner; physical profile, eye and mirror anchors are unchanged.
+function authorSedanExterior({ addNode, addMesh }, data, s) {
+  const { exterior, paint, part, frontZ, rearZ, half, belt, roofY, roofFront } = s;
+  const roofRear = 0.85; // inferred: roof covers the rear bench; cockpit headliner keeps its old extent
+  const sill = data.clearanceM, tire = data.tireRadiusM;
+  const archRadius = tire + 0.075;
+  const wsFoot = -1.68, rearFoot = 1.75, glassBase = 0.81, glassTop = 0.72;
+  const hoodNose = 0.74, crown = 0.03, wellInner = 0.5, railH = 0.045;
+  const quarterZ = -1.0, pillarB = 0.1, doorRearZ = 0.95, cPillarTopZ = 0.72;
+  const well = [0.09, 0.09, 0.1], seam = [0.12, 0.11, 0.13];
+  const amber = [0.86, 0.46, 0.06], lampRed = [0.65, 0.06, 0.09];
+  const widthAt = (z) => data.bodySizeM[0] / 2 - Math.max(0, -z - (half - 0.3)) * 0.2 -
+    Math.max(0, z - (half - 0.2)) * 0.2;
+  const hoodT = (z) => Math.min(1, Math.max(0, (z + half) / (wsFoot + half)));
+  const topAt = (z) => z < wsFoot ? hoodNose + (belt - hoodNose) * (1 - (1 - hoodT(z)) ** 2) : belt;
+  const crownAt = (z) => z < wsFoot ? crown * (1 - hoodT(z)) : 0;
+  const axles = [frontZ, rearZ];
+  const archAxle = (z) => axles.find((axle) => Math.abs(z - axle) < archRadius);
+  const archY = (z, axle) => tire + Math.sqrt(Math.max(0, archRadius ** 2 - (z - axle) ** 2));
+  const archPoints = (axle) => Array.from({ length: 13 }, (_, i) =>
+    [axle + archRadius * Math.cos(i * Math.PI / 12), tire + archRadius * Math.sin(i * Math.PI / 12)]);
+
+  const sections = new Set([-half, -half + 0.1, -half + 0.3, -half + 0.5, -1.95, wsFoot,
+    rearFoot, half - 0.2, half]);
+  for (const axle of axles) for (const [z] of archPoints(axle)) sections.add(z);
+  const zs = [...sections].sort((a, b) => a - b);
+  const faces = [], hoodFaces = [];
+  const hoodColumns = [-1, -0.4, 0.4, 1];
+  const hoodPoint = (z, f) => [f * widthAt(z), topAt(z) + (Math.abs(f) < 1 ? crownAt(z) : 0), z];
+  for (let i = 0; i < zs.length - 1; i++) {
+    const a = zs[i], b = zs[i + 1];
+    const axle = archAxle((a + b) / 2);
+    const bottom = (z) => axle === undefined ? sill : archY(z, axle);
+    for (const side of [-1, 1]) {
+      faces.push({ color: paint, points: [[side * widthAt(a), bottom(a), a],
+        [side * widthAt(b), bottom(b), b], [side * widthAt(b), topAt(b), b], [side * widthAt(a), topAt(a), a]] });
+      if (a >= wsFoot && b <= rearFoot) {
+        faces.push({ color: paint, points: [[side * glassBase, belt, a], [side * widthAt(a), belt, a],
+          [side * widthAt(b), belt, b], [side * glassBase, belt, b]] });
+      }
+    }
+    if (b <= wsFoot) {
+      for (let c = 0; c < hoodColumns.length - 1; c++) {
+        hoodFaces.push({ color: paint, points: [hoodPoint(a, hoodColumns[c]), hoodPoint(a, hoodColumns[c + 1]),
+          hoodPoint(b, hoodColumns[c + 1]), hoodPoint(b, hoodColumns[c])] });
+      }
+    } else if (a >= rearFoot) {
+      faces.push({ color: paint, points: [[-widthAt(a), belt, a], [widthAt(a), belt, a],
+        [widthAt(b), belt, b], [-widthAt(b), belt, b]] });
+    }
+    const floor = axle === undefined ? widthAt : () => wellInner;
+    faces.push({ color: palette.trim, points: [[-floor(a), sill, a], [floor(a), sill, a],
+      [floor(b), sill, b], [-floor(b), sill, b]] });
+  }
+  const nose = -half, noseW = widthAt(nose);
+  faces.push({ color: paint, points: [[-noseW, sill, nose], [noseW, sill, nose],
+    [noseW, topAt(nose), nose], [0.4 * noseW, topAt(nose) + crownAt(nose), nose],
+    [-0.4 * noseW, topAt(nose) + crownAt(nose), nose], [-noseW, topAt(nose), nose]] });
+  const tailW = widthAt(half);
+  faces.push({ color: paint, points: [[-tailW, sill, half], [tailW, sill, half],
+    [tailW, belt, half], [-tailW, belt, half]] });
+  for (const axle of axles) {
+    const arch = archPoints(axle);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < arch.length - 1; i++) {
+        const [za, ya] = arch[i], [zb, yb] = arch[i + 1];
+        faces.push({ color: well, points: [[side * widthAt(za), ya, za], [side * widthAt(zb), yb, zb],
+          [side * wellInner, yb, zb], [side * wellInner, ya, za]] });
+      }
+      for (const z of [axle - archRadius, axle + archRadius]) {
+        faces.push({ color: well, points: [[side * wellInner, sill, z], [side * widthAt(z), sill, z],
+          [side * widthAt(z), tire, z], [side * wellInner, tire, z]] });
+      }
+      faces.push({ color: well, points: [...arch.map(([z, y]) => [side * wellInner, y, z]),
+        [side * wellInner, sill, axle - archRadius], [side * wellInner, sill, axle + archRadius]] });
+    }
+  }
+  faces.push({ color: paint, points: [[-glassTop, roofY, roofFront], [glassTop, roofY, roofFront],
+    [glassTop, roofY, roofRear], [-glassTop, roofY, roofRear]] });
+  const body = addMesh('Body', exterior, facesGeometry(faces), paint, [0, -data.comHeightM, 0]);
+  addMesh('Hood', body, facesGeometry(hoodFaces), paint);
+
+  // Greenhouse planes. Side glass leans in from glassBase to glassTop.
+  const rise = roofY - belt, railY = roofY - railH;
+  const tY = (y) => (y - belt) / rise;
+  const sidePoint = (side, z, y) => [side * (glassBase - (glassBase - glassTop) * tY(y)), y, z];
+  const frontEdge = (y) => wsFoot + (roofFront - wsFoot) * tY(y);
+  const rearEdge = (y) => rearFoot + (roofRear - rearFoot) * tY(y);
+  const sideQuad = (side, color, [z0, z1], [z2, z3]) => ({ color, points: [sidePoint(side, z0, belt),
+    sidePoint(side, z1, belt), sidePoint(side, z2, railY), sidePoint(side, z3, railY)] });
+  const endPoint = (footZ, topZ, x, v) => [x, belt + rise * v, footZ + (topZ - footZ) * v];
+  const halfAt = (v) => glassBase - (glassBase - glassTop) * v;
+  const glassV = 1 - 0.05 / rise, strip = 0.07;
+  const endPanels = (footZ, topZ) => {
+    const p = (x, v) => endPoint(footZ, topZ, x, v);
+    const glass = { color: palette.glass, points: [p(-halfAt(0) + strip, 0), p(halfAt(0) - strip, 0),
+      p(halfAt(glassV) - strip, glassV), p(-halfAt(glassV) + strip, glassV)] };
+    const frame = [{ color: paint, points: [p(-halfAt(glassV), glassV), p(halfAt(glassV), glassV),
+      p(halfAt(1), 1), p(-halfAt(1), 1)] }];
+    for (const side of [-1, 1]) {
+      frame.push({ color: paint, points: [p(side * halfAt(0), 0), p(side * (halfAt(0) - strip), 0),
+        p(side * (halfAt(glassV) - strip), glassV), p(side * halfAt(glassV), glassV)] });
+    }
+    return { glass, frame };
+  };
+  const front = endPanels(wsFoot, roofFront), rear = endPanels(rearFoot, roofRear);
+  const aWidth = 0.09;
+  const cLine = (y) => doorRearZ + (cPillarTopZ - doorRearZ) * tY(y) / tY(railY);
+  const glassFaces = [front.glass, rear.glass];
+  const aPillars = [...front.frame], bPillars = [], cPillars = [...rear.frame];
+  for (const side of [-1, 1]) {
+    aPillars.push(sideQuad(side, paint, [frontEdge(belt), frontEdge(belt) + aWidth],
+      [frontEdge(railY) + aWidth, frontEdge(railY)]));
+    glassFaces.push(sideQuad(side, palette.glass, [frontEdge(belt) + aWidth, quarterZ - 0.02],
+      [quarterZ - 0.02, frontEdge(railY) + aWidth]));
+    bPillars.push(sideQuad(side, paint, [quarterZ - 0.02, quarterZ + 0.02], [quarterZ + 0.02, quarterZ - 0.02]));
+    glassFaces.push(sideQuad(side, palette.glass, [quarterZ + 0.02, pillarB - 0.04], [pillarB - 0.04, quarterZ + 0.02]));
+    bPillars.push(sideQuad(side, paint, [pillarB - 0.04, pillarB + 0.04], [pillarB + 0.04, pillarB - 0.04]));
+    glassFaces.push(sideQuad(side, palette.glass, [pillarB + 0.04, cLine(belt)], [cLine(railY), pillarB + 0.04]));
+    cPillars.push(sideQuad(side, paint, [cLine(belt), rearEdge(belt)], [rearEdge(railY), cLine(railY)]));
+    bPillars.push({ color: paint, points: [sidePoint(side, frontEdge(railY), railY),
+      sidePoint(side, rearEdge(railY), railY), sidePoint(side, roofRear, roofY), sidePoint(side, roofFront, roofY)] });
+  }
+  addMesh('Cabin', body, facesGeometry(bPillars), paint);
+  addMesh('Windshield', body, facesGeometry(aPillars), paint);
+  addMesh('RearWindow', body, facesGeometry(cPillars), paint);
+  const glazing = addNode('ParkedGlazing', body);
+  addMesh('StaticWindowFaces', glazing, facesGeometry(glassFaces), palette.glass);
+  const cabinCenter = [0, (belt + roofY) / 2, (wsFoot + rearFoot) / 2];
+  const outerGlass = facesGeometry(glassFaces.map((face) => {
+    const [p0, p1, p2] = face.points;
+    const u = p1.map((v, i) => v - p0[i]), w = p2.map((v, i) => v - p0[i]);
+    const normal = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    const centroid = [0, 1, 2].map((i) => face.points.reduce((sum, p) => sum + p[i], 0) / face.points.length);
+    const outward = normal.reduce((sum, v, i) => sum + v * (centroid[i] - cabinCenter[i]), 0) > 0;
+    return outward ? face : { ...face, points: [...face.points].reverse() };
+  }));
+  outerGlass.singleSided = true;
+  addMesh('ExteriorWindowFaces', addNode('ExteriorGlazing', body), outerGlass, palette.glass);
+
+  // Bolt-on details: bumpers wrap the tapered corners, lamps, grille, seams.
+  const detail = [];
+  const taper = Math.atan(0.2);
+  const seamBar = (side, z1, y1, z2, y2) => part([0.01, Math.hypot(y2 - y1, z2 - z1), 0.012],
+    [side * (widthAt((z1 + z2) / 2) + 0.004), (y1 + y2) / 2, (z1 + z2) / 2], seam,
+    [Math.atan2(z2 - z1, y2 - y1), 0, 0]);
+  for (const [z, wrapZ, wrapLength, sign] of [[-half, -half + 0.15, 0.32, 1], [half, half - 0.1, 0.22, -1]]) {
+    detail.push(part([1.74, 0.15, 0.1], [0, 0.37, z], palette.trim));
+    for (const side of [-1, 1]) {
+      detail.push(part([0.07, 0.15, wrapLength], [side * widthAt(wrapZ), 0.37, wrapZ], palette.trim,
+        [0, side * sign * taper, 0]));
+    }
+  }
+  detail.push(part([0.66, 0.13, 0.03], [0, 0.62, -half - 0.005], [0.2, 0.19, 0.22]));
+  detail.push(part([0.66, 0.012, 0.035], [0, 0.62, -half - 0.006], [0.3, 0.29, 0.32]));
+  detail.push(part([0.34, 0.11, 0.015], [0, 0.55, half + 0.008], [0.84, 0.8, 0.71]));
+  detail.push(transformGeometry(cylinderXGeometry(0.035, 0.16, palette.metal, 10),
+    [-0.5, 0.25, half + 0.03], [0, Math.PI / 2, 0]));
+  detail.push(part([1.56, 0.006, 0.012], [0, belt + 0.003, rearFoot + 0.05], seam));
+  for (const side of [-1, 1]) {
+    detail.push(part([0.34, 0.12, 0.04], [side * 0.56, 0.62, -half - 0.005], [0.98, 0.89, 0.69]));
+    detail.push(part([0.26, 0.13, 0.04], [side * 0.5, 0.7, half + 0.005], lampRed));
+    detail.push(part([0.2, 0.13, 0.04], [side * 0.74, 0.7, half + 0.005], amber));
+    detail.push(part([0.02, 0.06, 0.12], [side * 0.905, 0.7, half - 0.32], amber));
+    detail.push(part([0.012, 0.006, half - rearFoot - 0.07], [side * 0.78, belt + 0.003,
+      (half + rearFoot + 0.05) / 2], seam));
+    for (const z of [pillarB - 0.2, doorRearZ - 0.12]) {
+      detail.push(part([0.02, 0.03, 0.13], [side * 0.91, 0.74, z], palette.metal));
+    }
+    const frontArchEnd = frontZ + archRadius + 0.03;
+    detail.push(seamBar(side, frontArchEnd, sill + 0.04, frontArchEnd, 0.66));
+    detail.push(seamBar(side, frontArchEnd, 0.66, quarterZ, belt - 0.005));
+    detail.push(seamBar(side, pillarB, sill + 0.04, pillarB, belt - 0.005));
+    detail.push(seamBar(side, doorRearZ, sill + 0.04, doorRearZ, belt - 0.005));
+  }
+  addMesh('ExteriorDetails', body, mergeGeometry(detail), paint);
+}
+
+function authorMirrors({ root, addNode, addMesh }, data, exterior, armHousing = false) {
   const eye = data.contract.driverEyeLocalM;
   addNode('DriverEye', root, { translation: eye });
   for (const [id, pose] of Object.entries(data.contract.mirrors)) {
@@ -186,6 +378,19 @@ function authorMirrors({ root, addNode, addMesh }, data, exterior) {
       colors: Array(12).fill(1), indices: [0, 1, 2, 0, 2, 3], uvs: [0, 0, 1, 0, 1, 1, 0, 1],
     };
     addMesh(`MirrorSurface${name}`, root, surface, [1, 1, 1], display);
+    if (armHousing && name !== 'Rear') {
+      // Same shell placement as before (rearward of the face, away from the eye),
+      // plus a low arm to the door belt below the driver's sightline. Anchors unchanged.
+      const side = Math.sign(position[0]);
+      const shell = transformGeometry(boxGeometry(size.map((v) => v + 0.025), palette.trim), [0, 0, 0.04]);
+      const doorX = data.bodySizeM[0] / 2 - 0.02;
+      const arm = boxGeometry([Math.abs(position[0]) + 0.03 - doorX, 0.035, 0.05], palette.trim);
+      const armCenter = [side * ((Math.abs(position[0]) + 0.03 + doorX) / 2 - Math.abs(position[0])),
+        -0.095, 0.04];
+      addMesh(`MirrorHousing${name}`, exterior,
+        mergeGeometry([shell, transformGeometry(arm, armCenter)]), palette.trim, display);
+      continue;
+    }
     addMesh(`MirrorHousing${name}`, exterior, boxGeometry(size.map((v) => v + 0.025), palette.trim),
       palette.trim, [display[0], display[1], display[2] + (name === 'Rear' ? -0.04 : 0.04)]);
   }
