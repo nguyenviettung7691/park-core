@@ -150,25 +150,43 @@ export async function selectGamepadDevice(page: Page): Promise<void> {
   await page.getByLabel('Thiết bị', { exact: true }).selectOption('0');
 }
 
+// Guided manual calibration: one prompt at a time, each recorded with the same capture
+// button (src/ui/calibration.ts MANUAL_STEPS). The pad uses the default bindings:
+// steering axis 0, throttle button 7, brake button 6, R button 4, D button 5.
+const CALIBRATION_STEPS: readonly { prompt: string; apply: (page: Page) => Promise<void> }[] = [
+  { prompt: 'Quay vô lăng hết sang trái rồi ghi nhận.', apply: (page) => setAxis(page, -1) },
+  { prompt: 'Đưa vô lăng về chính giữa rồi ghi nhận.', apply: (page) => setAxis(page, 0) },
+  { prompt: 'Quay vô lăng hết sang phải rồi ghi nhận.', apply: (page) => setAxis(page, 1) },
+  { prompt: 'Nhả hoàn toàn bàn đạp ga rồi ghi nhận.', apply: (page) => setButton(page, 7, 0) },
+  { prompt: 'Nhấn hết bàn đạp ga rồi ghi nhận.', apply: (page) => setButton(page, 7, 1) },
+  { prompt: 'Nhả hoàn toàn bàn đạp phanh rồi ghi nhận.', apply: (page) => setButton(page, 6, 0) },
+  { prompt: 'Nhấn hết bàn đạp phanh rồi ghi nhận.', apply: (page) => setButton(page, 6, 1) },
+  { prompt: 'Nhấn nút chuyển số lùi R rồi ghi nhận.', apply: (page) => setButton(page, 4, 1) },
+  { prompt: 'Nhấn nút chuyển số tiến D rồi ghi nhận.', apply: (page) => setButton(page, 5, 1) },
+];
+
+async function setAxis(page: Page, value: number) {
+  await page.evaluate((value) => { window.lessonPad.axes[0] = value; }, value);
+}
+
 export async function calibrateThroughUi(page: Page): Promise<void> {
   await selectGamepadDevice(page);
   await page.getByRole('button', { name: 'Hiệu chuẩn thiết bị', exact: true }).click();
-  for (const [value, label] of [[-1, 'Ghi hết lái trái'], [0, 'Ghi chính giữa'], [1, 'Ghi hết lái phải']] as const) {
-    await page.evaluate((value) => { window.lessonPad.axes[0] = value; }, value);
-    await page.getByRole('button', { name: label, exact: true }).click();
-  }
-  for (const [index, label] of [[7, 'Chân ga'], [6, 'Phanh chân']] as const) {
-    await setButton(page, index, 0);
-    await page.getByRole('button', { name: `${label} — Ghi đã nhả`, exact: true }).click();
-    await setButton(page, index, 1);
-    await page.getByRole('button', { name: `${label} — Ghi đã nhấn hết`, exact: true }).click();
-  }
-  await setButton(page, 4, 1);
-  await page.getByRole('button', { name: 'Xác minh nút R', exact: true }).click();
-  await setButton(page, 5, 1);
-  await page.getByRole('button', { name: 'Xác minh nút D', exact: true }).click();
   await releasePad(page);
-  await page.getByRole('button', { name: 'Lưu hiệu chuẩn', exact: true }).click();
+  const dialog = page.locator('.calibration');
+  const progress = dialog.locator('[data-capture-progress]');
+  const capture = page.getByRole('button', { name: 'Ghi nhận vị trí này', exact: true });
+  for (const [index, step] of CALIBRATION_STEPS.entries()) {
+    // Fail fast with the prompt that drifted instead of waiting for the journey timeout.
+    await expect(dialog.getByText(step.prompt, { exact: true })).toBeVisible({ timeout: 5000 });
+    await step.apply(page);
+    await capture.click();
+    await expect(progress).toContainText(`${index + 1} / ${CALIBRATION_STEPS.length}`, { timeout: 5000 });
+  }
+  await releasePad(page);
+  const save = page.getByRole('button', { name: 'Lưu hiệu chuẩn', exact: true });
+  await expect(save).toBeEnabled({ timeout: 5000 });
+  await save.click();
 }
 
 export async function releasePad(page: Page): Promise<void> {
