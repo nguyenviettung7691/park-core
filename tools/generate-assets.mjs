@@ -83,7 +83,7 @@ function createGltf(assetId, dimensionsM, origin) {
     return nodeIndex;
   }
 
-  function addMesh(name, parent, geometry, materialColor, translation = [0, 0, 0]) {
+  function addMesh(name, parent, geometry, materialColor, translation = [0, 0, 0], rotation) {
     const positionAccessor = addFloatAccessor(geometry.positions, 'VEC3', 34962, true);
     const normalAccessor = addFloatAccessor(geometry.normals, 'VEC3', 34962);
     const colorAccessor = addFloatAccessor(geometry.colors, 'VEC3', 34962);
@@ -102,7 +102,8 @@ function createGltf(assetId, dimensionsM, origin) {
       attributes,
       indices: indexAccessor, material: materialIndex, mode: 4,
     }] });
-    return addNode(name, parent, { mesh: meshIndex, translation });
+    return addNode(name, parent, rotation
+      ? { mesh: meshIndex, translation, rotation } : { mesh: meshIndex, translation });
   }
 
   function box(name, parent, center, size, color) {

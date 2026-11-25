@@ -12,12 +12,30 @@ describe('shared vehicle asset contract', () => {
     const geometry = deriveGeometry(profile);
     expect(contract.driverEyeLocalM).toEqual(profile.driverEyeLocalM);
     expect(contract.mirrors.left.positionM).toEqual(geometry.mirrors[0].centerLocalM);
-    expect(contract.mirrors.rear.positionM[2]).toBe(-1.75);
+    expect(contract.mirrors.rear.positionM[2]).toBeCloseTo(-1.56);
+    expect(contract.rearDisplayM).toEqual(contract.mirrors.rear.positionM);
     expect(contract.bodyPhysicalZ[1] - contract.bodyPhysicalZ[0]).toBeCloseTo(4.8);
     const footprint = vehicleFootprint({ positionM: [0, 0, 0], rotation: [0, 0, 0, 1] }, profile);
     expect(footprint[0][0]).toBe(-1.1);
     expect(footprint[0][2]).toBeCloseTo(contract.bodyPhysicalZ[0]);
     expect(mirrorBoxes(profile)[0].centerLocalM[1]).toBeCloseTo(0.53);
+  });
+
+  it('places sedan mirrors ahead of the driver while keeping the CUV view contract', () => {
+    const sedan = deriveVehicleAssetContract(profiles.sedan);
+    const eye = profiles.sedan.driverEyeLocalM;
+    for (const id of ['left', 'right'] as const) {
+      expect(sedan.mirrors[id].positionM[2]).toBeLessThan(eye[2] - 0.4);
+    }
+    expect(sedan.mirrors.rear.positionM).toEqual([
+      expect.closeTo(0, 6), expect.closeTo(0.74, 6), expect.closeTo(-1.225, 6)]);
+    expect(sedan.mirrors.rear.positionM[1]).toBeGreaterThan(eye[1] + 0.1);
+    const cuv = deriveVehicleAssetContract(profiles.cuv);
+    expect(cuv.mirrors.left.positionM).toEqual([
+      expect.closeTo(-0.965, 4), expect.closeTo(0.48, 4), expect.closeTo(-0.7462, 4)]);
+    expect(cuv.mirrors.rear.positionM).toEqual([
+      expect.closeTo(0, 4), expect.closeTo(0.8, 4), expect.closeTo(-1.5962, 4)]);
+    expect(cuv.rearDisplayM[2] - cuv.mirrors.rear.positionM[2]).toBeCloseTo(0.52);
   });
 
   it('rejects inconsistent dimensions instead of silently rescaling the asset', () => {

@@ -209,7 +209,7 @@ describe('prototype view assets', () => {
     expect(assets.environment).toBeInstanceOf(Group);
     expect(assets.anchors.driverEyeLocalM[0]).toBeCloseTo(-0.36, 6);
     expect(assets.anchors.driverEyeLocalM[1]).toBeCloseTo(0.6, 6);
-    expect(assets.anchors.driverEyeLocalM[2]).toBeCloseTo(-0.965, 6);
+    expect(assets.anchors.driverEyeLocalM[2]).toBeCloseTo(-0.665, 6);
     expect(assets.anchors.mirrors.left.positionM[0]).toBeCloseTo(-0.9, 6);
     expect(assets.anchors.mirrors.right.positionM[0]).toBeCloseTo(0.9, 6);
     expect(content.scene.getObjectByName('prototype-dashboard')).toBeInstanceOf(Mesh);

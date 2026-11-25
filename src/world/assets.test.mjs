@@ -1,4 +1,4 @@
-import { Box3, BufferGeometry, Mesh, Raycaster, Vector3 } from 'three';
+import { Box3, BufferGeometry, Mesh, Quaternion, Raycaster, Vector3 } from 'three';
 import { profiles } from '../vehicle/profiles.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildGlb } from '../../tools/generate-assets.mjs';
@@ -206,6 +206,30 @@ describe('phase 5 scene asset loading', () => {
     } finally { assets.dispose(); }
   });
 
+  it('orients sedan mirror faces between the driver eye and their virtual cameras', async () => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', 'sedan', new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const eye = new Vector3(...profiles.sedan.driverEyeLocalM);
+      for (const side of ['Left', 'Right', 'Rear']) {
+        const surface = assets.vehicle.getObjectByName(`MirrorSurface${side}`);
+        const center = surface.getWorldPosition(new Vector3());
+        const normal = new Vector3(0, 0, 1).applyQuaternion(surface.getWorldQuaternion(new Quaternion()));
+        const anchor = assets.vehicle.getObjectByName(`Mirror${side}`);
+        const view = new Vector3(0, 0, -1).applyQuaternion(anchor.getWorldQuaternion(new Quaternion()));
+        const toEye = eye.clone().sub(center).setY(0).normalize();
+        // Reflection law in plan view: equal angles to the eye and to the camera's view.
+        expect(normal.dot(toEye), side).toBeGreaterThan(0.3);
+        expect(normal.dot(toEye)).toBeCloseTo(normal.dot(view), 5);
+        if (side !== 'Rear') expect(center.z).toBeLessThan(eye.z - 0.4);
+      }
+      const rear = assets.vehicle.getObjectByName('MirrorSurfaceRear').getWorldPosition(new Vector3());
+      expect(rear.y).toBeGreaterThan(eye.y + 0.1);
+      expect(rear.z).toBeLessThan(eye.z - 0.15);
+    } finally { assets.dispose(); }
+  });
+
   it.each(['garage', 'roadside'])('keeps %s details on the appropriate camera layers', async (id) => {
     mockedFetch();
     const assets = await loadSceneAssets(id, 'sedan', new AbortController().signal);
@@ -369,7 +393,7 @@ describe('phase 5 scene asset loading', () => {
     mockedFetch(records);
     const assets = await loadSceneAssets('garage', 'sedan', new AbortController().signal);
     assets.anchors.driverEyeLocalM.forEach((value, index) =>
-      expect(value).toBeCloseTo([-0.36, 0.6, -0.965][index], 6));
+      expect(value).toBeCloseTo([-0.36, 0.6, -0.665][index], 6));
     assets.dispose();
   });
 

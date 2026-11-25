@@ -20,7 +20,7 @@ unbranded.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 3,364 | 30 / 21 | 237,844 |
+| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 4,976 | 38 / 27 | 367,744 |
 | [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 2,970 | 30 / 21 | 209,464 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
@@ -34,10 +34,11 @@ now 0.62 m (was 0.43 m) and the trunk deck 0.55 m (was 0.93 m). The roof rear
 moved to z = 0.85 m and the side glass leans in from 0.81 to 0.72 m half-width.
 These values are inferred from two reference views, not measured. The unchanged
 dashboard limits how far back the windshield can go, so the hood ratio is still
-shorter than the reference. The cockpit and its headliner, physical profile,
-wheel positions, eye and mirror anchors are unchanged. The visual/physical Z-extent
-mismatch is also unchanged. Each side mirror housing gains a low arm to the door
-belt, below the driver's sightline.
+shorter than the reference. The physical profile dimensions and wheel positions
+are unchanged, and so is the visual/physical Z-extent mismatch. The exterior
+subtask kept the eye and mirror anchors; the interior subtask below moved them.
+Each side mirror housing has a low arm to the door belt, below the driver's
+sightline.
 
 ![Amethyst sedan, faceted hood, grille, headlamps and wrap-around bumper](images/phase-8/sedan-front.png)
 
@@ -51,12 +52,31 @@ belt, below the driver's sightline.
 
 ### Cockpits and mirrors
 
-Both cockpits contain a dashboard, simple instrument rings/needles, steering
-wheel with spokes/hub, front seats/headrests, rear-seat silhouette, console,
-floor and roof lining. Captures look slightly downward to show controls;
-application camera controls and default poses are unchanged.
+The sedan cabin was redesigned for issue #12 (captured 2026-11-25). It has:
 
-![Sedan cockpit with controls and working rearview RenderTarget](images/phase-8/sedan-cockpit.png)
+- A dashboard with vents, center stack (radio, buttons, knobs) and glovebox.
+- An instrument binnacle with speedometer, left/right arrows, P lamp and
+  headlamp icon.
+- A three-spoke wheel on a 25-degree raked column, brake and accelerator
+  pedals and a footrest.
+- Bucket seats with bolsters and headrests, a rear bench with headrests, and a
+  center console with shifter, cupholders and a storage bin.
+- Door trims with armrests, handles and pockets, plus a firewall, kick panels,
+  floor, headliner, sun visors and a parcel shelf.
+
+The wheel, needle, arrows, P lamp and pedals are live: `src/render/asset-scene.ts`
+drives them from telemetry each rendered frame. Positive steering (left) turns
+the wheel counter-clockwise. The needle covers 0-120 km/h over 240 degrees, the
+arrows flash at 1.5 Hz, and the pedals travel 0.3 rad. The CUV keeps its simpler
+static cockpit (dashboard, instrument rings, wheel, seats, rear-seat
+silhouette, console, floor and roof lining). Captures look slightly downward to
+show controls; application camera controls are unchanged.
+
+![Sedan cockpit: live cluster, raked three-spoke wheel, both mirrors in view](images/phase-8/sedan-cockpit.png)
+
+![Sedan cabin cutaway (left side clipped for this capture only)](images/phase-8/sedan-cabin.png)
+
+![Sedan instruments while driving: 25 km/h, left indicator lit, wheel turned left](images/phase-8/sedan-instruments.png)
 
 ![CUV cockpit and garage viewed through its open interior aperture](images/phase-8/cuv-cockpit.png)
 
@@ -66,19 +86,32 @@ excluded from mirror renders. Stationary cars use separate double-sided
 glazing. This is not a transparent-glass simulation.
 
 Vehicle roots remain center-of-mass based, in meters, +Y up and -Z forward.
-The physical profiles, eye anchors and mirror-camera anchors are unchanged:
+The sedan interior subtask moved the sedan eye back 0.3 m. It also moved the
+side mirror anchors, cameras and collider boxes forward to the A-pillar base,
+and put the rearview camera and display together under the windshield header.
+The previous sedan values were eye (-0.36, 0.60, -0.965), rearview camera
+(0, 0.72, -1.715) and side mirrors (+/-0.96, 0.43, -0.865). The physical
+dimensions and chassis collider are unchanged; CUV anchors are unchanged:
 
 | Vehicle | COM height (m) | `DriverEye` local (m) | `MirrorRear` local (m) | Left/right mirror local (m) |
 |---|---:|---|---|---|
-| Sedan | 0.52 | (-0.36, 0.60, -0.965) | (0, 0.72, -1.715) | (+/-0.96, 0.43, -0.865) |
+| Sedan | 0.52 | (-0.36, 0.60, -0.665) | (0, 0.74, -1.225) | (+/-0.96, 0.43, -1.45) |
 | CUV | 0.62 | (-0.36, 0.68, -0.8462) | (0, 0.80, -1.5962) | (+/-0.965, 0.48, -0.7462) |
 
 Mirror anchor yaw remains rear 180 degrees, left +105 degrees and right
--105 degrees. The smaller rearview **display mesh** is placed inside the
-cabin, offset from its unchanged virtual camera by (-0.25, -0.075, +0.52) m.
-It is a view proxy, not a newly calibrated optical mirror. Planar mirror
-surfaces now have UVs; updates retain the existing 15 FPS cap.
-Side housings sit behind their reflective planes relative to the driver.
+-105 degrees.
+
+- **CUV:** the smaller rearview **display mesh** sits inside the cabin, offset
+  from its virtual camera by (-0.25, -0.075, +0.52) m. Side housings sit behind
+  their reflective planes relative to the driver.
+- **Sedan:** the rearview display (0.18 x 0.045 m, the 4:1 aspect of its
+  RenderTarget) coincides with its camera and hangs from the headliner on a
+  stem. Each sedan mirror face bisects the directions to the eye and to its
+  camera's view, like a real mirror. Its housing sits behind it, so no camera
+  sees its own housing.
+
+The displays are view proxies, not calibrated optical mirrors. Planar mirror
+surfaces have UVs, and updates keep the existing 15 FPS cap.
 Loaded-mesh 9 x 9 ray grids verify both side faces are unobstructed from
 each fixed eye; this does not establish optical calibration.
 
@@ -125,7 +158,7 @@ driving surface; they do not introduce traversable solid-looking buildings.
 Every existing lesson obstacle now has a visible stationary car, reusing the
 selected vehicle's exterior and wheels without its cockpit or live mirror
 surfaces. Each owns cloned geometry/materials and is fitted to the exact
-collider box before applying its yaw. Stationary geometry is 2,754 triangles
+collider box before applying its yaw. Stationary geometry is 2,790 triangles
 for sedan and 2,368 for CUV, below the 4,000-triangle gate.
 
 ![Stage 1 parked CUV obstacles beside the unchanged lesson target](images/phase-8/lesson-parked-cars.png)

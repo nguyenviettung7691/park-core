@@ -6,16 +6,28 @@ interface VehicleViewProfile {
   readonly rearCameraOffsetM: Vec3Data;
   readonly rearDisplayOffsetM: Vec3Data;
   readonly mirrorYawRad: Readonly<Record<MirrorId, number>>;
+  /** Forward (-Z) shift of the side-mirror anchors and colliders from frontAxle + 0.35 m. */
+  readonly sideMirrorZOffsetM: number;
 }
 
 const defaultView: VehicleViewProfile = {
   rearCameraOffsetM: [0.36, 0.12, -0.75],
   rearDisplayOffsetM: [-0.25, -0.075, 0.52],
   mirrorYawRad: { rear: Math.PI, left: 105 * Math.PI / 180, right: -105 * Math.PI / 180 },
+  sideMirrorZOffsetM: 0,
+};
+
+// Sedan interior subtask of issue #12: side mirrors sit at the A-pillar base ahead of
+// the driver; the rearview camera and its display hang under the windshield header.
+const sedanView: VehicleViewProfile = {
+  ...defaultView,
+  rearCameraOffsetM: [0.36, 0.14, -0.56],
+  rearDisplayOffsetM: [0, 0, 0],
+  sideMirrorZOffsetM: -0.585,
 };
 
 export const vehicleViews: Readonly<Record<VehicleId, VehicleViewProfile>> = {
-  sedan: defaultView,
+  sedan: sedanView,
   cuv: defaultView,
 };
 
@@ -31,7 +43,8 @@ export function mirrorBoxes(profile: VehicleProfile) {
   const width = profile.bodySizeM[0];
   const x = (profile.mirrorWidthM + width) / 4;
   const y = profile.mirrorHeightM - profile.centerOfMassHeightM;
-  const z = -(1 - profile.frontWeightFraction) * profile.wheelbaseM + 0.35;
+  const z = -(1 - profile.frontWeightFraction) * profile.wheelbaseM + 0.35 +
+    vehicleViews[profile.id].sideMirrorZOffsetM;
   const box = (side: number) => ({
     centerLocalM: [side * x, y, z] as Vec3Data,
     halfExtentsM: [(profile.mirrorWidthM - width) / 4, 0.05, 0.1] as Vec3Data,

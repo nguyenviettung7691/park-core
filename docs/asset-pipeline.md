@@ -175,15 +175,26 @@ eye/mirror transforms and independent wheel nodes remain validated against
 
 `Exterior` groups the shell and static details; four wheels remain separate.
 `Cockpit` contains seats, dashboard, instruments and steering wheel.
+The sedan cockpit also has optional named controls that `src\render\asset-scene.ts`
+drives from telemetry each rendered frame. `SteeringWheelPivot` (under the raked
+`SteeringColumn`) turns with `steeringWheelRad`. `SpeedometerNeedle` sweeps
+0-120 km/h over 240 degrees. `IndicatorLeftLamp`/`IndicatorRightLamp` flash at
+1.5 Hz on simulation time. `ParkingBrakeLamp` follows the parking brake, and
+`BrakePedal`/`AcceleratorPedal` rotate about their hinges with brake and the
+optional `throttle` telemetry. Vehicles without these nodes (currently the CUV)
+are left untouched; geometry alone is not the feature.
 The driven exterior uses outward-only opaque glazing: no transparency sorting,
 with open interior sightlines. That glazing is excluded from mirror passes.
 `ParkedGlazing` is hidden on the driven car and enabled on parked clones.
 Planar mirror surfaces have UV coordinates for the existing capped-rate
-RenderTargets; baseline camera anchors remain unchanged. Intentional anchor
-updates must change the shared view contract and pass loader/render checks.
-The smaller rearview display mesh is positioned inside the cabin separately
-from its unchanged virtual camera; its exact offset and manual-validation
-limitation are recorded in the catalog.
+RenderTargets. Intentional anchor updates must change the shared view contract
+(`vehicleViews` in `src\vehicle\asset-contract.ts`) and pass loader/render checks.
+The sedan view moves its side mirrors (anchors, cameras and colliders) forward via
+`sideMirrorZOffsetM` and places the rearview camera and display at one point under
+the windshield header. Sedan mirror faces follow the reflection law between the eye
+and their camera. The CUV keeps the default view, with its rearview display offset
+from the camera. Exact anchors and the manual-validation limitation are recorded in
+the catalog.
 
 The environment floor contract and named Ground/ParkingMarkings/WallsAndCurbs
 groups remain. Garage pipes and fixtures belong to Ceiling, whose rendering

@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkAssets, reviewAssets } from '../../tools/asset-workflow.mjs';
+import { buildGlb } from '../../tools/generate-assets.mjs';
 
 const projectRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const generator = join(projectRoot, 'tools', 'generate-assets.mjs');
@@ -31,6 +32,11 @@ function readGlb(path) {
   expect(view.getUint32(binaryHeader + 4, true)).toBe(0x004e4942);
   expect(binaryHeader + 8 + binaryLength).toBe(bytes.byteLength);
   return json;
+}
+
+function readGlbBytes(bytes) {
+  const buffer = Buffer.from(bytes);
+  return JSON.parse(buffer.toString('utf8', 20, 20 + buffer.readUInt32LE(12)));
 }
 
 function assetPath(root, assetId) {
@@ -138,6 +144,21 @@ describe('phase 5 original GLB generator', () => {
     expect(nodes[0].extras.origin).toBe('center-of-mass');
     expect(names).toContain('Dashboard');
     expect(names).toContain('SteeringWheel');
+  });
+
+  it('gives only the sedan cockpit named, transformable instrument and control parts', () => {
+    const controls = ['SteeringColumn', 'SteeringWheelPivot', 'SpeedometerNeedle',
+      'IndicatorLeftLamp', 'IndicatorRightLamp', 'ParkingBrakeLamp', 'BrakePedal', 'AcceleratorPedal'];
+    const names = (id) => readGlbBytes(buildGlb(id)).nodes.map((node) => node.name);
+    const sedan = readGlbBytes(buildGlb('sedan'));
+    for (const name of controls) expect(names('sedan')).toContain(name);
+    for (const name of controls) expect(names('cuv')).not.toContain(name);
+    const node = (name) => sedan.nodes.find((candidate) => candidate.name === name);
+    const pivot = sedan.nodes.indexOf(node('SteeringWheelPivot'));
+    expect(node('SteeringColumn').children).toContain(pivot);
+    expect(node('SteeringWheelPivot').children.map((index) => sedan.nodes[index].name)).toEqual(['SteeringWheel']);
+    expect(node('SteeringColumn').rotation[0]).toBeLessThan(0);
+    for (const name of controls.slice(2)) expect(node(name).mesh, name).toBeTypeOf('number');
   });
 
   it.each(['sedan', 'cuv'])('keeps the hood below the driver eye for %s', (assetId) => {

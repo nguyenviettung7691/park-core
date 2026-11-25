@@ -89,6 +89,8 @@ export interface VehicleTelemetry {
   readonly parkingBrake: boolean;
   readonly indicator: Indicator;
   readonly brake: number;
+  /** Driver's accelerator pedal position (0-1), for cockpit display only. */
+  readonly throttle?: number;
 }
 
 export type SensorId =
