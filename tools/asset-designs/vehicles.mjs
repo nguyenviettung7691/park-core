@@ -11,7 +11,7 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   const half = length / 2, belt = cuv ? 0.99 : 0.83;
   const frontZ = -(1 - data.frontWeightFraction) * data.wheelbaseM;
   const rearZ = data.frontWeightFraction * data.wheelbaseM;
-  const eyeZ = frontZ + 0.25;
+  const eyeZ = data.contract.driverEyeLocalM[2];
   const roofFront = eyeZ - 0.25, roofRear = cuv ? 1.15 : 0.62;
   const frontFoot = eyeZ - 0.9, rearFoot = cuv ? half - 0.2 : 1.37;
   const exterior = addNode('Exterior', root);
@@ -125,6 +125,14 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     detail.push(part([0.34, 0.09, 0.015], [0, belt - 0.31, z * 1.003], [0.84, 0.8, 0.71]));
   }
   addMesh('ExteriorDetails', body, mergeGeometry(detail), paint);
+  authorCockpit({ root, addNode, addMesh, box }, data,
+    { belt, eyeZ, roofRear, roofFront, roofY, part });
+  authorWheels({ root, addMesh }, data, { frontZ, rearZ, part });
+  authorMirrors({ root, addNode, addMesh }, data, exterior);
+}
+
+function authorCockpit({ root, addNode, addMesh, box }, data,
+  { belt, eyeZ, roofRear, roofFront, roofY, part }) {
   const cockpit = addNode('Cockpit', root, { translation: [0, -data.comHeightM, 0] });
   box('Dashboard', cockpit, [0, belt - 0.06, eyeZ - 0.52], [1.46, 0.16, 0.26], palette.trim);
   const cabinParts = [part([1.42, 0.07, roofRear - roofFront], [0, roofY - 0.075, (roofRear + roofFront) / 2], palette.trim)];
@@ -145,7 +153,9 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   addMesh('SteeringWheel', cockpit, mergeGeometry([torusGeometry(0.17, 0.024, palette.trim),
     boxGeometry([0.29, 0.035, 0.045], palette.metal), boxGeometry([0.075, 0.09, 0.06], palette.trim)]),
   palette.trim, [-0.36, belt + 0.015, eyeZ - 0.35]);
+}
 
+function authorWheels({ root, addMesh }, data, { frontZ, rearZ, part }) {
   const wheel = mergeGeometry([cylinderXGeometry(data.tireRadiusM, 0.19, palette.tire, 24),
     cylinderXGeometry(data.tireRadiusM * 0.86, 0.205, [0.105, 0.1, 0.11], 24),
     cylinderXGeometry(data.tireRadiusM * 0.64, 0.215, palette.metal, 16),
@@ -157,17 +167,17 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
     ['WheelRL', -1, rearZ], ['WheelRR', 1, rearZ]]) {
     addMesh(name, root, wheel, palette.tire, [side * data.trackM / 2, data.tireRadiusM - data.comHeightM, z]);
   }
-  const eye = [-0.36, data.eyeHeightM - data.comHeightM, eyeZ];
+}
+
+function authorMirrors({ root, addNode, addMesh }, data, exterior) {
+  const eye = data.contract.driverEyeLocalM;
   addNode('DriverEye', root, { translation: eye });
-  const yawQuaternion = (yaw) => [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)];
-  const mirrors = [['Rear', [0, eye[1] + 0.12, eye[2] - 0.75], Math.PI],
-    ...[-1, 1].map((side) => [side < 0 ? 'Left' : 'Right',
-      [side * (data.mirrorWidthM + width) / 4, data.mirrorHeightM - data.comHeightM, frontZ + 0.35],
-      (side < 0 ? 105 : -105) * Math.PI / 180])];
-  for (const [name, position, yaw] of mirrors) {
-    addNode(`Mirror${name}`, root, { translation: position, rotation: yawQuaternion(yaw) });
+  for (const [id, pose] of Object.entries(data.contract.mirrors)) {
+    const name = id[0].toUpperCase() + id.slice(1);
+    const position = pose.positionM;
+    addNode(`Mirror${name}`, root, { translation: position, rotation: pose.rotation });
     const display = name === 'Rear'
-      ? [-0.25, position[1] - 0.075, position[2] + 0.52] : position;
+      ? data.contract.rearDisplayM : position;
     const size = name === 'Rear' ? [0.12, 0.05, 0.025] : [0.18, 0.1, 0.035];
     const surface = {
       positions: [-size[0] / 2, -size[1] / 2, 0, size[0] / 2, -size[1] / 2, 0,

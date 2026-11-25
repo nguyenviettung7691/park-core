@@ -7,6 +7,9 @@
 - **Tech Stack:** TypeScript, Vite, Three.js (rendering), Cannon-es (physics).
 - **Core Constraint:** Extreme token efficiency to remain under GitHub Copilot Pro+ limits. Code generation must avoid complex graphics, dynamic shaders, or heavy architectural abstractions.
 - **Additional Context:** See the [technical design](../docs/tech-design.md).
+- **Asset tasks:** Follow the [shared asset workflow](../docs/asset-pipeline.md):
+  inspect references, record inferred choices and feature impacts, generate a
+  candidate, and present runtime comparison captures for developer approval.
 
 ## Token & Code Optimization Rules
 
@@ -64,4 +67,8 @@ phase numbering.
 The technical design is a current-state architecture reference, not an
 implementation phase list. Historical phase sequencing and implementation
 evidence remain in the implementation roadmap and phase-specific documents.
-Phase 5's asset/progression foundation is implemented with prototype GLBs and Stage 1 entry. Phase 6 is implemented and merged into local `main`; the remote was not updated, and non-software validation remains pending. See the [Phase 5 plan](../docs/phase-5-implementation-plan.md) and [Phase 6 plan](../docs/phase-6-implementation-plan.md).
+The current assets are the original Phase 8 low-poly GLBs, not the earlier box
+prototypes. Current architecture, evidence and validation limits are documented
+in the [technical design](../docs/tech-design.md) and
+[asset catalog](../docs/phase-8-asset-catalog.md). Do not infer branch/deployment
+status from this historical phase list.

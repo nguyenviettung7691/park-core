@@ -65,6 +65,59 @@ function disposalEvents(assets) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('phase 5 scene asset loading', () => {
+  it('loads a generated candidate after coordinated dimension and eye contract changes', async () => {
+    const changed = { ...profiles.sedan,
+      bodySizeM: [1.82, 1.47, 4.62],
+      frontOverhangM: 0.91, rearOverhangM: 1.01,
+      mirrorWidthM: 2.06, mirrorHeightM: 0.97,
+      driverEyeLocalM: [-0.36, 0.63, profiles.sedan.driverEyeLocalM[2]] };
+    vi.resetModules();
+    vi.doMock('../vehicle/profiles.ts', () => ({ profiles: { ...profiles, sedan: changed } }));
+    try {
+      const { buildGlb: buildCandidate } = await import('../../tools/generate-assets.mjs');
+      const { loadSceneAssets: loadCandidate } = await import('./assets.ts');
+      const bytes = buildCandidate('sedan');
+      expect(bytes).not.toEqual(assetBytes['/assets/vehicles/sedan.glb']);
+      mockedFetch({ ...assetBytes, '/assets/vehicles/sedan.glb': bytes });
+      const assets = await loadCandidate('garage', 'sedan', new AbortController().signal);
+      try {
+        expect(assets.anchors.driverEyeLocalM[1]).toBeCloseTo(0.63);
+        const body = assets.vehicle.getObjectByName('Body');
+        body.geometry.computeBoundingBox();
+        const bounds = body.geometry.boundingBox.clone().applyMatrix4(body.matrixWorld);
+        expect(bounds.getSize(new Vector3()).toArray()).toEqual([
+          expect.closeTo(1.82, 4), expect.closeTo(1.32, 4), expect.closeTo(4.62, 4),
+        ]);
+      } finally { assets.dispose(); }
+    } finally {
+      vi.doUnmock('../vehicle/profiles.ts');
+      vi.resetModules();
+    }
+  });
+
+  it.each([
+    ['MirrorRear', (node) => { node.rotation = [0, 0, 0, 1]; }],
+    ['WheelFL', (node) => { node.translation[0] += 0.1; }],
+  ])('rejects a wrong %s pose with a node-specific diagnostic', async (name, mutate) => {
+    const records = { ...assetBytes,
+      '/assets/vehicles/sedan.glb': rewriteJson(assetBytes['/assets/vehicles/sedan.glb'],
+        (json) => mutate(json.nodes.find((node) => node.name === name))) };
+    mockedFetch(records);
+    await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
+      .rejects.toMatchObject({ reason: 'invalid-contract', cause: { message: expect.stringContaining(name) } });
+  });
+
+  it('rejects a mirror without UVs before rendering starts', async () => {
+    const records = { ...assetBytes,
+      '/assets/vehicles/sedan.glb': rewriteJson(assetBytes['/assets/vehicles/sedan.glb'], (json) => {
+        const node = json.nodes.find((node) => node.name === 'MirrorSurfaceRear');
+        delete json.meshes[node.mesh].primitives[0].attributes.TEXCOORD_0;
+      }) };
+    mockedFetch(records);
+    await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
+      .rejects.toMatchObject({ cause: { message: expect.stringContaining('MirrorSurfaceRear') } });
+  });
+
   it.each(['sedan', 'cuv'])('keeps %s forward cockpit sightlines open in the real exported shell', async (id) => {
     mockedFetch();
     const assets = await loadSceneAssets('garage', id, new AbortController().signal);

@@ -46,6 +46,7 @@ export interface VehicleProfile {
   readonly massKg: number;
   readonly bodySizeM: Vec3Data;
   readonly mirrorWidthM: number;
+  readonly mirrorHeightM: number;
   readonly wheelbaseM: number;
   readonly trackM: number;
   readonly frontOverhangM: number;

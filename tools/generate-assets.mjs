@@ -4,33 +4,16 @@ import { authorEnvironment } from './asset-designs/environments.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
+import { profiles } from '../src/vehicle/profiles.ts';
+import { deriveVehicleAssetContract } from '../src/vehicle/asset-contract.ts';
 
-const profile = {
-  sedan: {
-    bodySizeM: [1.8, 1.45, 4.6],
-    clearanceM: 0.15,
-    comHeightM: 0.52,
-    tireRadiusM: 0.31,
-    trackM: 1.56,
-    wheelbaseM: 2.7,
-    frontWeightFraction: 0.55,
-    eyeHeightM: 1.12,
-    mirrorWidthM: 2.04,
-    mirrorHeightM: 0.95,
-  },
-  cuv: {
-    bodySizeM: [1.8, 1.62, 4.35],
-    clearanceM: 0.18,
-    comHeightM: 0.62,
-    tireRadiusM: 0.33,
-    trackM: 1.55,
-    wheelbaseM: 2.61,
-    frontWeightFraction: 0.58,
-    eyeHeightM: 1.3,
-    mirrorWidthM: 2.06,
-    mirrorHeightM: 1.1,
-  },
-};
+function authoringProfile(id) {
+  const profile = profiles[id];
+  return { ...profile, clearanceM: profile.groundClearanceM,
+    comHeightM: profile.centerOfMassHeightM,
+    contract: deriveVehicleAssetContract(profile) };
+}
 
 const vehicleNames = new Set(['sedan', 'cuv']);
 const allAssetIds = ['sedan', 'cuv', 'roadside', 'garage'];
@@ -128,7 +111,7 @@ function createGltf(assetId, dimensionsM, origin) {
 
   const root = addNode(`${assetId} asset`, null, { extras: { dimensionsM, origin } });
   const writer = { root, addNode, addMesh, box };
-  if (vehicleNames.has(assetId)) authorVehicle(writer, assetId, profile[assetId]);
+  if (vehicleNames.has(assetId)) authorVehicle(writer, assetId, authoringProfile(assetId));
   else authorEnvironment(writer, assetId);
 
   const binary = Buffer.concat(binaryParts);
@@ -173,15 +156,17 @@ function createGltf(assetId, dimensionsM, origin) {
 export function buildGlb(assetId) {
   if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);
   const dimensionsM = vehicleNames.has(assetId)
-    ? profile[assetId].bodySizeM
+    ? profiles[assetId].bodySizeM
     : assetId === 'garage' ? [30, 6, 30] : [50, 3, 32];
   return createGltf(assetId, dimensionsM,
     vehicleNames.has(assetId) ? 'center-of-mass' : 'world-ground');
 }
 
-/** @param {string} outputRoot */
-export function writeAssets(outputRoot) {
-  for (const assetId of allAssetIds) {
+/** @param {string} outputRoot
+ * @param {readonly string[]} assetIds */
+export function writeAssets(outputRoot, assetIds = allAssetIds) {
+  for (const assetId of assetIds) {
+    if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);
     const folder = vehicleNames.has(assetId) ? 'vehicles' : 'environments';
     const path = join(outputRoot, 'public', 'assets', folder, `${assetId}.glb`);
     mkdirSync(dirname(path), { recursive: true });
@@ -190,5 +175,16 @@ export function writeAssets(outputRoot) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  writeAssets(resolve(process.argv[2] ?? projectRoot));
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    options: { vehicle: { type: 'string' }, out: { type: 'string' } },
+  });
+  if (positionals.length > 1 || (positionals.length && values.out)) {
+    throw new Error('Use one output root: --out <directory> or the legacy positional directory');
+  }
+  if (values.vehicle && !vehicleNames.has(values.vehicle)) {
+    throw new RangeError('--vehicle must be sedan or cuv');
+  }
+  writeAssets(resolve(values.out ?? positionals[0] ?? projectRoot),
+    values.vehicle ? [values.vehicle] : allAssetIds);
 }

@@ -1,5 +1,5 @@
 import {
-  Box3, BufferGeometry, Group, Material, Mesh, Quaternion, Texture, Vector3, type Object3D,
+  Box3, BufferGeometry, Group, Material, Mesh, MeshBasicMaterial, Quaternion, Texture, Vector3, type Object3D,
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type {
@@ -10,7 +10,7 @@ import type {
   VehicleId,
 } from '../contracts';
 import { profiles } from '../vehicle/profiles';
-import { deriveGeometry } from '../vehicle/geometry';
+import { deriveVehicleAssetContract, vehicleNodeNames } from '../vehicle/asset-contract';
 import {
   MIRROR_EXCLUDED_LAYER,
   OVERHEAD_EXCLUDED_LAYER,
@@ -48,21 +48,15 @@ const environmentDimensions: Readonly<Record<EnvironmentId, Vec3Data>> = {
   roadside: [50, 3, 32],
 };
 
-const vehicleNodeNames = [
-  'Exterior', 'ParkedGlazing', 'ExteriorGlazing',
-  'Body', 'WheelFL', 'WheelFR', 'WheelRL', 'WheelRR', 'DriverEye',
-  'MirrorRear', 'MirrorLeft', 'MirrorRight',
-  'MirrorSurfaceRear', 'MirrorSurfaceLeft', 'MirrorSurfaceRight',
-  'Dashboard', 'SteeringWheel',
-] as const;
-
 export class AssetLoadError extends Error {
   constructor(
     readonly resource: AssetResource,
     readonly reason: AssetFailureReason,
     options?: ErrorOptions,
   ) {
-    super(`Unable to load ${resource} asset: ${reason}`, options);
+    const detail = reason === 'invalid-contract' && options?.cause instanceof Error
+      ? ` (${options.cause.message})` : '';
+    super(`Unable to load ${resource} asset: ${reason}${detail}`, options);
     this.name = 'AssetLoadError';
   }
 }
@@ -181,7 +175,9 @@ function validateVehicle(
 ) {
   const names = nodeMap(document, 'vehicle');
   for (const name of vehicleNodeNames) {
-    if (names.get(name)?.length !== 1) throw failure('vehicle', 'invalid-contract');
+    if (names.get(name)?.length !== 1) {
+      throw failure('vehicle', 'invalid-contract', new Error(`Expected exactly one ${name}`));
+    }
   }
   const dimensions = profiles[vehicle].bodySizeM;
   validateDimensions(root, dimensions, 'vehicle');
@@ -221,33 +217,63 @@ function validateMeshBounds(
   const size = bounds.getSize(new Vector3());
   if (!closeVector(vectorTuple(center), expectedCenter) ||
       !closeVector(vectorTuple(size), expectedSize)) {
-    throw failure(resource, 'invalid-contract');
+    throw failure(resource, 'invalid-contract',
+      new Error(`${mesh.name} bounds differ from the metric contract`));
   }
   return bounds;
 }
 
 function validateVehicleScene(root: Group, vehicle: VehicleId) {
   const profile = profiles[vehicle];
-  const geometry = deriveGeometry(profile);
+  const contract = deriveVehicleAssetContract(profile);
   root.updateMatrixWorld(true);
   const eye = requiredObject(root, 'DriverEye', 'vehicle');
   if (!hasUnitWorldScale(eye) ||
       !closeVector(vectorTuple(eye.getWorldPosition(new Vector3())), profile.driverEyeLocalM) ||
       !nodeRotationMatches(quaternionTuple(eye.getWorldQuaternion(new Quaternion())), 0)) {
-    throw failure('vehicle', 'invalid-contract');
+    throw failure('vehicle', 'invalid-contract', new Error('DriverEye transform differs from vehicle profile'));
   }
-  const expectedMirrors: readonly [string, Vec3Data, number][] = [
-    ['MirrorRear', [0, profile.driverEyeLocalM[1] + 0.12,
-      profile.driverEyeLocalM[2] - 0.75], Math.PI],
-    ['MirrorLeft', geometry.mirrors[0].centerLocalM, 105 * Math.PI / 180],
-    ['MirrorRight', geometry.mirrors[1].centerLocalM, -105 * Math.PI / 180],
-  ];
-  for (const [name, position, yaw] of expectedMirrors) {
+  for (const [id, pose] of Object.entries(contract.mirrors)) {
+    const name = `Mirror${id[0]!.toUpperCase()}${id.slice(1)}`;
     const node = requiredObject(root, name, 'vehicle');
     if (!hasUnitWorldScale(node) ||
-        !closeVector(vectorTuple(node.getWorldPosition(new Vector3())), position) ||
-        !nodeRotationMatches(quaternionTuple(node.getWorldQuaternion(new Quaternion())), yaw)) {
-      throw failure('vehicle', 'invalid-contract');
+        !closeVector(vectorTuple(node.getWorldPosition(new Vector3())), pose.positionM) ||
+        !nodeRotationMatches(quaternionTuple(node.getWorldQuaternion(new Quaternion())),
+          2 * Math.atan2(pose.rotation[1], pose.rotation[3]))) {
+      throw failure('vehicle', 'invalid-contract', new Error(`${name} transform differs from view contract`));
+    }
+  }
+  for (const name of ['MirrorSurfaceRear', 'MirrorSurfaceLeft', 'MirrorSurfaceRight']) {
+    const surface = requiredObject(root, name, 'vehicle');
+    if (!(surface instanceof Mesh) || !(surface.material instanceof MeshBasicMaterial)) {
+      throw failure('vehicle', 'invalid-contract', new Error(`${name} needs a single unlit mesh material`));
+    }
+    const position = surface.geometry.getAttribute('position');
+    const uv = surface.geometry.getAttribute('uv');
+    if (!position || !uv || uv.count !== position.count ||
+        !Array.from(uv.array).every(Number.isFinite)) {
+      throw failure('vehicle', 'invalid-contract', new Error(`${name} needs finite per-vertex UVs`));
+    }
+  }
+  const frontZ = -(1 - profile.frontWeightFraction) * profile.wheelbaseM;
+  const rearZ = profile.frontWeightFraction * profile.wheelbaseM;
+  const wheels: readonly [string, number, number][] = [
+    ['WheelFL', -1, frontZ], ['WheelFR', 1, frontZ],
+    ['WheelRL', -1, rearZ], ['WheelRR', 1, rearZ],
+  ];
+  for (const [name, side, z] of wheels) {
+    const wheel = requiredObject(root, name, 'vehicle');
+    const expected: Vec3Data = [side * profile.trackM / 2,
+      profile.tireRadiusM - profile.centerOfMassHeightM, z];
+    const bounds = meshWorldBounds(wheel, 'vehicle');
+    const size = bounds.getSize(new Vector3());
+    if (!hasUnitWorldScale(wheel) ||
+        !nodeRotationMatches(quaternionTuple(wheel.getWorldQuaternion(new Quaternion())), 0) ||
+        !closeVector(vectorTuple(wheel.getWorldPosition(new Vector3())), expected) ||
+        !closeVector(vectorTuple(bounds.getCenter(new Vector3())), expected) ||
+        Math.abs(size.y - 2 * profile.tireRadiusM) > 0.02 ||
+        Math.abs(size.z - 2 * profile.tireRadiusM) > 0.02) {
+      throw failure('vehicle', 'invalid-contract', new Error(`${name} pivot or tire bounds differ from profile`));
     }
   }
   const bodyCenterY = (profile.groundClearanceM + profile.bodySizeM[1]) / 2 -
@@ -341,7 +367,7 @@ function disposeTree(root: Object3D) {
 
 function requiredObject(root: Group, name: string, resource: AssetResource): Object3D {
   const object = root.getObjectByName(name);
-  if (!object) throw failure(resource, 'invalid-contract');
+  if (!object) throw failure(resource, 'invalid-contract', new Error(`Missing node ${name}`));
   return object;
 }
 

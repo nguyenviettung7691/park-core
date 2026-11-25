@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { checkAssets, reviewAssets } from '../../tools/asset-workflow.mjs';
 
 const projectRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const generator = join(projectRoot, 'tools', 'generate-assets.mjs');
@@ -40,6 +41,35 @@ function assetPath(root, assetId) {
 describe('phase 5 original GLB generator', () => {
   afterEach(() => {
     for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  it('generates only the selected vehicle and detects stale output without rewriting it', () => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-selected-'));
+    temporaryRoots.push(root);
+    const result = spawnSync(process.execPath, [generator, '--vehicle', 'sedan', '--out', root],
+      { encoding: 'utf8' });
+    expect(result.status, result.stderr).toBe(0);
+    expect(checkAssets(root, ['sedan'])[0].id).toBe('sedan');
+    for (const id of ['cuv', 'garage', 'roadside']) expect(existsSync(assetPath(root, id))).toBe(false);
+    const path = assetPath(root, 'sedan');
+    const stale = readFileSync(path);
+    stale[stale.length - 1] ^= 1;
+    writeFileSync(path, stale);
+    expect(() => checkAssets(root, ['sedan'])).toThrow('stale or foreign');
+    expect(readFileSync(path)).toEqual(stale);
+  });
+
+  it('keeps checked-in GLBs in sync with their editable source', () => {
+    expect(checkAssets(projectRoot)).toHaveLength(4);
+  });
+
+  it('refuses to mix a new review with existing evidence', () => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-review-existing-'));
+    temporaryRoots.push(root);
+    const report = join(root, 'report.json');
+    writeFileSync(report, '{"automated":"passed"}');
+    expect(() => reviewAssets({ vehicle: 'sedan', out: root })).toThrow('fresh directory');
+    expect(readFileSync(report, 'utf8')).toBe('{"automated":"passed"}');
   });
 
   it.each(assetIds)('writes a valid deterministic GLB for %s', (assetId) => {
