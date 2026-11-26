@@ -1,6 +1,6 @@
 import {
   Color, Group, Mesh, MeshBasicMaterial, OrthographicCamera, PerspectiveCamera, PlaneGeometry,
-  Scene, Vector3, Vector4, WebGLRenderTarget,
+  Quaternion, Scene, Vector3, Vector4, WebGLRenderTarget,
 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BodyPose, VehicleTelemetry } from '../contracts';
@@ -10,6 +10,8 @@ import { profiles } from '../vehicle/profiles';
 import { deriveVehicleAssetContract } from '../vehicle/asset-contract';
 import type { GraphicsSettings } from './graphics-settings';
 import { createViews } from './cameras';
+import { reflectPoint } from './mirror-optics';
+import { ZERO_MIRROR_OFFSETS } from './mirror-adjust';
 import { renderAuxiliaryPass, type RendererPort } from './auxiliary';
 
 interface RenderCall {
@@ -372,7 +374,7 @@ describe('camera and auxiliary views', () => {
     expect(fixture.renderer.calls
       .filter((call) => call.camera.name.startsWith('mirror-'))
       .map((call) => [call.target?.width, call.target?.height]))
-      .toEqual([[256, 64], [128, 128], [128, 128]]);
+      .toEqual([[256, 64], [128, 76], [128, 76]]);
     const overhead = fixture.renderer.calls.find(
       (call) => call.camera.name === 'overhead-camera',
     );
@@ -406,6 +408,76 @@ describe('camera and auxiliary views', () => {
       expect(eye.clone().sub(surface.position).dot(normal), id).toBeGreaterThan(0);
       expect(housing.position.clone().sub(surface.position).dot(normal), id).toBeLessThan(-0.01);
     }
+  });
+
+  it('sizes mirror targets from glass aspect', () => {
+    const fixture = makeFixture();
+    fixtures.push(fixture);
+    fixture.draw(0);
+    expect(fixture.renderer.calls
+      .filter((call) => call.camera.name.startsWith('mirror-'))
+      .map((call) => [call.camera.name, call.target?.width, call.target?.height]))
+      .toEqual([['mirror-rear-camera', 512, 128], ['mirror-left-camera', 256, 151],
+        ['mirror-right-camera', 256, 151]]);
+  });
+
+  it('places each mirror camera at the reflected driver eye', () => {
+    const fixture = makeFixture();
+    fixtures.push(fixture);
+    fixture.draw(0, makeFrame([3, 0.52, -2], 0.4));
+    const vehicle = fixture.content.assets.vehicle;
+    const eye = new Vector3(...fixture.content.assets.anchors.driverEyeLocalM).applyMatrix4(vehicle.matrixWorld);
+    for (const id of ['rear', 'left', 'right'] as const) {
+      const surface = vehicle.getObjectByName(`mirror-surface-${id}`) as Mesh;
+      const spec = fixture.content.assets.anchors.mirrors[id];
+      const glass = {
+        center: surface.getWorldPosition(new Vector3()),
+        quaternion: surface.getWorldQuaternion(new Quaternion()),
+        halfSizeM: spec.halfSizeM,
+        convexity: spec.convexity,
+      };
+      const expected = reflectPoint(eye, glass);
+      const camera = lastCameraCall(fixture.renderer, `mirror-${id}-camera`).camera;
+      expect(camera.position.distanceTo(expected), id).toBeLessThan(1e-6);
+    }
+  });
+
+  it('follows glass offsets', () => {
+    const fixture = makeFixture();
+    fixtures.push(fixture);
+    fixture.draw(0);
+    const vehicle = fixture.content.assets.vehicle;
+    const left = vehicle.getObjectByName('mirror-surface-left') as Mesh;
+    const rear = vehicle.getObjectByName('mirror-surface-rear') as Mesh;
+    const before = left.quaternion.clone();
+    const rearBefore = rear.quaternion.clone();
+    const cameraBefore = lastCameraCall(fixture.renderer, 'mirror-left-camera').camera.position.clone();
+    fixture.views.setMirrorOffsets({
+      ...ZERO_MIRROR_OFFSETS, left: { yawRad: 0.1, pitchRad: 0 },
+    });
+    fixture.draw(100);
+    const expected = before.clone().multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.1));
+    expect(left.quaternion.angleTo(expected)).toBeLessThan(1e-9);
+    expect(rear.quaternion.angleTo(rearBefore)).toBeLessThan(1e-9);
+    const cameraAfter = lastCameraCall(fixture.renderer, 'mirror-left-camera').camera.position;
+    expect(cameraAfter.distanceTo(cameraBefore)).toBeGreaterThan(0.01);
+    fixture.views.setMirrorOffsets(ZERO_MIRROR_OFFSETS);
+    fixture.draw(200);
+    expect(left.quaternion.angleTo(before)).toBeLessThan(1e-9);
+  });
+
+  it('highlights only the selected mirror', () => {
+    const fixture = makeFixture();
+    fixtures.push(fixture);
+    const highlight = () => fixture.content.scene.getObjectByName('mirror-highlight');
+    expect(highlight()?.visible ?? false).toBe(false);
+    fixture.views.setMirrorHighlight('right');
+    const outline = highlight();
+    expect(outline?.visible).toBe(true);
+    expect(outline?.parent?.name).toBe('mirror-surface-right');
+    expect(outline?.layers.mask).toBe(1 << 1);
+    fixture.views.setMirrorHighlight(null);
+    expect(highlight()?.visible ?? false).toBe(false);
   });
 
   it('disposes each mirror and overhead target exactly once', () => {
