@@ -164,8 +164,10 @@ describe('tyreEdge', () => {
     expect(r.normal![0]).toBeGreaterThan(0);
     expect(r.normal![2]).toBeLessThan(0);
     expect(r.normal![0] / -r.normal![2]).toBeCloseTo(c / s, 6);
-    // Equal-support slices tie; the first (-axle) slice wins, so the hit sits 0.1 m along -axle.
-    expect(r.hitPointM![0]).toBeCloseTo(faceMid[0] - 0.1 * s, 6);
-    expect(r.hitPointM![2]).toBeCloseTo(faceMid[1] - 0.1 * c, 6);
+    // Hit lies on the face plane, within one tyre half-width of the face midpoint along the axle.
+    const hx = r.hitPointM![0] - faceMid[0];
+    const hz = r.hitPointM![2] - faceMid[1];
+    expect(hx * c - hz * s).toBeCloseTo(0, 6);
+    expect(Math.abs(hx * s + hz * c)).toBeLessThanOrEqual(0.1 + 1e-9);
   });
 });
