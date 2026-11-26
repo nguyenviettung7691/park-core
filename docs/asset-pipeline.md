@@ -124,7 +124,7 @@ is promoted, so a pre-promotion `assets:review` stops before the browser step.
 Until the command handles this, run the focused unit tests (expecting only that
 failure) and run `asset-review.spec.ts` directly with the `PARK_CORE_REVIEW_*`
 variables. After promotion, rerun the full `assets:review`, which must pass.
-The sedan and CUV exterior redesigns for issue #12 followed this path.
+The sedan and CUV exterior and interior redesigns for issue #12 followed this path.
 If dimensional/anchor changes make the old public GLB incompatible with the new
 contract, the report labels its baseline unavailable. Use the pre-edit review for
 comparison; do not bypass validation just to obtain a before image.
@@ -175,25 +175,25 @@ eye/mirror transforms and independent wheel nodes remain validated against
 
 `Exterior` groups the shell and static details; four wheels remain separate.
 `Cockpit` contains seats, dashboard, instruments and steering wheel.
-The sedan cockpit also has optional named controls that `src\render\asset-scene.ts`
+Both cockpits also have optional named controls that `src\render\asset-scene.ts`
 drives from telemetry each rendered frame. `SteeringWheelPivot` (under the raked
 `SteeringColumn`) turns with `steeringWheelRad`. `SpeedometerNeedle` sweeps
 0-120 km/h over 240 degrees. `IndicatorLeftLamp`/`IndicatorRightLamp` flash at
 1.5 Hz on simulation time. `ParkingBrakeLamp` follows the parking brake, and
 `BrakePedal`/`AcceleratorPedal` rotate about their hinges with brake and the
-optional `throttle` telemetry. Vehicles without these nodes (currently the CUV)
-are left untouched; geometry alone is not the feature.
+optional `throttle` telemetry. The CUV console `ParkingBrakeLever` lifts 0.35 rad
+while the parking brake is applied. Vehicles without a node are left untouched;
+geometry alone is not the feature.
 The driven exterior uses outward-only opaque glazing: no transparency sorting,
 with open interior sightlines. That glazing is excluded from mirror passes.
 `ParkedGlazing` is hidden on the driven car and enabled on parked clones.
 Planar mirror surfaces have UV coordinates for the existing capped-rate
 RenderTargets. Intentional anchor updates must change the shared view contract
 (`vehicleViews` in `src\vehicle\asset-contract.ts`) and pass loader/render checks.
-The sedan view moves its side mirrors (anchors, cameras and colliders) forward via
-`sideMirrorZOffsetM` and places the rearview camera and display at one point under
-the windshield header. Sedan mirror faces follow the reflection law between the eye
-and their camera. The CUV keeps the default view, with its rearview display offset
-from the camera. Exact anchors and the manual-validation limitation are recorded in
+Both vehicles share one cabin view: it moves the side mirrors (anchors, cameras and
+colliders) forward via `sideMirrorZOffsetM` and places the rearview camera and display
+at one point under the windshield header. Mirror faces follow the reflection law
+between the eye and their camera. Exact anchors and the manual-validation limitation are recorded in
 the catalog.
 
 The environment floor contract and named Ground/ParkingMarkings/WallsAndCurbs

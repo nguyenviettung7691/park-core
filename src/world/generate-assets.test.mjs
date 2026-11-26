@@ -146,19 +146,22 @@ describe('phase 5 original GLB generator', () => {
     expect(names).toContain('SteeringWheel');
   });
 
-  it('gives only the sedan cockpit named, transformable instrument and control parts', () => {
+  it.each(['sedan', 'cuv'])('gives the %s cockpit named, transformable instrument and control parts', (id) => {
     const controls = ['SteeringColumn', 'SteeringWheelPivot', 'SpeedometerNeedle',
       'IndicatorLeftLamp', 'IndicatorRightLamp', 'ParkingBrakeLamp', 'BrakePedal', 'AcceleratorPedal'];
-    const names = (id) => readGlbBytes(buildGlb(id)).nodes.map((node) => node.name);
-    const sedan = readGlbBytes(buildGlb('sedan'));
-    for (const name of controls) expect(names('sedan')).toContain(name);
-    for (const name of controls) expect(names('cuv')).not.toContain(name);
-    const node = (name) => sedan.nodes.find((candidate) => candidate.name === name);
-    const pivot = sedan.nodes.indexOf(node('SteeringWheelPivot'));
+    const glb = readGlbBytes(buildGlb(id));
+    const names = glb.nodes.map((node) => node.name);
+    for (const name of controls) expect(names).toContain(name);
+    // Only the CUV console has a hand lever (issue #12 CUV interior subtask).
+    expect(names.includes('ParkingBrakeLever')).toBe(id === 'cuv');
+    const node = (name) => glb.nodes.find((candidate) => candidate.name === name);
+    const pivot = glb.nodes.indexOf(node('SteeringWheelPivot'));
     expect(node('SteeringColumn').children).toContain(pivot);
-    expect(node('SteeringWheelPivot').children.map((index) => sedan.nodes[index].name)).toEqual(['SteeringWheel']);
+    expect(node('SteeringWheelPivot').children.map((index) => glb.nodes[index].name)).toEqual(['SteeringWheel']);
     expect(node('SteeringColumn').rotation[0]).toBeLessThan(0);
-    for (const name of controls.slice(2)) expect(node(name).mesh, name).toBeTypeOf('number');
+    for (const name of [...controls.slice(2), ...(id === 'cuv' ? ['ParkingBrakeLever'] : [])]) {
+      expect(node(name).mesh, name).toBeTypeOf('number');
+    }
   });
 
   it.each(['sedan', 'cuv'])('keeps the hood below the driver eye for %s', (assetId) => {

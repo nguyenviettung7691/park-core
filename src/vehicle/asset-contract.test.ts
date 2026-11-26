@@ -21,7 +21,7 @@ describe('shared vehicle asset contract', () => {
     expect(mirrorBoxes(profile)[0].centerLocalM[1]).toBeCloseTo(0.53);
   });
 
-  it('places sedan mirrors ahead of the driver while keeping the CUV view contract', () => {
+  it('places sedan and CUV mirrors ahead of the driver', () => {
     const sedan = deriveVehicleAssetContract(profiles.sedan);
     const eye = profiles.sedan.driverEyeLocalM;
     for (const id of ['left', 'right'] as const) {
@@ -30,12 +30,14 @@ describe('shared vehicle asset contract', () => {
     expect(sedan.mirrors.rear.positionM).toEqual([
       expect.closeTo(0, 6), expect.closeTo(0.74, 6), expect.closeTo(-1.225, 6)]);
     expect(sedan.mirrors.rear.positionM[1]).toBeGreaterThan(eye[1] + 0.1);
+    // CUV interior subtask: the same cabin view contract around its own eye.
     const cuv = deriveVehicleAssetContract(profiles.cuv);
     expect(cuv.mirrors.left.positionM).toEqual([
-      expect.closeTo(-0.965, 4), expect.closeTo(0.48, 4), expect.closeTo(-0.7462, 4)]);
+      expect.closeTo(-0.965, 4), expect.closeTo(0.48, 4), expect.closeTo(-1.3312, 4)]);
+    expect(cuv.mirrors.left.positionM[2]).toBeLessThan(profiles.cuv.driverEyeLocalM[2] - 0.4);
     expect(cuv.mirrors.rear.positionM).toEqual([
-      expect.closeTo(0, 4), expect.closeTo(0.8, 4), expect.closeTo(-1.5962, 4)]);
-    expect(cuv.rearDisplayM[2] - cuv.mirrors.rear.positionM[2]).toBeCloseTo(0.52);
+      expect.closeTo(0, 4), expect.closeTo(0.82, 4), expect.closeTo(-1.1062, 4)]);
+    expect(cuv.rearDisplayM).toEqual(cuv.mirrors.rear.positionM);
   });
 
   it('rejects inconsistent dimensions instead of silently rescaling the asset', () => {

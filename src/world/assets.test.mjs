@@ -206,12 +206,12 @@ describe('phase 5 scene asset loading', () => {
     } finally { assets.dispose(); }
   });
 
-  it('orients sedan mirror faces between the driver eye and their virtual cameras', async () => {
+  it.each(['sedan', 'cuv'])('orients %s mirror faces between the driver eye and their virtual cameras', async (id) => {
     mockedFetch();
-    const assets = await loadSceneAssets('garage', 'sedan', new AbortController().signal);
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
     try {
       assets.vehicle.updateMatrixWorld(true);
-      const eye = new Vector3(...profiles.sedan.driverEyeLocalM);
+      const eye = new Vector3(...profiles[id].driverEyeLocalM);
       for (const side of ['Left', 'Right', 'Rear']) {
         const surface = assets.vehicle.getObjectByName(`MirrorSurface${side}`);
         const center = surface.getWorldPosition(new Vector3());

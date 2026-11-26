@@ -6,6 +6,8 @@ export const SPEEDOMETER_MAX_KMH = 120;
 const SPEEDOMETER_ZERO_RAD = 120 * Math.PI / 180;
 const SPEEDOMETER_SWEEP_RAD = 240 * Math.PI / 180;
 export const PEDAL_TRAVEL_RAD = 0.3;
+/** Hand lever lift while the parking brake is applied (CUV console lever). */
+export const PARKING_LEVER_RAD = 0.35;
 /** Indicator lamps flash at 1.5 Hz (90 per minute), lit for the first half of each period. */
 export const INDICATOR_FLASH_HZ = 1.5;
 
@@ -20,7 +22,7 @@ export function indicatorLit(telemetry: VehicleTelemetry, side: 'left' | 'right'
     Math.floor(telemetry.simulationTimeS * INDICATOR_FLASH_HZ * 2) % 2 === 0;
 }
 
-// Optional named cockpit controls; vehicles without them (CUV) are left untouched.
+// Optional named cockpit controls; vehicles without a node are left untouched.
 function cockpitControls(vehicle: Object3D) {
   const find = (name: string) => vehicle.getObjectByName(name) ?? null;
   const controls = {
@@ -31,6 +33,7 @@ function cockpitControls(vehicle: Object3D) {
     parking: find('ParkingBrakeLamp'),
     brake: find('BrakePedal'),
     accelerator: find('AcceleratorPedal'),
+    lever: find('ParkingBrakeLever'),
   };
   for (const lamp of [controls.left, controls.right, controls.parking]) if (lamp) lamp.visible = false;
   return controls;
@@ -91,6 +94,7 @@ export function createAssetScene(assets: SceneAssets): AssetScene {
       if (controls.left) controls.left.visible = indicatorLit(now, 'left');
       if (controls.right) controls.right.visible = indicatorLit(now, 'right');
       if (controls.parking) controls.parking.visible = now.parkingBrake;
+      controls.lever?.rotation.set(now.parkingBrake ? PARKING_LEVER_RAD : 0, 0, 0);
       controls.brake?.rotation.set(PEDAL_TRAVEL_RAD * mix(was.brake, now.brake), 0, 0);
       controls.accelerator?.rotation.set(
         PEDAL_TRAVEL_RAD * mix(was.throttle ?? 0, now.throttle ?? 0), 0, 0);

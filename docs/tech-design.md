@@ -94,8 +94,8 @@ do not certify support for a physical wheel or controller.
 The driver camera is profile-anchored and supports bounded mouse-look. The
 chase camera adjusts around environmental obstructions. Rear and side mirrors
 use RenderTargets with a 15 FPS update cap. Cockpit instruments that a vehicle
-asset names (sedan: steering wheel, speedometer, indicator and parking lamps,
-pedals) follow interpolated telemetry on every rendered frame; they mirror the
+asset names (both vehicles: steering wheel, speedometer, indicator and parking
+lamps, pedals; CUV also a parking-brake hand lever) follow interpolated telemetry on every rendered frame; they mirror the
 HUD state and do not add new driving inputs. The overhead view uses one
 high-altitude orthographic camera; its RenderTarget updates at no more than
 30 Hz, while the latest texture is drawn into the canvas inset on rendered

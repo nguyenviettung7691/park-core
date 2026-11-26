@@ -10,25 +10,18 @@ interface VehicleViewProfile {
   readonly sideMirrorZOffsetM: number;
 }
 
-const defaultView: VehicleViewProfile = {
-  rearCameraOffsetM: [0.36, 0.12, -0.75],
-  rearDisplayOffsetM: [-0.25, -0.075, 0.52],
-  mirrorYawRad: { rear: Math.PI, left: 105 * Math.PI / 180, right: -105 * Math.PI / 180 },
-  sideMirrorZOffsetM: 0,
-};
-
-// Sedan interior subtask of issue #12: side mirrors sit at the A-pillar base ahead of
-// the driver; the rearview camera and its display hang under the windshield header.
-const sedanView: VehicleViewProfile = {
-  ...defaultView,
+// Sedan and CUV interior subtasks of issue #12: side mirrors sit at the A-pillar base
+// ahead of the driver; the rearview camera and its display hang under the windshield header.
+const cabinView: VehicleViewProfile = {
   rearCameraOffsetM: [0.36, 0.14, -0.56],
   rearDisplayOffsetM: [0, 0, 0],
+  mirrorYawRad: { rear: Math.PI, left: 105 * Math.PI / 180, right: -105 * Math.PI / 180 },
   sideMirrorZOffsetM: -0.585,
 };
 
 export const vehicleViews: Readonly<Record<VehicleId, VehicleViewProfile>> = {
-  sedan: sedanView,
-  cuv: defaultView,
+  sedan: cabinView,
+  cuv: cabinView,
 };
 
 export const vehicleNodeNames = [
