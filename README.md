@@ -25,7 +25,7 @@ Vietnamese.
 - **Vehicles and scenery:** Distinct original Sedan/CUV artwork, cockpits,
   roadside and garage environments, and visible parked lesson vehicles.
   Free drive remains a separate garage sandbox.
-- **Vehicle physics:** Tyres meet 0.12 m roadside curbs and 0.11 m garage wheel
+- **Vehicle physics:** Tyres meet 0.11 m roadside curbs and 0.11 m garage wheel
   stops through tyre-edge contact; touching a curb is a lesson warning and
   climbing one fails. Telemetry-driven exterior brake, reverse and indicator lamps
   are prepared but their vehicle GLBs await developer approval.

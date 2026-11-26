@@ -22,7 +22,7 @@ function tyreAt(d: number): TyreFrame {
 
 describe('tyreEdge', () => {
   it('reports none when the curb is out of reach', () => {
-    const r = tyreEdge(tyreAt(0.4), [box(0.12)]);
+    const r = tyreEdge(tyreAt(0.4), [box(0.11)]);
     expect(r.contact).toEqual({ colliderId: null, kind: null, state: 'none' });
     expect(r.supportY).toBeNull();
     expect(r.normal).toBeNull();
@@ -49,8 +49,8 @@ describe('tyreEdge', () => {
   });
 
   it('keeps supportY continuous while climbing and reaches the top', () => {
-    const curb = box(0.12);
-    const d0 = Math.sqrt(2 * R * 0.12 - 0.12 * 0.12);
+    const curb = box(0.11);
+    const d0 = Math.sqrt(2 * R * 0.11 - 0.11 * 0.11);
     expect(tyreEdge(tyreAt(d0 + 0.001), [curb]).supportY).toBeNull();
     let prev = tyreEdge(tyreAt(0.31), [curb]).supportY ?? 0;
     let maxJump = 0;
@@ -60,7 +60,7 @@ describe('tyreEdge', () => {
       prev = y;
     }
     expect(maxJump).toBeLessThanOrEqual(0.002);
-    expect(tyreEdge(tyreAt(0), [curb]).supportY!).toBeCloseTo(0.12, 9);
+    expect(tyreEdge(tyreAt(0), [curb]).supportY!).toBeCloseTo(0.11, 9);
   });
 
   it('reports touching without support within the touch margin beyond first touch', () => {
@@ -80,22 +80,22 @@ describe('tyreEdge', () => {
   });
 
   it('is climbing once lift reaches half the curb height', () => {
-    expect(tyreEdge(tyreAt(0.24), [box(0.12)]).contact.state).toBe('touching');
-    const r = tyreEdge(tyreAt(0.1), [box(0.12)]);
-    expect(r.supportY! - 0).toBeGreaterThanOrEqual(0.06);
+    expect(tyreEdge(tyreAt(0.24), [box(0.11)]).contact.state).toBe('touching');
+    const r = tyreEdge(tyreAt(0.1), [box(0.11)]);
+    expect(r.supportY! - 0).toBeGreaterThanOrEqual(0.055);
     expect(r.contact.state).toBe('climbing');
   });
 
   it('is over when the wheel centre is above the box', () => {
-    const r = tyreEdge(tyreAt(-0.2), [box(0.12)]);
+    const r = tyreEdge(tyreAt(-0.2), [box(0.11)]);
     expect(r.contact.state).toBe('over');
-    expect(r.supportY).toBeCloseTo(0.12, 9);
+    expect(r.supportY).toBeCloseTo(0.11, 9);
     expect(r.normal).toEqual([0, 1, 0]);
   });
 
   it('applies sideways penalty only for a side approach', () => {
-    const side = box(0.12, {
-      centerM: [0, 0.06, 1.5], halfExtentsM: [5, 0.06, 0.5],
+    const side = box(0.11, {
+      centerM: [0, 0.055, 1.5], halfExtentsM: [5, 0.055, 0.5],
     });
     const tyre: TyreFrame = {
       centerM: [0, R, 0.92], rollDir: [1, 0, 0], axleDir: [0, 0, 1],
@@ -110,7 +110,7 @@ describe('tyreEdge', () => {
   });
 
   it('copies kind and id and ignores non-edge boxes', () => {
-    const stop = box(0.12, { id: 'stop-1', kind: 'wheel-stop' });
+    const stop = box(0.11, { id: 'stop-1', kind: 'wheel-stop' });
     const r = tyreEdge(tyreAt(0.1), [box(0.5, { id: 'wall', kind: 'obstacle' }), stop]);
     expect(r.contact.colliderId).toBe('stop-1');
     expect(r.contact.kind).toBe('wheel-stop');
@@ -119,7 +119,7 @@ describe('tyreEdge', () => {
 
   it('honours box yaw', () => {
     // Yaw 90 deg about +Y turns the box's long local z axis onto world x.
-    const yawed = box(0.12, { yawRad: Math.PI / 2, centerM: [0, 0.06, 0] });
+    const yawed = box(0.11, { yawRad: Math.PI / 2, centerM: [0, 0.055, 0] });
     const tyre: TyreFrame = {
       centerM: [0.4, R, 0], rollDir: [1, 0, 0], axleDir: [0, 0, 1],
       radiusM: R, groundY: 0,
@@ -132,13 +132,13 @@ describe('tyreEdge', () => {
   });
 
   it('gives finite normal and hit point with a slice exactly on the face', () => {
-    const r = tyreEdge(tyreAt(0), [box(0.12)]);
+    const r = tyreEdge(tyreAt(0), [box(0.11)]);
     for (const v of [...r.normal!, ...r.hitPointM!]) expect(Number.isFinite(v)).toBe(true);
-    expect(r.supportY).toBeCloseTo(0.12, 9);
+    expect(r.supportY).toBeCloseTo(0.11, 9);
   });
 
   it('applies no lateral penalty to a wheel atop a wide box', () => {
-    const wide = box(0.12, { centerM: [0, 0.06, 0], halfExtentsM: [5, 0.06, 0.5] });
+    const wide = box(0.11, { centerM: [0, 0.055, 0], halfExtentsM: [5, 0.055, 0.5] });
     const tyre: TyreFrame = {
       centerM: [0, R, 0.3], rollDir: [1, 0, 0], axleDir: [0, 0, 1], radiusM: R, groundY: 0,
     };
@@ -150,12 +150,12 @@ describe('tyreEdge', () => {
 
   it('picks the highest support regardless of box order', () => {
     const low = box(0.05, { id: 'low', centerM: [faceX - 0.5, 0.025, 0], halfExtentsM: [0.7, 0.025, 5] });
-    const tall = box(0.12, { id: 'tall' });
+    const tall = box(0.11, { id: 'tall' });
     const tyre = tyreAt(0.1); // centre at x=0.4, over `low`, rolling toward `tall`
     const a = tyreEdge(tyre, [low, tall]);
     const b = tyreEdge(tyre, [tall, low]);
     expect(a.supportY).toBeCloseTo(b.supportY!, 12);
-    expect(a.supportY!).toBeGreaterThan(0.1);
+    expect(a.supportY!).toBeGreaterThan(0.09);
     expect(a.contact.colliderId).toBe('tall');
     expect(b.contact.colliderId).toBe('tall');
   });
@@ -169,7 +169,7 @@ describe('tyreEdge', () => {
     const faceMid: [number, number] = [centre[0] + 0.5 * c, centre[1] - 0.5 * s];
     const d = 0.1;
     const wheel: [number, number] = [faceMid[0] + c * d, faceMid[1] - s * d];
-    const yawed = box(0.12, { yawRad: yaw, centerM: [centre[0], 0.06, centre[1]], halfExtentsM: [0.5, 0.06, 4] });
+    const yawed = box(0.11, { yawRad: yaw, centerM: [centre[0], 0.055, centre[1]], halfExtentsM: [0.5, 0.055, 4] });
     const tyre: TyreFrame = {
       centerM: [wheel[0], R, wheel[1]], rollDir: [-c, 0, s], axleDir: [s, 0, c],
       radiusM: R, groundY: 0,

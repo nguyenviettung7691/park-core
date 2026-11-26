@@ -215,8 +215,8 @@ The garage GLB carries a hidden `WallsAndCurbs/WheelStopTemplate` (one mesh,
 1.8 x 0.11 x 0.15 m, centred on its origin). The loader requires it, and
 `createLessonScene` clones it for every `wheel-stop` collider in the scenario,
 taking the collider's id, position and yaw; it throws if a stage has stops but no
-template, and never builds a parked car for a stop. Roadside curbs are 0.12 m tall
-(`CurbLeft`/`CurbRight` 0.3 x 0.12 x 32 m at x = +/-4.2); art and colliders must
+template, and never builds a parked car for a stop. Roadside curbs are 0.11 m tall
+(`CurbLeft`/`CurbRight` 0.3 x 0.11 x 32 m at x = +/-4.2); art and colliders must
 move together.
 
 `src\world\colliders.ts` and `src\lessons\scenarios.ts` remain authoritative.

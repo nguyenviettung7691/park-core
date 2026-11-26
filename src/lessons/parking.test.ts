@@ -28,8 +28,8 @@ const target = (overrides: Partial<ParkingTarget> = {}): ParkingTarget => ({
 const rightCurb: ColliderBox = {
   id: 'roadside-curb-right',
   kind: 'curb',
-  centerM: [4.2, 0.06, 0],
-  halfExtentsM: [0.15, 0.06, 16],
+  centerM: [4.2, 0.055, 0],
+  halfExtentsM: [0.15, 0.055, 16],
   yawRad: 0,
 };
 

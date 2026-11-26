@@ -74,20 +74,27 @@ are visible from the neutral cockpit POV in review captures, and reuses the
        entry-side tracking; at <=15 km/h and 120 Hz a wheel moves <=3.5 cm per
        step, so crossing a 0.15 m stop is always observed.
    - climbing is **momentum-only** by design: with the step-climb relation
-     (about 1.2x wheel load for 0.11 m, 1.4x for 0.12 m) the unchanged
+     (about 1.2x wheel load for the 0.11 m stops and curbs) the unchanged
      2,400-2,600 N drive force and creep cap cannot lift the car from rest, so
      a stop or curb is only mounted by arriving with speed. Tests drive the
      climb/fail cases by approach speed, not throttle from rest. No softening
      factor.
 4. **Roadside curb rules.**
-   - Lower both roadside curbs from 0.24 m to a realistic **0.12 m** (collider
+   - Lower both roadside curbs from 0.24 m to a realistic **0.11 m** (collider
      in `src/world/colliders.ts` and art in `tools/asset-designs/environments.mjs`,
      regenerated). Plan width and position are unchanged, so the 0.15-0.30 m
-     parallel-parking gap criterion is unchanged. 0.12 m sits below both
+     parallel-parking gap criterion is unchanged. 0.11 m sits below both
      ground clearances (0.15 m sedan / 0.18 m CUV), so the chassis/mirror
      collision box does not reach the curb before the tyre does; a test must
-     show this margin holds under hard braking dive for both vehicles. The
-     chassis collider shape is not changed.
+     show this margin holds under hard braking dive for both vehicles, in D and
+     R and with steering during the stop. The chassis collider shape is not
+     changed.
+     *Amended after the final review (ruling R12):* this design first chose
+     0.12 m, but a hard brake in **R** beside a 0.12 m curb left the sedan's
+     chassis corner only 0.8 mm above the curb top, below the 2 mm test margin.
+     Clearance under dive is the reason for the curb height, so the curbs were
+     lowered to 0.11 m, the same as the wheel stops and still within real curb
+     heights (10-15 cm).
    - Tyre `touching` a curb → **warning**: HUD notice, not a failure, and not
      the sandbox "contact" pause. Counted per attempt (`curbTouches`), shown on
      the result and history-detail screens. Attempt history
@@ -178,7 +185,8 @@ The developer picked option 1.
 
 ## Calls made in this design (check while reading)
 
-- Curb height 0.12 m (below both ground clearances); wheel stop
+- Curb height 0.11 m (below both ground clearances; first 0.12 m, lowered for
+  reverse brake-dive clearance, ruling R12); wheel stop
   0.11 m x ~1.8 m x 0.15 m.
 - Edge states and their thresholds as defined in goal 3; side rubbing counts
   as touching.
