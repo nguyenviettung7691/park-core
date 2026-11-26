@@ -147,7 +147,7 @@ export interface ParkingTarget {
 
 export interface ScenarioCollider {
   readonly id: string;
-  readonly kind: 'obstacle' | 'curb';
+  readonly kind: 'obstacle' | 'curb' | 'wheel-stop';
   readonly centerM: Vec3Data;
   readonly halfExtentsM: Vec3Data;
   readonly yawRad: number;
