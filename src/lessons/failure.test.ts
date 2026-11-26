@@ -117,6 +117,18 @@ describe('lesson failure evaluation', () => {
       .toEqual({ reason: 'wheel-stop-mounted', obstacleId: 'stage5-wheel-stop' });
   });
 
+  it('stage 3: a right-rear tyre touching the curb with the body overhanging is no failure, over is', () => {
+    const rearRight = (state: TyreEdgeState): readonly WheelEdgeContact[] => [
+      ...noEdges.slice(0, 3),
+      { colliderId: 'roadside-curb-right', kind: 'curb', state },
+    ];
+    const car = telemetry({ pose: poseAt(3.2, 0) });
+    expect(update(scenarios[3], car, null, 0, 1 / 120, undefined, rearRight('touching')).event)
+      .toBeNull();
+    expect(update(scenarios[3], car, null, 0, 1 / 120, undefined, rearRight('over')).event)
+      .toEqual({ reason: 'curb-contact', obstacleId: 'roadside-curb-right' });
+  });
+
   it('keeps the approved 0.15 m body-to-curb parking gap free of wheel-curb failure', () => {
     const result = update(
       scenarios[3],
@@ -129,7 +141,7 @@ describe('lesson failure evaluation', () => {
   it('fails when the full mirror-aware envelope leaves driving bounds', () => {
     const result = update(
       scenarios[3],
-      telemetry({ pose: poseAt(3.1, 0) }),
+      telemetry({ pose: poseAt(3.5, 0) }),
     );
 
     expect(result.event).toEqual({ reason: 'out-of-bounds', obstacleId: null });

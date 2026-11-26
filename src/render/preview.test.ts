@@ -454,11 +454,7 @@ describe('preview lifecycle', () => {
 
     it('warns without failing the lesson', () => {
       const f = fixture();
-      const base = scenarios[3]!;
-      const scenario = {
-        ...base, drivingBounds: { ...base.drivingBounds, halfWidthM: 10 },
-      };
-      const p = touchCurb(f, { kind: 'lesson', scenario });
+      const p = touchCurb(f, { kind: 'lesson', scenario: scenarios[3]! });
       expect(f.events.onNotice).toHaveBeenCalledWith('curbTouchWarning');
       expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
       p.dispose();

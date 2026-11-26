@@ -21,7 +21,7 @@ const garageBounds: OrientedRegion = {
 
 const roadsideBounds: OrientedRegion = {
   centerM: [0, 0, 0],
-  halfWidthM: 4.05,
+  halfWidthM: 4.35,
   halfLengthM: 15.5,
   headingRad: 0,
 };
