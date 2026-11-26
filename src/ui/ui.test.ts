@@ -131,6 +131,27 @@ it('explains the parking goal visually before accepting an explicit lesson start
   expect(action).not.toHaveBeenCalled();
 });
 
+it.each([
+  ['wheel-stop-mounted', 'stage1-wheel-stop', 'Cục chặn bánh'],
+  ['wheel-stop-mounted', 'stage2-wheel-stop', 'Cục chặn bánh'],
+  ['wheel-stop-mounted', 'stage4-wheel-stop', 'Cục chặn bánh'],
+  ['curb-contact', 'roadside-curb-left', 'Lề đường'],
+  ['curb-contact', 'roadside-curb-right', 'Lề đường'],
+] as const)('labels a %s failure on %s as %s', (failureReason, obstacleId, label) => {
+  const element = root();
+  const summary: AttemptSummary = {
+    stageId: 1, vehicleId: 'sedan', outcome: 'fail', failureReason, obstacleId,
+    elapsedSimulationS: 1, closestSampledClearanceM: null, peakSpeedMps: 0.2,
+    directionChanges: 0, curbTouches: 0, acknowledgedStepIds: [], usedAids: [],
+  };
+  mountScreen(element, {
+    kind: 'history-detail', record: { id: 'a', completedAt: '2026-11-04T10:00:00.000Z', summary },
+    status: 'persistent', resetRequested: false,
+  }, context, vi.fn());
+  expect(element.textContent).toContain(`${messages.historyObstacle}${label}`);
+  expect(element.textContent).not.toContain(obstacleId);
+});
+
 it('localizes acknowledged steps and obstacle labels in history details', () => {
   const element = root();
   const summary: AttemptSummary = {

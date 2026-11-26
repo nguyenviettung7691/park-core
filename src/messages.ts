@@ -119,6 +119,7 @@ export const vi = {
   historyUnknownStep: 'Bước đã xác nhận (nội dung cũ không còn khả dụng)',
   obstacleGround: 'Mặt đất',
   obstacleRoadsideCurb: 'Lề đường',
+  obstacleWheelStop: 'Cục chặn bánh',
   obstacleStage1Left: 'Xe đỗ bên trái',
   obstacleStage1Right: 'Xe đỗ bên phải',
   obstacleStage2Left: 'Xe đỗ bên trái',

@@ -43,7 +43,11 @@ const STEP_LABELS = new Map(
 );
 const OBSTACLE_MESSAGES: Readonly<Record<string, keyof typeof vi>> = {
   ground: 'obstacleGround',
+  'roadside-curb-left': 'obstacleRoadsideCurb',
   'roadside-curb-right': 'obstacleRoadsideCurb',
+  'stage1-wheel-stop': 'obstacleWheelStop',
+  'stage2-wheel-stop': 'obstacleWheelStop',
+  'stage4-wheel-stop': 'obstacleWheelStop',
   'stage1-parked-left': 'obstacleStage1Left',
   'stage1-parked-right': 'obstacleStage1Right',
   'stage2-parked-left': 'obstacleStage2Left',
