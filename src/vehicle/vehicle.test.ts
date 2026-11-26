@@ -339,11 +339,33 @@ describe.each(IDS)('real Cannon rig: %s', (id) => {
       + `R=${r.total.map((a) => a.toFixed(3))} exp ${r.expected.toFixed(3)}`);
     for (const a of d.total) {
       expect(a).toBeLessThan(0);
-      expect(Math.abs(Math.abs(a) - d.expected)).toBeLessThanOrEqual(0.1 * d.expected);
+      expect(Math.abs(Math.abs(a) - d.expected)).toBeLessThanOrEqual(0.03 * d.expected);
     }
     for (const a of r.total) {
       expect(a).toBeGreaterThan(0);
-      expect(Math.abs(a - r.expected)).toBeLessThanOrEqual(0.1 * r.expected);
+      expect(Math.abs(a - r.expected)).toBeLessThanOrEqual(0.03 * r.expected);
+    }
+  });
+
+  it('keeps spinning in the travel direction while wheels are airborne', () => {
+    for (const [gear, dir] of [['D', -1], ['R', 1]] as const) {
+      const f = setup(id);
+      shift(f, gear, true);
+      run(f, frame({ throttle: 0.2 }), 1);
+      f.rig.body.position.y += 0.5;
+      const rot = () => f.rig.vehicle.wheelInfos.map((w) => w.rotation);
+      let prev = rot();
+      let airborneSteps = 0;
+      for (let k = 0; k < 20; k++) {
+        step(f, frame({ throttle: 0.2 }));
+        const now = rot();
+        if (f.rig.supports().every((s) => !s)) {
+          airborneSteps++;
+          now.forEach((a, i) => { expect((a - prev[i]) * dir).toBeGreaterThan(0); });
+        }
+        prev = now;
+      }
+      expect(airborneSteps).toBeGreaterThan(10);
     }
   });
 

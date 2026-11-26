@@ -83,8 +83,6 @@ const fr = {
 const forwardWS = [0, 1, 2, 3].map(() => new CANNON.Vec3());
 const axleWS = [0, 1, 2, 3].map(() => new CANNON.Vec3());
 const RIGHT = new CANNON.Vec3(1, 0, 0);
-const PROJECT_FORWARD_LOCAL = new CANNON.Vec3(0, 0, -1);
-const CANNON_FORWARD_LOCAL = new CANNON.Vec3(0, 0, 1);
 
 function impulseDenominator(body: CANNON.Body, pos: CANNON.Vec3, n: CANNON.Vec3): number {
   pos.vsub(body.position, fr.r0);
@@ -111,19 +109,16 @@ function relativeVelocity(a: CANNON.Body, b: CANNON.Body, p: CANNON.Vec3, dir: C
 class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
   /**
    * cannon-es spins wheels about its own forward axis (indexForwardAxis 2 = +Z), while this project
-   * drives toward -Z. super.updateVehicle therefore advances wheel.rotation with the opposite sign
-   * of travel. Flip that step's increment (same magnitude) so wheels roll with the vehicle.
-   * Forces, brakes and impulses are untouched; only the visual rotation changes.
+   * drives toward -Z, so super.updateVehicle advances wheel.rotation against the direction of travel.
+   * Mirror this step's rotation increment (same magnitude, opposite sign) around the value captured
+   * before super. deltaRotation stays cannon-signed, so airborne wheels (which reuse the stored,
+   * damped value) keep spinning consistently. Only visual rotation changes; no forces or brakes.
+   * Note: useCustomSlidingRotationalSpeed (disabled here) would be mirrored as well.
    */
   override updateVehicle(timeStep: number): void {
+    const before = this.wheelInfos.map((w) => w.rotation);
     super.updateVehicle(timeStep);
-    // Project forward (-Z local) against the axis cannon measured travel along (+Z local).
-    const sign = Math.sign(PROJECT_FORWARD_LOCAL.dot(CANNON_FORWARD_LOCAL)); // -1 for this rig
-    if (sign >= 0) return;
-    for (const w of this.wheelInfos) {
-      w.rotation += 2 * sign * w.deltaRotation;
-      w.deltaRotation = sign * w.deltaRotation;
-    }
+    this.wheelInfos.forEach((w, i) => { w.rotation = 2 * before[i] - w.rotation; });
   }
 
   override updateFriction(timeStep: number): void {
