@@ -12,7 +12,10 @@ describe('shared vehicle asset contract', () => {
     const contract = deriveVehicleAssetContract(profile);
     const geometry = deriveGeometry(profile);
     expect(contract.driverEyeLocalM).toEqual(profile.driverEyeLocalM);
-    expect(contract.mirrors.left.positionM).toEqual(geometry.mirrors[0].centerLocalM);
+    // Side glass sits 4.4 cm above the mirror collider centre, inside its housing.
+    expect(contract.mirrors.left.positionM).toEqual([
+      geometry.mirrors[0].centerLocalM[0], expect.closeTo(geometry.mirrors[0].centerLocalM[1] + 0.044, 9),
+      geometry.mirrors[0].centerLocalM[2]]);
     expect(contract.mirrors.rear.positionM[2]).toBeCloseTo(-1.56);
     expect(contract.rearDisplayM).toEqual(contract.mirrors.rear.positionM);
     expect(contract.bodyPhysicalZ[1] - contract.bodyPhysicalZ[0]).toBeCloseTo(4.8);
@@ -34,7 +37,7 @@ describe('shared vehicle asset contract', () => {
     // CUV interior subtask: the same cabin view contract around its own eye.
     const cuv = deriveVehicleAssetContract(profiles.cuv);
     expect(cuv.mirrors.left.positionM).toEqual([
-      expect.closeTo(-0.965, 4), expect.closeTo(0.48, 4), expect.closeTo(-1.3312, 4)]);
+      expect.closeTo(-0.965, 4), expect.closeTo(0.524, 4), expect.closeTo(-1.3312, 4)]);
     expect(cuv.mirrors.left.positionM[2]).toBeLessThan(profiles.cuv.driverEyeLocalM[2] - 0.4);
     expect(cuv.mirrors.rear.positionM).toEqual([
       expect.closeTo(0, 4), expect.closeTo(0.82, 4), expect.closeTo(-1.1062, 4)]);

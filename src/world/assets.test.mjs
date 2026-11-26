@@ -1,5 +1,6 @@
 import { Box3, BufferGeometry, Mesh, Quaternion, Raycaster, Vector3 } from 'three';
 import { profiles } from '../vehicle/profiles.ts';
+import { deriveVehicleAssetContract } from '../vehicle/asset-contract.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildGlb } from '../../tools/generate-assets.mjs';
 import { AssetLoadError, loadSceneAssets } from './assets.ts';
@@ -206,27 +207,54 @@ describe('phase 5 scene asset loading', () => {
     } finally { assets.dispose(); }
   });
 
-  it.each(['sedan', 'cuv'])('orients %s mirror faces between the driver eye and their virtual cameras', async (id) => {
+  it.each(['sedan', 'cuv'])('authors %s mirror glass at the contract pose and size, facing the eye', async (id) => {
     mockedFetch();
     const assets = await loadSceneAssets('garage', id, new AbortController().signal);
     try {
       assets.vehicle.updateMatrixWorld(true);
+      const contract = deriveVehicleAssetContract(profiles[id]);
       const eye = new Vector3(...profiles[id].driverEyeLocalM);
       for (const side of ['Left', 'Right', 'Rear']) {
+        const spec = contract.mirrors[side.toLowerCase()];
         const surface = assets.vehicle.getObjectByName(`MirrorSurface${side}`);
+        const pivot = assets.vehicle.getObjectByName(`Mirror${side}`);
+        const expected = new Quaternion(...spec.rotation);
+        for (const node of [surface, pivot]) {
+          expect(node.getWorldPosition(new Vector3()).distanceTo(new Vector3(...spec.positionM)), side)
+            .toBeLessThan(1e-4);
+          expect(node.getWorldQuaternion(new Quaternion()).angleTo(expected), side).toBeLessThan(1e-4);
+        }
+        surface.geometry.computeBoundingBox();
+        const extent = surface.geometry.boundingBox.getSize(new Vector3());
+        expect(extent.x / 2, side).toBeCloseTo(spec.halfSizeM[0], 4);
+        expect(extent.y / 2, side).toBeCloseTo(spec.halfSizeM[1], 4);
         const center = surface.getWorldPosition(new Vector3());
         const normal = new Vector3(0, 0, 1).applyQuaternion(surface.getWorldQuaternion(new Quaternion()));
-        const anchor = assets.vehicle.getObjectByName(`Mirror${side}`);
-        const view = new Vector3(0, 0, -1).applyQuaternion(anchor.getWorldQuaternion(new Quaternion()));
-        const toEye = eye.clone().sub(center).setY(0).normalize();
-        // Reflection law in plan view: equal angles to the eye and to the camera's view.
-        expect(normal.dot(toEye), side).toBeGreaterThan(0.3);
-        expect(normal.dot(toEye)).toBeCloseTo(normal.dot(view), 5);
+        expect(eye.clone().sub(center).dot(normal), side).toBeGreaterThan(0);
+        expect(assets.anchors.mirrors[side.toLowerCase()].halfSizeM).toEqual(spec.halfSizeM);
         if (side !== 'Rear') expect(center.z).toBeLessThan(eye.z - 0.4);
       }
       const rear = assets.vehicle.getObjectByName('MirrorSurfaceRear').getWorldPosition(new Vector3());
       expect(rear.y).toBeGreaterThan(eye.y + 0.1);
       expect(rear.z).toBeLessThan(eye.z - 0.15);
+    } finally { assets.dispose(); }
+  });
+
+  it('keeps each mirror housing behind its glass so the reflection is unobstructed', async () => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', 'sedan', new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const eye = new Vector3(...profiles.sedan.driverEyeLocalM);
+      const raycaster = new Raycaster();
+      for (const side of ['Left', 'Right', 'Rear']) {
+        const surface = assets.vehicle.getObjectByName(`MirrorSurface${side}`);
+        const housing = assets.vehicle.getObjectByName(`MirrorHousing${side}`);
+        const center = surface.getWorldPosition(new Vector3());
+        raycaster.set(eye, center.clone().sub(eye).normalize());
+        raycaster.far = eye.distanceTo(center) - 1e-3;
+        expect(raycaster.intersectObject(housing, true), side).toHaveLength(0);
+      }
     } finally { assets.dispose(); }
   });
 
@@ -270,7 +298,8 @@ describe('phase 5 scene asset loading', () => {
       'WheelFL', 'WheelFR', 'WheelRL', 'WheelRR',
     ]);
     expect(assets.anchors.driverEyeLocalM[0]).toBeCloseTo(-0.36, 4);
-    expect(assets.anchors.mirrors.left.rotation[1]).toBeCloseTo(Math.sin(105 * Math.PI / 360), 4);
+    expect(assets.anchors.mirrors.left.rotation)
+      .toEqual(deriveVehicleAssetContract(profiles.sedan).mirrors.left.rotation.map((v) => expect.closeTo(v, 5)));
     expect(assets.environment.getObjectByName('Ceiling').layers.isEnabled(2)).toBe(true);
     expect(assets.vehicle.getObjectByName('MirrorSurfaceRear').layers.isEnabled(1)).toBe(true);
     expect(progress).toHaveLength(2);

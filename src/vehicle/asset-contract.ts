@@ -20,6 +20,8 @@ interface VehicleViewProfile {
   readonly glass: Readonly<Record<MirrorId, MirrorGlassView>>;
   /** Side mirrors: the inner view edge points this far inward of straight back. */
   readonly sideInnerEdgeInwardRad: number;
+  /** Side glass centre height above the mirror collider centre (inside the housing). */
+  readonly sideGlassRiseM: number;
   /** Forward (-Z) shift of the side-mirror anchors and colliders from frontAxle + 0.35 m. */
   readonly sideMirrorZOffsetM: number;
 }
@@ -39,6 +41,9 @@ const cabinView: VehicleViewProfile = {
     right: { halfSizeM: [0.11, 0.065], convexity: 1.3, pitchDownRad: 3 * DEG },
   },
   sideInnerEdgeInwardRad: 1 * DEG,
+  // Rearward-facing glass reaches further inboard; raising it 4.4 cm inside its housing keeps
+  // the whole passenger face above the dashboard from the eye (passing band ~4.0-4.8 cm).
+  sideGlassRiseM: 0.044,
   sideMirrorZOffsetM: -0.585,
 };
 
@@ -185,8 +190,10 @@ export function deriveVehicleAssetContract(profile: VehicleProfile) {
       halfSizeM: view.glass.rear.halfSizeM,
       convexity: view.glass.rear.convexity,
     },
-    left: sideMirrorSpec(eye, boxes[0].centerLocalM, -1, view.glass.left, view.sideInnerEdgeInwardRad),
-    right: sideMirrorSpec(eye, boxes[1].centerLocalM, 1, view.glass.right, view.sideInnerEdgeInwardRad),
+    left: sideMirrorSpec(eye, add(boxes[0].centerLocalM, [0, view.sideGlassRiseM, 0]), -1,
+      view.glass.left, view.sideInnerEdgeInwardRad),
+    right: sideMirrorSpec(eye, add(boxes[1].centerLocalM, [0, view.sideGlassRiseM, 0]), 1,
+      view.glass.right, view.sideInnerEdgeInwardRad),
   };
   for (const [id, spec] of Object.entries(mirrors)) {
     if (!spec.rotation.every(Number.isFinite) || !spec.positionM.every(Number.isFinite)) {
