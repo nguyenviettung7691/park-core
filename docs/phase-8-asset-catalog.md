@@ -52,7 +52,9 @@ files are unchanged and the lamp captures await developer approval, so the
 | Sedan | 5,108 | 382,072 |
 | CUV | 5,758 | 426,084 |
 
-Both stay below the 10,000-triangle and 5,000,000-byte gates.
+Both stay below the 10,000-triangle and 5,000,000-byte gates. Candidate SHA-256:
+sedan `84eaccc02a7b54f7781b22724dcf0c5d9854660aad328a8cd9b7a153615d2745`, CUV
+`d4626703e79e238bbb3edf43340918725dc5b19f9f33e3ea6f37548e7129b64b`.
 
 ### Sedan: front and rear
 
@@ -173,7 +175,7 @@ each fixed eye; this does not establish optical calibration.
 | Asset | Declared width x height x depth (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
 | [Underground garage](../public/assets/environments/garage.glb) | 30 x 6 x 30 | 2,228 | 21 / 15 | 188,796 |
-| [Urban roadside](../public/assets/environments/roadside.glb) | 50 x 3 x 32 | 1,968 | 12 / 9 | 162,796 |
+| [Urban roadside](../public/assets/environments/roadside.glb) | 50 x 3 x 32 | 1,968 | 12 / 9 | 162,800 |
 
 Both are below the 30,000-triangle environment gate. Repeated static details
 are merged into compatible batches rather than separate objects/draw calls.
@@ -213,7 +215,7 @@ but retained in ordinary views.
 ### Urban roadside
 
 The road has an asphalt color region, lane/edge markings, sidewalk slabs,
-curb joints (curbs 0.12 m tall and 0.3 m wide since issue #11), a concrete barrier block and
+curb joints (curbs 0.11 m tall since issue #11; 0.3 m wide, unchanged), a concrete barrier block and
 detailed existing fence. Restrained
 background frontages sit behind that physical fence, outside the reachable
 driving surface; they do not introduce traversable solid-looking buildings.
@@ -222,13 +224,27 @@ driving surface; they do not introduce traversable solid-looking buildings.
 
 ![Roadside fence rails/posts, sidewalk joints and frontage windows](images/phase-8/roadside-details.png)
 
-Issue #11 lowered the curb to 0.12 m (collider centre y 0.06, half extents
-0.15 x 0.06 x 16 m at x = +/-4.2). Tyres now rest on the curb's top edge through
-tyre-edge contact (`src/vehicle/tyre-edges.ts`, `rig.ts`) instead of hitting a
-vertical wall: a touch is a warning in lessons and climbing or mounting fails.
-Roadside driving bounds are the curb's outer face (half width 4.35 m). The
-sedan's chassis clears the curb top by only 3.8 mm during a 2 m/s brake dive
-(CUV 28 mm). The roadside GLB size and triangle count are unchanged.
+Issue #11 lowered the curb to 0.11 m (collider centre y 0.055, half extents
+0.15 x 0.055 x 16 m at x = +/-4.2; art and joint lines moved with it). It was
+first lowered to 0.12 m, but a hard brake in reverse beside that curb left the
+sedan's chassis corner only 0.8 mm above the curb top, so it now matches the
+0.11 m wheel stops. Tyres rest on the curb's top edge through tyre-edge contact
+(`src/vehicle/tyre-edges.ts`, `rig.ts`) instead of hitting a vertical wall: a
+touch is a warning in lessons and climbing or mounting fails. Roadside driving
+bounds are the curb's outer face (half width 4.35 m).
+
+Lowest chassis-box corner above the curb top during a hard brake (brake 1) from
+2 m/s beside the curb, tyre 0.02 m from its face (`edge-physics.test.ts`):
+
+| Vehicle | D | D, steer +0.4 | D, steer -0.4 | R | R, steer +0.4 | R, steer -0.4 |
+|---|---:|---:|---:|---:|---:|---:|
+| Sedan | 13.8 mm | 10.6 mm | 5.3 mm | 10.8 mm | 2.0 mm | 6.5 mm |
+| CUV | 38.1 mm | 34.8 mm | 28.8 mm | 34.5 mm | 24.7 mm | 29.7 mm |
+
+The figure is the lowest of all four corners, whether or not that corner is above
+the curb in plan; counting only corners above the curb, the sedan minimum is
+5.3 mm (D, steer -0.4). The test requires at least 2 mm. The roadside GLB's
+triangle count is unchanged; it is 4 bytes larger (162,800).
 
 ### Parked lesson cars and guidance
 
@@ -257,9 +273,9 @@ All GLBs are self-contained and use no external image/buffer resources.
 | Selected pair | Uncompressed bytes |
 |---|---:|
 | Sedan + garage | 556,540 |
-| Sedan + roadside | 530,540 |
+| Sedan + roadside | 530,544 |
 | CUV + garage | 602,444 |
-| CUV + roadside | 576,444 |
+| CUV + roadside | 576,448 |
 
 All pairs are below the 5,000,000-byte gate.
 
@@ -302,9 +318,8 @@ telemetry) were checked for both vehicles after the physics, lamp and stop chang
 and no cockpit anchor was moved. The steering wheel rim, the left and right
 indicator arrows and the P lamp are visible. The CUV shows both dial needles.
 In the sedan the speedometer needle is visible only as a short tip above the wheel
-rim at 0 km/h, so it is mostly hidden by the rim in the neutral pose (not checked at speed).
-This is a limit of the unchanged cockpit anchors, not a
-regression.
+rim at 0 km/h, so it is mostly hidden by the rim in the neutral pose (not checked at
+speed). The cockpit anchors are unchanged by issue #11.
 
 ## Reproduce and inspect
 
@@ -313,6 +328,26 @@ node tools\generate-assets.mjs
 npx vitest run src\world\generate-assets.test.mjs src\world\assets.test.mjs
 npx playwright test phase-8-assets.spec.ts
 ```
+
+While the issue #11 vehicle candidates are unpromoted, `generate-assets.mjs`
+without arguments would overwrite the public vehicle GLBs with them. Regenerate
+only the environments instead:
+`node -e "import('./tools/generate-assets.mjs').then(m=>m.writeAssets('.',['garage','roadside']))"`.
+
+Exterior lamp captures (unlit, brake, reverse, left, right and all-lit, from the
+rear and front quarter) come from `asset-review.spec.ts` and load candidate bytes
+through `PARK_CORE_REVIEW_VEHICLE` and `PARK_CORE_REVIEW_CANDIDATE` (the
+`assets:review` command sets both and links them as `<vehicle>-lamps`):
+
+```powershell
+$env:PARK_CORE_REVIEW_VEHICLE='sedan'
+$env:PARK_CORE_REVIEW_CANDIDATE='<candidate root containing public\assets\vehicles\sedan.glb>'
+npx playwright test asset-review.spec.ts -g "exterior lamp"
+```
+
+Without a candidate the lamp test is skipped while the public GLB has no lamp nodes.
+`phase-8-assets.spec.ts` also captures the wheel-stop rest poses (stages 1, 2, 4)
+and a right-tyre touch on the roadside curb.
 
 Editable artwork is in `tools\asset-designs`; generic geometry helpers and the
 GLB writer are separate. Browser captures are written to test artifacts, never
