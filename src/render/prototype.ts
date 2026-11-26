@@ -10,6 +10,7 @@ import {
   type SceneAssets,
   type VehicleAnchors,
 } from '../runtime-types';
+import { deriveVehicleAssetContract } from '../vehicle/asset-contract';
 import { deriveGeometry } from '../vehicle/geometry';
 
 export interface PrototypeScene {
@@ -60,7 +61,8 @@ export function buildPrototypeScene(
   geometries.push(steeringWheelGeometry);
   const steeringWheel = new Mesh(steeringWheelGeometry, materials[3]!);
   steeringWheel.name = 'prototype-steering-wheel';
-  steeringWheel.position.set(-0.36, 0.42, -0.72);
+  // Wheel sits ahead of the eye, as in the authored cockpits (eye z - 0.5 m).
+  steeringWheel.position.set(-0.36, 0.42, profile.driverEyeLocalM[2] - 0.5);
   chassis.add(steeringWheel);
 
   const rearSurface = new Mesh(
@@ -70,6 +72,9 @@ export function buildPrototypeScene(
   geometries.push(rearSurface.geometry);
   materials.push(rearSurface.material);
   rearSurface.name = 'mirror-surface-rear';
+  // The box prototype keeps its own larger rear display in front of the eye; its virtual
+  // camera uses the shared cabin view contract's rearview anchor.
+  const rearMirror = deriveVehicleAssetContract(profile).mirrors.rear;
   rearSurface.position.set(0, profile.driverEyeLocalM[1] + 0.12, profile.driverEyeLocalM[2] - 0.75);
   rearSurface.layers.set(MIRROR_EXCLUDED_LAYER);
   chassis.add(rearSurface);
@@ -112,10 +117,7 @@ export function buildPrototypeScene(
   const anchors: VehicleAnchors = {
     driverEyeLocalM: geometry.driverEyeLocalM,
     mirrors: {
-      rear: {
-        positionM: [0, profile.driverEyeLocalM[1] + 0.12, profile.driverEyeLocalM[2] - 0.75],
-        rotation: yawQuaternion(Math.PI),
-      },
+      rear: rearMirror,
       left: {
         positionM: [
           geometry.mirrors[0].centerLocalM[0] + geometry.mirrors[0].halfExtentsM[0],

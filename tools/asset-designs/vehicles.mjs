@@ -35,25 +35,39 @@ export function authorVehicle({ root, addNode, addMesh }, assetId, data) {
 // subtask) reuses it with the Cockpit node shifted by the eye difference, because its
 // windshield foot, header and wheel wells sit at nearly the same eye-relative places.
 // Its own fields cover what differs: roof, wheel wells, cargo area and trims.
+// Ground-relative driver eye (height, z) that the fixed dashboard, console and pedal
+// coordinates were authored around: the sedan profile eye. Each layout's Cockpit offset
+// is its own eye minus this one, so the cabin follows the eye if a profile changes.
+const CABIN_DESIGN_EYE = [1.12, -0.665];
+
+function cabinOffset(data) {
+  const [, eyeY, eyeZ] = data.contract.driverEyeLocalM;
+  // Rounded to the micrometre so float residue (about 1e-16 m) does not alter the geometry.
+  const round = (v) => Math.round(v * 1e6) / 1e6 || 0;
+  return [round(eyeY + data.comHeightM - CABIN_DESIGN_EYE[0]), round(eyeZ - CABIN_DESIGN_EYE[1])];
+}
+
 function sedanCabin(data) {
-  return { variant: 'sedan', offset: [0, 0], roofRear: sedanRoofRearZ,
-    headliner: data.bodySizeM[1] - 0.055, rearArchStart: 1.1, rearEnd: 1.6,
+  return { variant: 'sedan', offset: cabinOffset(data), roofRear: sedanRoofRearZ,
+    headliner: data.bodySizeM[1] - 0.055, frontArch: [-1.6, -0.83], rearArchStart: 1.1, rearEnd: 1.6,
     pillarTrims: [-0.83, 0.1, 0.95] };
 }
 
 function cuvCabin(data, roofY) {
-  const [, eyeY, eyeZ] = data.contract.driverEyeLocalM;
-  const sedanEye = [0.6 + 0.52, -0.665];
-  const offset = [eyeY + data.comHeightM - sedanEye[0], eyeZ - sedanEye[1]];
+  const offset = cabinOffset(data);
+  const frontAxle = -(1 - data.frontWeightFraction) * data.wheelbaseM;
   const rearAxle = data.frontWeightFraction * data.wheelbaseM;
+  const archRadius = data.tireRadiusM + 0.075;
   const local = (z) => z - offset[1];
   return { variant: 'cuv', offset, roofRear: local(cuvRoofRearZ), headliner: roofY - 0.055 - offset[0],
-    rearArchStart: local(rearAxle - data.tireRadiusM - 0.075), rearEnd: local(data.bodySizeM[2] / 2 - 0.2),
+    frontArch: [frontAxle - archRadius, frontAxle + archRadius].map(local),
+    rearArchStart: local(rearAxle - archRadius), rearEnd: local(data.bodySizeM[2] / 2 - 0.2),
     pillarTrims: [-0.66, 0.15, 1.08].map(local) };
 }
 
-// Seats, wheel and pedals are arranged around the driver eye anchor; the windshield, wheel
-// wells and roof come from the exterior. Named controls (SteeringWheelPivot,
+// Seats and wheel follow the driver eye; the dashboard, console and pedal depths are fixed
+// cabin coordinates (pedal X follows the eye). The windshield, wheel wells and roof come
+// from the exterior. Named controls (SteeringWheelPivot,
 // SpeedometerNeedle, *Lamp, *Pedal, ParkingBrakeLever) are driven by asset-scene.ts.
 function authorCabin({ root, addNode, addMesh }, data, { roofFront: roofFrontZ, part }, layout) {
   const cuv = layout.variant === 'cuv';
@@ -65,9 +79,8 @@ function authorCabin({ root, addNode, addMesh }, data, { roofFront: roofFrontZ, 
   const light = [0.68, 0.66, 0.7], seat = [0.45, 0.43, 0.48], seatDark = [0.33, 0.31, 0.35];
   const floorColor = [0.25, 0.24, 0.27], face = [0.06, 0.06, 0.07], mark = [0.9, 0.88, 0.84];
   const quat = (axis, angle) => axis.map((v) => v * Math.sin(angle / 2)).concat(Math.cos(angle / 2));
-  const { roofRear, headliner, rearArchStart, rearEnd } = layout;
+  const { roofRear, headliner, frontArch, rearArchStart, rearEnd } = layout;
   const trimX = 0.775, wellX = 0.5, floorY = 0.24;
-  const frontArch = [-1.6, -0.83];
   const doorTrim = cuv ? [0.62, 0.57, 0.5] : panel;
 
   // Dashboard: a prism under the windshield plus binnacle, vents, center stack, glovebox
@@ -177,7 +190,8 @@ function authorCabin({ root, addNode, addMesh }, data, { roofFront: roofFrontZ, 
     ...[-1, 1].map((s) => part([0.03, 0.46, frontArch[0] + 1.72], [s * trimX, 0.47, (frontArch[0] - 1.72) / 2], panel)),
     ...[-1, 1].map((s) => part([trimX - wellX, 0.04, frontArch[0] + 1.72],
       [s * (trimX + wellX) / 2, floorY - 0.02, (frontArch[0] - 1.72) / 2], floorColor)),
-    part([0.1, 0.03, 0.14], [eyeX - 0.2, 0.3, -1.6], panel, [0.5, 0, 0]),
+    // Footrest (dead pedal) against the firewall, ahead of the front wheel arch.
+    part([0.1, 0.03, 0.1], [eyeX - 0.2, 0.3, -1.65], panel, [0.5, 0, 0]),
     transformGeometry(boxGeometry([0.08, 0.08, 0.24], dashDark), [eyeX, wheelCenter[1] - 0.14 * Math.sin(-rake),
       wheelCenter[2] - 0.14 * Math.cos(rake)], [rake, 0, 0]),
     part([0.24, 0.18, 0.77], [0, 0.33, -0.995], dashDark),
@@ -190,9 +204,10 @@ function authorCabin({ root, addNode, addMesh }, data, { roofFront: roofFrontZ, 
     part([0.22, 0.025, 0.32], [0, 0.592, -0.45], panel),
     part([1.4, 0.04, roofRear - roofFront], [0, headliner + 0.02, (roofRear + roofFront) / 2], panel),
     ...[-1, 1].map((s) => part([0.34, 0.015, 0.15], [s * 0.38, headliner - 0.01, -1.12], panel)),
-    // Sedan: parcel shelf and trunk bulkhead. CUV: open cargo bay under a cover at the belt,
+    // Sedan: parcel shelf and trunk bulkhead. CUV: open cargo bay under a cover just below
+    // the belt that ends at the hatch-glass foot (clear of the exterior tailgate deck),
     // a boot around the shifter and a base for the parking-brake lever.
-    ...(cuv ? [part([1.42, 0.02, rearEnd + 0.1 - 0.85], [0, 0.8, (rearEnd + 0.1 + 0.85) / 2], dashDark),
+    ...(cuv ? [part([1.42, 0.02, rearEnd - 0.02 - 0.85], [0, 0.79, (rearEnd - 0.02 + 0.85) / 2], dashDark),
       part([0.09, 0.03, 0.09], [0, 0.445, -1.12], dashDark), part([0.07, 0.02, 0.09], [0, 0.43, -0.66], dashDark)]
       : [part([1.42, 0.03, 0.75], [0, 0.95, 1.125], dashDark),
         part([1.42, 0.71, 0.02], [0, floorY + 0.355, 0.76], floorColor)]),
@@ -404,9 +419,9 @@ function authorClosedShell({ addNode, addMesh }, data, s, shape) {
 }
 
 // Sedan exterior (issue #12 sedan exterior subtask) on the shared closed shell.
-// Inferred from a two-view reference: windshield foot is limited by the unchanged
-// dashboard, so the hood/trunk ratio is approximate. The roof front stays on the
-// cockpit headliner; physical profile, eye and mirror anchors are unchanged.
+// Inferred from a two-view reference: windshield foot is limited by the dashboard, so the
+// hood/trunk ratio is approximate. The exterior subtask kept the physical profile, eye and
+// mirror anchors; the later sedan interior subtask moved the eye and side mirrors.
 function authorSedanExterior({ addNode, addMesh }, data, s) {
   const { paint, part, frontZ, half, belt } = s;
   const wsFoot = -1.68, rearFoot = 1.75;
@@ -464,7 +479,7 @@ function authorSedanExterior({ addNode, addMesh }, data, s) {
 // wagon with chamfered nose, long raked hatch glass over a short tailgate ledge, thick
 // D-pillars, flared arches and roof rails on feet.
 // Inferred from two three-quarter views: the reference windshield foot sits further back,
-// but the unchanged dashboard/headliner limit it, so the hood is shorter than pictured.
+// but the dashboard/headliner limit it, so the hood is shorter than pictured.
 // The CUV interior subtask moved the side mirrors to the A-pillar base, so the front door
 // glass runs from the A-pillar to the B-pillar (no quarter pane). Physical profile unchanged.
 function authorCuvExterior({ addNode, addMesh }, data, s) {

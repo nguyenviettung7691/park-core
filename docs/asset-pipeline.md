@@ -118,13 +118,12 @@ generator/loader/view tests and the candidate browser review, using Playwright's
 existing local server. It fails on stale candidate bytes, test failures or missing
 browser tooling. It does not copy candidates into public assets or approve them.
 Install the project's locked dependencies and Playwright Chromium when missing.
-Known limitation: the focused unit run includes the "checked-in GLBs in sync"
-test. When the authoring source changes, that test fails until the approved GLB
-is promoted, so a pre-promotion `assets:review` stops before the browser step.
-Until the command handles this, run the focused unit tests (expecting only that
-failure) and run `asset-review.spec.ts` directly with the `PARK_CORE_REVIEW_*`
-variables. After promotion, rerun the full `assets:review`, which must pass.
-The sedan and CUV exterior and interior redesigns for issue #12 followed this path.
+The focused unit run skips the "checked-in GLBs in sync" test, which cannot pass
+until an approved candidate is promoted; `assets:check` and the ordinary `vitest`
+run still enforce it. A pre-promotion `assets:review` therefore runs through the
+browser step. After promotion, run `npm run assets:check` and the full suites.
+(The sedan and CUV redesigns for issue #12 predate this and ran the browser spec
+directly with the `PARK_CORE_REVIEW_*` variables.)
 If dimensional/anchor changes make the old public GLB incompatible with the new
 contract, the report labels its baseline unavailable. Use the pre-edit review for
 comparison; do not bypass validation just to obtain a before image.
@@ -171,7 +170,8 @@ Phase 5 measurements in repository history describe the superseded box prototype
 Vehicles use meters, +Y up, -Z forward and a center-of-mass root. `Body` is a
 shaped shell, not a solid validation box. Required bounds, cockpit containment,
 eye/mirror transforms and independent wheel nodes remain validated against
-`src\vehicle\profiles.ts`. Vehicle handling and collision dimensions are unchanged.
+`src\vehicle\profiles.ts`. Vehicle handling, the chassis collider and mirror collider
+sizes are unchanged; mirror collider positions follow `sideMirrorZOffsetM`.
 
 `Exterior` groups the shell and static details; four wheels remain separate.
 `Cockpit` contains seats, dashboard, instruments and steering wheel.

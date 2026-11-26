@@ -4,17 +4,16 @@ export type MirrorId = 'rear' | 'left' | 'right';
 
 interface VehicleViewProfile {
   readonly rearCameraOffsetM: Vec3Data;
-  readonly rearDisplayOffsetM: Vec3Data;
   readonly mirrorYawRad: Readonly<Record<MirrorId, number>>;
   /** Forward (-Z) shift of the side-mirror anchors and colliders from frontAxle + 0.35 m. */
   readonly sideMirrorZOffsetM: number;
 }
 
 // Sedan and CUV interior subtasks of issue #12: side mirrors sit at the A-pillar base
-// ahead of the driver; the rearview camera and its display hang under the windshield header.
+// ahead of the driver; the rearview camera and its display (rearDisplayM) share one point
+// under the windshield header.
 const cabinView: VehicleViewProfile = {
   rearCameraOffsetM: [0.36, 0.14, -0.56],
-  rearDisplayOffsetM: [0, 0, 0],
   mirrorYawRad: { rear: Math.PI, left: 105 * Math.PI / 180, right: -105 * Math.PI / 180 },
   sideMirrorZOffsetM: -0.585,
 };
@@ -64,9 +63,6 @@ export function deriveVehicleAssetContract(profile: VehicleProfile) {
     throw new RangeError(`${profile.id}: inconsistent dimensions, eye or axle/overhang contract`);
   }
   const view = vehicleViews[profile.id];
-  if (!view.rearDisplayOffsetM.every(Number.isFinite)) {
-    throw new RangeError(`${profile.id}.rearDisplayOffsetM must be finite`);
-  }
   const boxes = mirrorBoxes(profile);
   const mirror = (id: MirrorId, positionM: Vec3Data): BodyPose => {
     const yaw = view.mirrorYawRad[id];
@@ -80,11 +76,6 @@ export function deriveVehicleAssetContract(profile: VehicleProfile) {
     profile.driverEyeLocalM[1] + view.rearCameraOffsetM[1],
     profile.driverEyeLocalM[2] + view.rearCameraOffsetM[2],
   ];
-  const rearDisplayM: Vec3Data = [
-    rear[0] + view.rearDisplayOffsetM[0],
-    rear[1] + view.rearDisplayOffsetM[1],
-    rear[2] + view.rearDisplayOffsetM[2],
-  ];
   return {
     driverEyeLocalM: profile.driverEyeLocalM,
     mirrors: {
@@ -92,7 +83,7 @@ export function deriveVehicleAssetContract(profile: VehicleProfile) {
       left: mirror('left', boxes[0].centerLocalM),
       right: mirror('right', boxes[1].centerLocalM),
     },
-    rearDisplayM,
+    rearDisplayM: rear,
     bodyVisualZ: [-profile.bodySizeM[2] / 2, profile.bodySizeM[2] / 2] as const,
     bodyPhysicalZ: [
       -(1 - profile.frontWeightFraction) * profile.wheelbaseM - profile.frontOverhangM,

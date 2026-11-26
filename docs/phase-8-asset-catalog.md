@@ -1,6 +1,7 @@
 # Phase 8 Original 3D Asset Catalog
 
-Captured and measured: 2026-11-05. These are actual GLTFLoader/WebGL renders,
+Captured and measured: 2026-11-05; vehicle pictures, payload and render-call
+measurements refreshed for issue #12 on 2026-11-26. These are actual GLTFLoader/WebGL renders,
 not the earlier concept drawings. Artwork uses shaped low-poly geometry,
 vertex colors and unlit materials; there are no image textures, downloaded
 meshes, dynamic shadows or custom shaders.
@@ -23,7 +24,7 @@ unbranded.
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
 | [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 4,976 | 38 / 27 | 367,744 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,650 | 39 / 28 | 413,676 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,650 | 39 / 28 | 413,648 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden. Both are below the 10,000-triangle vehicle gate.
@@ -97,7 +98,7 @@ over the open cargo bay instead of the sedan's parcel shelf and bulkhead; and a
 console hand lever, `ParkingBrakeLever`, that lifts 0.35 rad while the parking
 brake is applied. It has the same live controls as the sedan.
 
-![Sedan cockpit: live cluster, raked three-spoke wheel, both mirrors in view](images/phase-8/sedan-cockpit.png)
+![Sedan cockpit: live cluster, raked three-spoke wheel, rearview and left mirror in view](images/phase-8/sedan-cockpit.png)
 
 ![Sedan cabin cutaway (left side clipped for this capture only)](images/phase-8/sedan-cabin.png)
 
@@ -206,10 +207,10 @@ All GLBs are self-contained and use no external image/buffer resources.
 
 | Selected pair | Uncompressed bytes |
 |---|---:|
-| Sedan + garage | 383,172 |
-| Sedan + roadside | 363,344 |
-| CUV + garage | 596,300 |
-| CUV + roadside | 576,472 |
+| Sedan + garage | 550,368 |
+| Sedan + roadside | 530,540 |
+| CUV + garage | 596,272 |
+| CUV + roadside | 576,444 |
 
 All pairs are below the 5,000,000-byte gate.
 
@@ -220,15 +221,18 @@ The table reports an auxiliary-update frame at 80 ms:
 
 | Scene | Main calls / triangles | Three mirror calls | Overhead calls | Composite calls | Full-frame calls |
 |---|---:|---|---:|---:|---:|
-| Sedan + garage | 26 / 3,218 | 27 + 16 + 16 | 31 | 1 | 117 |
-| Sedan + roadside | 22 / 3,038 | 25 + 16 + 16 | 31 | 1 | 111 |
-| CUV + garage | 26 / 3,334 | 27 + 16 + 16 | 31 | 1 | 117 |
-| CUV + roadside | 22 / 3,154 | 25 + 16 + 16 | 31 | 1 | 111 |
-| Stage 1, CUV | 57 / 7,970 | 27 + 18 + 18 | 31 | 1 | 152 |
-| Stage 2, CUV | 22 / 3,170 | 62 + 18 + 18 | 31 | 1 | 152 |
-| Stage 3, CUV | 32 / 4,226 | 45 + 17 + 26 | 48 | 1 | 169 |
-| Stage 4, CUV | 23 / 3,182 | 47 + 18 + 21 | 32 | 1 | 142 |
-| Stage 5, CUV | 26 / 3,274 | 43 + 17 + 26 | 47 | 1 | 160 |
+| Sedan + garage | 34 / 6,166 | 24 + 15 + 15 | 35 | 1 | 124 |
+| Sedan + roadside | 30 / 5,986 | 22 + 15 + 15 | 35 | 1 | 118 |
+| CUV + garage | 32 / 5,952 | 24 + 15 + 15 | 36 | 1 | 123 |
+| CUV + roadside | 28 / 5,772 | 22 + 15 + 15 | 36 | 1 | 117 |
+| Stage 1, CUV | 63 / 11,844 | 24 + 17 + 17 | 36 | 1 | 158 |
+| Stage 2, CUV | 28 / 5,788 | 59 + 17 + 17 | 36 | 1 | 158 |
+| Stage 3, CUV | 39 / 7,498 | 40 + 16 + 25 | 53 | 1 | 174 |
+| Stage 4, CUV | 29 / 5,800 | 44 + 17 + 20 | 37 | 1 | 148 |
+| Stage 5, CUV | 33 / 6,538 | 40 + 15 + 25 | 52 | 1 | 166 |
+
+Measured 2026-11-26 after the issue #12 redesign. The sedan's lesson stages peak
+at 65 main-pass calls (Stage 1).
 
 The gates are <=100 **main-pass** calls in sandbox and <=140 in lessons,
 not limits on the sum of all camera passes. These sampled poses pass; their
@@ -252,11 +256,11 @@ part of the production app. See [asset pipeline](asset-pipeline.md).
 
 ## Verification limits
 
-Final software checks passed: 487 unit/DOM/physics/asset tests, 37 explicitly
-selected generator/loader checks, typecheck, production build, 40 Chromium
-browser checks (including both five-stage journeys) and five production
-checks. The explicit asset selection overlaps the ordinary suite; these
-numbers are not additive. No lint script exists. The existing bundle-size
+Final software checks for issue #12 (2026-11-26) passed: 567 unit/DOM/physics/asset
+tests, the CUV `assets:review` (72 focused generator/loader checks plus four browser
+review checks), typecheck, production build, 50 Chromium browser checks (including
+both five-stage journeys) and six production checks. The focused asset selection
+overlaps the ordinary suite; these numbers are not additive. No lint script exists. The existing bundle-size
 warning remains.
 
 The branch includes the current Phase 7 learner experience. Its app captures
