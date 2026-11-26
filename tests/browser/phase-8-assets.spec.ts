@@ -79,6 +79,25 @@ for (const stage of [1, 2, 4]) {
   }
 }
 
+for (const vehicle of ['sedan', 'cuv']) {
+  test(`${vehicle} side-touches the 0.11 m roadside curb with its right tyres`, async ({ page }, info) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(`/tests/browser/fixtures/phase-8.html?vehicle=${vehicle}&environment=roadside&pose=curb-touch`);
+    await expect.poll(() => page.evaluate(() => window.phase8Capture?.ready)).toBe(true);
+    const report = await page.evaluate(() => window.phase8Capture.report());
+    expect([report.wheelEdges[1], report.wheelEdges[3]])
+      .toEqual(['roadside-curb-right:touching', 'roadside-curb-right:touching']);
+    expect([report.wheelEdges[0], report.wheelEdges[2]]).toEqual(['-:none', '-:none']);
+    // Review captures for the roadside curb, written to the test's output folder.
+    for (const shot of ['chase', 'driver-neutral', 'driver-right', 'curb-closeup'] as const) {
+      await page.evaluate((value) => window.phase8Capture.setShot(value), shot);
+      await page.screenshot({ path: info.outputPath(`roadside-curb-${vehicle}-${shot}.png`) });
+    }
+    expect(errors).toEqual([]);
+  });
+}
+
 test('captures the real updated menu and chase view', async ({ page }, info) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto('/');

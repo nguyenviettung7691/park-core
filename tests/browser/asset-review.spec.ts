@@ -4,7 +4,7 @@ import process from 'node:process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
-import type { Shot } from './fixtures/phase-8';
+import type { LampState, Shot } from './fixtures/phase-8';
 import type { MirrorId } from '../../src/vehicle/asset-contract';
 
 const requested = process.env.PARK_CORE_REVIEW_VEHICLE;
@@ -156,5 +156,63 @@ for (const vehicle of vehicles) {
 <title>${vehicle} view limits</title><h1>${vehicle}: aspect, FOV and quality limits</h1>
 <p>Actual candidate renders. Developer inspection pending; sightline and mirror landmark checks passed.</p>
 ${captures.map((name) => `<h2>${name}</h2><img width="640" src="${name}" alt="${name}">`).join('')}`);
+  });
+}
+
+const lampStates: LampState[] = ['unlit', 'brake', 'reverse', 'left', 'right', 'all-lit'];
+const lampExpected: Record<LampState, readonly [boolean, boolean, boolean, boolean]> = {
+  unlit: [false, false, false, false],
+  brake: [true, false, false, false],
+  reverse: [false, true, false, false],
+  left: [false, false, true, false],
+  right: [false, false, false, true],
+  'all-lit': [true, true, true, true],
+};
+
+for (const vehicle of vehicles) {
+  test(`${vehicle} exterior lamp states @assets`, async ({ page }, info) => {
+    test.setTimeout(90000);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const candidate = process.env.PARK_CORE_REVIEW_CANDIDATE;
+    const root = candidate ? resolve(candidate) : process.cwd();
+    const bytes = readFileSync(join(root, 'public', 'assets', 'vehicles', `${vehicle}.glb`));
+    await page.route(`**/assets/vehicles/${vehicle}.glb`, (route) =>
+      route.fulfill({ status: 200, contentType: 'model/gltf-binary', body: bytes }));
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(`/tests/browser/fixtures/phase-8.html?vehicle=${vehicle}&environment=garage`);
+    await expect.poll(() => page.evaluate(() => window.phase8Capture?.ready
+      ? 'ready' : document.querySelector('#failure')?.textContent || 'loading')).toBe('ready');
+    const probe = await page.evaluate(() => window.phase8Capture.setLamps('unlit'));
+    const hasLamps = Object.values(probe).every((visible) => visible !== null);
+    // The public GLBs gain lamp nodes only when approved candidates are promoted.
+    test.skip(!candidate && !hasLamps, 'served GLB has no exterior lamp nodes (unpromoted)');
+    expect(hasLamps, 'candidate must have all four lit lamp nodes').toBe(true);
+    const output = process.env.PARK_CORE_REVIEW_OUTPUT
+      ? join(resolve(process.env.PARK_CORE_REVIEW_OUTPUT), `${vehicle}-lamps`)
+      : info.outputPath('lamps');
+    mkdirSync(output, { recursive: true });
+    const captures: { state: LampState; view: string; file: string; sha256: string }[] = [];
+    for (const state of lampStates) {
+      const visible = await page.evaluate((value) => window.phase8Capture.setLamps(value), state);
+      expect(Object.values(visible), `${state} lit nodes`).toEqual([...lampExpected[state]]);
+      for (const view of ['rear', 'front'] as const) {
+        await page.evaluate((value) => window.phase8Capture.setShot(value), `lamps-${view}` as const);
+        const file = `${vehicle}-${view}-${state}.png`;
+        const screenshot = await page.screenshot({ path: join(output, file) });
+        captures.push({ state, view, file, sha256: hash(screenshot) });
+      }
+    }
+    expect(errors).toEqual([]);
+    const evidence = { vehicle, glbSha256: hash(bytes), source: candidate ? 'candidate' : 'public',
+      visualApproval: 'pending', captures };
+    writeFileSync(join(output, 'lamps.json'), JSON.stringify(evidence, null, 2) + '\n');
+    writeFileSync(join(output, 'review.html'), `<!doctype html><meta charset="utf-8">
+<title>${vehicle} exterior lamps</title>
+<style>body{font:16px sans-serif;background:#19161d;color:#eee;margin:24px}section{display:flex;gap:12px}figure{width:48%;margin:0}img{width:100%}h2{color:#c698d9}</style>
+<h1>${vehicle}: exterior lamp states</h1><p>GLB sha256 ${evidence.glbSha256} (${evidence.source}). Lit states come from overridden telemetry (all-lit also shows both indicators). Developer visual approval pending.</p>
+${lampStates.map((state) => `<h2>${state}</h2><section>${['rear', 'front'].map((view) =>
+    `<figure><figcaption>${view}</figcaption><img src="${vehicle}-${view}-${state}.png" alt="${vehicle} ${view} ${state}"></figure>`).join('')}</section>`).join('')}`);
+    await info.attach('lamp-review', { path: join(output, 'lamps.json'), contentType: 'application/json' });
   });
 }
