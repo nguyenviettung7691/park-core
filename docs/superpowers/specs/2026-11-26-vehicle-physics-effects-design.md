@@ -69,9 +69,10 @@ are visible from the neutral cockpit POV in review captures, and reuses the
        supported by the lower surface;
      - `climbing`: wheel support has lifted onto the edge by more than half the
        edge height, but the wheel centre has not crossed the edge's centre plane;
-     - `over`: wheel centre has crossed the edge's centre plane (for a 0.15 m
-       deep stop this is "rolled onto/past the stop"; for a curb it means the
-       tyre is on the curb top).
+     - `over`: the wheel centre lies above the edge's footprint in plan (the
+       tyre has rolled onto the stop or curb top). Stateless, so it needs no
+       entry-side tracking; at <=15 km/h and 120 Hz a wheel moves <=3.5 cm per
+       step, so crossing a 0.15 m stop is always observed.
    - climbing is **momentum-only** by design: with the step-climb relation
      (about 1.2x wheel load for 0.11 m, 1.4x for 0.12 m) the unchanged
      2,400-2,600 N drive force and creep cap cannot lift the car from rest, so
@@ -205,10 +206,14 @@ The developer picked option 1.
   support height, provided the anti-goals hold and the flat-ground route
   witnesses are unchanged.
 - Whether edge state lives on telemetry or a separate rig accessor.
-- Whether wheel stops are authored in the shared garage environment or as
-  per-scenario colliders: prefer the environment (they belong to the garage);
-  fall back to per-scenario stops only if no single placement satisfies all
-  garage stages and both vehicles.
+- (Resolved during planning) Wheel stops are **per-scenario colliders**: the
+  stage 1 (nose-in) and stage 2 (reverse) targets share the x=0 bay but need
+  the stop at different depths, so one environment placement cannot serve
+  both. Art comes from a hidden `WheelStopTemplate` node in the garage GLB,
+  cloned by the lesson scene. Placement (stop centre, 1.8 x 0.11 x 0.15 m):
+  stage 1 (0, 0.055, -6.70); stage 2 (0, 0.055, -8.60); stage 4
+  (5.4, 0.055, -8.60). These are the middle of the windows where both
+  vehicles' touching poses lie inside each target with its inset.
 - Exact lamp node names (suggested: `BrakeLamps`, `ReverseLamps`,
   `TurnSignalLeft`, `TurnSignalRight`, each with lit and unlit meshes) and
   their geometry, within the asset workflow.
