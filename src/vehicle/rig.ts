@@ -95,7 +95,10 @@ const LATERAL_DAMPING_N_PER_MPS = 8000;
  * Edge-only tyre compliance: while a raised edge supports a wheel, a damper opposes the chassis
  * moving away from the edge (horizontal part of the contact normal). It absorbs the suspension
  * spring's rebound so a creeping car settles against a stop instead of bouncing off it; it never
- * acts toward the edge, so it does not resist climbing. Not a handling number (inactive off edges).
+ * acts toward the edge, so it does not resist climbing. Once a wheel has been over an edge it is
+ * descending the far side, where moving away from the edge is the direction of travel, so the damper
+ * stays off for that wheel and edge until the wheel leaves it ('none'). Not a handling number
+ * (inactive off edges).
  */
 const EDGE_REBOUND_DAMPING_N_PER_MPS = 20000;
 const NO_WHEEL_EDGE: WheelEdgeContact = Object.freeze({ colliderId: null, kind: null, state: 'none' });
@@ -110,6 +113,8 @@ interface WheelEdgeStep {
   supported: boolean;
   readonly pushDir: CANNON.Vec3;
   readonly pushPoint: CANNON.Vec3;
+  /** Edge this wheel has been 'over' since it last reported 'none': a support from it is a descent. */
+  descendingFrom: string | null;
 }
 
 const edgeTmp = {
@@ -148,6 +153,7 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
     contact: NO_WHEEL_EDGE, lateralPenetrationM: 0,
     lateralNormal: new CANNON.Vec3(), lateralPoint: new CANNON.Vec3(),
     supported: false, pushDir: new CANNON.Vec3(), pushPoint: new CANNON.Vec3(),
+    descendingFrom: null,
   }));
 
   constructor(
@@ -204,6 +210,8 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
       groundY,
     }, this.edgeBoxes);
     step.contact = result.contact;
+    if (result.contact.state === 'over') step.descendingFrom = result.contact.colliderId;
+    else if (result.contact.state === 'none') step.descendingFrom = null;
     if (result.lateralNormal) {
       step.lateralPenetrationM = result.lateralPenetrationM;
       step.lateralNormal.set(...result.lateralNormal);
@@ -266,7 +274,7 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
       chassis.applyForce(edgeTmp.force, edgeTmp.rel);
     }
     for (const step of this.edgeSteps) {
-      if (!step.supported) continue;
+      if (!step.supported || step.contact.colliderId === step.descendingFrom) continue;
       chassis.getVelocityAtWorldPoint(step.pushPoint, edgeTmp.velocity);
       const separation = edgeTmp.velocity.dot(step.pushDir);
       if (separation <= 0) continue;

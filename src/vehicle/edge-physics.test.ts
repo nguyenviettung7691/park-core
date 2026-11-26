@@ -32,7 +32,7 @@ const ground: ColliderBox = {
   id: 'test-ground', kind: 'ground', centerM: [0, -0.5, 0], halfExtentsM: [40, 0.5, 40], yawRad: 0,
 };
 const STOP_HALF: readonly [number, number, number] = [0.9, 0.055, 0.075];
-const CURB_HALF: readonly [number, number, number] = [0.15, 0.06, 16];
+const CURB_HALF: readonly [number, number, number] = [0.15, 0.055, 16];
 
 interface Fixture {
   world: CANNON.World; rig: VehicleRig; cleanup: ColliderCleanup; t: number;
@@ -173,7 +173,7 @@ describe('tyre-edge physics in the rig', () => {
     expect(maxRise).toBeLessThanOrEqual(0.35 * 2 * STOP_HALF[1] + 1e-12);
   });
 
-  it.each(IDS)('%s: side-rubs a parallel 0.12 m curb as touching, never climbing', (id) => {
+  it.each(IDS)('%s: side-rubs a parallel 0.11 m curb as touching, never climbing', (id) => {
     const p = profiles[id];
     const faceX = 4.05;
     const x = faceX - 0.05 - TYRE_HALF_WIDTH_M - p.trackM / 2;
@@ -199,33 +199,104 @@ describe('tyre-edge physics in the rig', () => {
     expect(touched).toBe(true);
   });
 
-  it.each(IDS)('%s: hard brake dive beside a 0.12 m curb keeps the chassis clear', (id) => {
+  const DIVE_CASES = IDS.flatMap((id) => (['D', 'R'] as const).flatMap((gear) =>
+    [0, 0.4, -0.4].map((steering) => ({ id, gear, steering }))));
+  it.each(DIVE_CASES)('$id: hard brake dive in $gear (steering $steering) beside a 0.11 m curb '
+    + 'keeps the chassis clear', ({ id, gear, steering }) => {
     const p = profiles[id];
     const faceX = 4.05;
     const x = faceX - 0.02 - TYRE_HALF_WIDTH_M - p.trackM / 2;
-    const f = setup(id, [curbAt(faceX + CURB_HALF[0])], { x, z: 10 });
+    const f = setup(id, [curbAt(faceX + CURB_HALF[0])], { x, z: 0 });
     const contacts: (string | null)[] = [];
     f.rig.onContact((c) => contacts.push(c));
-    shift(f, 'D');
-    f.rig.body.velocity.set(0, 0, -2);
+    shift(f, gear);
+    // Forward is -Z at yaw 0: 2 m/s in the selected gear's direction.
+    f.rig.body.velocity.set(0, 0, gear === 'D' ? -2 : 2);
     let minY = Infinity;
+    let minOverCurbY = Infinity;
     const g = deriveGeometry(p);
     for (let i = 0; i < Math.round(2 / H); i++) {
-      step(f, frame({ brake: 1 }));
+      step(f, frame({ brake: 1, steering }));
       // Lowest chassis-box corner height (world), as a clearance witness.
       const [hx, hy, hz] = g.chassis.halfExtentsM;
       const [cx, cy, cz] = g.chassis.centerLocalM;
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-        const v = new CANNON.Vec3(cx + sx * hx, cy - hy, cz + sz * hz);
-        minY = Math.min(minY, f.rig.body.pointToWorldFrame(v).y);
+        const v = f.rig.body.pointToWorldFrame(new CANNON.Vec3(cx + sx * hx, cy - hy, cz + sz * hz));
+        minY = Math.min(minY, v.y);
+        if (v.x >= faceX) minOverCurbY = Math.min(minOverCurbY, v.y);
       }
     }
     const curbTop = 2 * CURB_HALF[1];
-    record(`${id} brake-dive: min chassis corner y ${minY.toFixed(4)} m, clearance over curb `
-      + `${(minY - curbTop).toFixed(4)} m, end speed ${f.rig.snapshot(f.t).telemetry.totalSpeedMps.toFixed(3)}`);
+    const mm = (y: number) => (Number.isFinite(y) ? `${((y - curbTop) * 1000).toFixed(2)} mm` : 'n/a');
+    // minY is conservative (any corner); minOverCurbY only corners above the curb in plan.
+    record(`${id} brake-dive ${gear} steer ${steering}: min chassis corner y ${minY.toFixed(4)} m, `
+      + `clearance over curb top ${mm(minY)} (corners above the curb ${mm(minOverCurbY)}), end speed `
+      + `${f.rig.snapshot(f.t).telemetry.totalSpeedMps.toFixed(3)}`);
     expect(contacts).toEqual([]);
     expect(minY - curbTop).toBeGreaterThanOrEqual(0.002);
   });
+
+  /** Curb square across the path 4 m ahead (-Z), like driving over the roadside curb. */
+  const across: ColliderBox = {
+    id: 'test-curb-across', kind: 'curb', centerM: [0, CURB_HALF[1], -4],
+    halfExtentsM: [16, CURB_HALF[1], CURB_HALF[0]], yawRad: 0,
+  };
+  /** Drive at `speed` toward the curb; peak deceleration, per-axle minimum speed on the curb. */
+  function crossCurb(id: VehicleId, speed: number, throttle: number) {
+    const f = setup(id, [across], { x: 0, z: 0 });
+    shift(f, 'D');
+    f.rig.body.velocity.set(0, 0, -speed);
+    let prevV = speed;
+    let peakDecel = 0;
+    let frontMin = Infinity;
+    let rearMin = Infinity;
+    let frontCrossed = false;
+    let crossed = false;
+    let snap = f.rig.snapshot(f.t);
+    for (let i = 0; i < Math.round(6 / H) && !crossed; i++) {
+      snap = step(f, frame({ throttle }));
+      const v = Math.hypot(f.rig.body.velocity.x, f.rig.body.velocity.z);
+      peakDecel = Math.max(peakDecel, (prevV - v) / H);
+      prevV = v;
+      const front = snap.wheelEdges[0].state !== 'none' || snap.wheelEdges[1].state !== 'none';
+      const rear = snap.wheelEdges[2].state !== 'none' || snap.wheelEdges[3].state !== 'none';
+      const speedNow = snap.telemetry.totalSpeedMps;
+      if (front) frontMin = Math.min(frontMin, speedNow);
+      if (rear) rearMin = Math.min(rearMin, speedNow);
+      if (!front && frontMin < Infinity) frontCrossed = true;
+      crossed = !front && !rear && rearMin < Infinity && snap.telemetry.pose.positionM[2] < -6;
+    }
+    record(`${id} curb crossing ${speed} m/s throttle ${throttle}: peak decel `
+      + `${peakDecel.toFixed(1)} m/s^2, min speed front axle on curb ${frontMin.toFixed(3)} m/s, `
+      + `rear ${rearMin.toFixed(3)} m/s, crossed ${crossed}, end speed `
+      + `${snap.telemetry.totalSpeedMps.toFixed(3)} m/s`);
+    return { peakDecel, frontMin, rearMin, frontCrossed, crossed, snap };
+  }
+
+  const CROSS_CASES = IDS.flatMap((id) => [
+    { id, speed: 2, throttle: 0.3 }, { id, speed: 3, throttle: 0 }, { id, speed: 3, throttle: 0.3 },
+  ]);
+  it.each(CROSS_CASES)('$id: drives across a 0.11 m curb at $speed m/s (throttle $throttle) and on',
+    ({ id, speed, throttle }) => {
+      const r = crossCurb(id, speed, throttle);
+      expect(r.crossed).toBe(true);
+      // The no-damper climb level is about 20 m/s^2; descents must not add a braking jolt.
+      expect(r.peakDecel).toBeLessThanOrEqual(25);
+      expect(Math.min(r.frontMin, r.rearMin)).toBeGreaterThan(0.5);
+    });
+
+  it.each(IDS)('%s: coasting at 2 m/s the front axle descends freely; creep cannot lift the rear',
+    (id) => {
+      const r = crossCurb(id, 2, 0);
+      // The front wheels climb, cross and roll down without being braked on the far side ...
+      expect(r.frontCrossed).toBe(true);
+      expect(r.peakDecel).toBeLessThanOrEqual(25);
+      expect(r.frontMin).toBeGreaterThan(0.5);
+      // ... and the rear axle then meets the curb at creep speed, which is momentum-only by design.
+      expect(r.crossed).toBe(false);
+      expect(r.snap.wheelEdges[2].state).not.toBe('over');
+      expect(r.snap.wheelEdges[3].state).not.toBe('over');
+    });
 
   it.each(IDS)('%s: a far stop leaves flat-ground creep bit-identical', (id) => {
     const far: ColliderBox = {
