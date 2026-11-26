@@ -321,6 +321,41 @@ describe('phase 5 scene asset loading', () => {
     assets.dispose();
   });
 
+  it.each([
+    ['rotated 5° from its pivot', (node) => {
+      const angle = 5 * Math.PI / 180;
+      const turn = new Quaternion(0, Math.sin(angle / 2), 0, Math.cos(angle / 2));
+      node.rotation = new Quaternion(...node.rotation).multiply(turn).toArray();
+    }],
+    ['moved 5 mm from its pivot', (node) => { node.translation[1] += 0.005; }],
+  ])('rejects a vehicle whose MirrorSurfaceLeft is %s', async (_name, mutate) => {
+    const records = {
+      ...assetBytes,
+      '/assets/vehicles/sedan.glb': rewriteJson(assetBytes['/assets/vehicles/sedan.glb'], (json) => {
+        mutate(json.nodes.find((node) => node.name === 'MirrorSurfaceLeft'));
+      }),
+    };
+    mockedFetch(records);
+    await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
+      .rejects.toMatchObject({
+        name: AssetLoadError.name, resource: 'vehicle', reason: 'invalid-contract',
+      });
+  });
+
+  it('rejects a vehicle whose MirrorSurfaceLeft glass differs from the contract size', async () => {
+    const records = {
+      ...assetBytes,
+      '/assets/vehicles/sedan.glb': rewriteJson(assetBytes['/assets/vehicles/sedan.glb'], (json) => {
+        json.nodes.find((node) => node.name === 'MirrorSurfaceLeft').scale = [1.1, 1, 1];
+      }),
+    };
+    mockedFetch(records);
+    await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
+      .rejects.toMatchObject({
+        name: AssetLoadError.name, resource: 'vehicle', reason: 'invalid-contract',
+      });
+  });
+
   it('rejects a vehicle with a missing required wheel node as a vehicle failure', async () => {
     const records = {
       ...assetBytes,

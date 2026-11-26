@@ -539,6 +539,53 @@ test('renders camera modes, bounded look, resized overhead, trajectory and mirro
   expect(errors).toEqual([]);
 });
 
+test('adjusts, saves and resets a side mirror from the cockpit', async ({ page }) => {
+  test.setTimeout(60000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await installAudioMock(page);
+  await open(page);
+  await waitForPointerLock(page);
+  const canvas = page.locator('#simulation');
+  const status = page.locator('#status-message');
+  const savedLeft = () => page.evaluate(() =>
+    JSON.parse(localStorage.getItem('park-core.settings.v1') ?? '{}').mirrorAdjustments?.sedan?.left);
+  await page.waitForTimeout(300);
+  const original = await canvas.screenshot();
+
+  await page.keyboard.press('m');
+  await expect(status).toContainText('gương trái');
+  await page.keyboard.down('ArrowLeft');
+  await page.waitForTimeout(1000);
+  await page.keyboard.up('ArrowLeft');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('m');
+  await expect(status).toContainText('Đã lưu vị trí gương');
+  await expect.poll(async () => (await savedLeft())?.yawDeg ?? 0).toBeLessThan(-4);
+  expect((await savedLeft()).pitchDeg).toBe(0);
+  await page.waitForTimeout(300);
+  // Only the left mirror's pixels change; the driver view itself has not moved.
+  expect((await canvas.screenshot()).equals(original)).toBe(false);
+  await expect(page.locator('#telemetry')).toContainText('0 km/h');
+
+  await openSettings(page, 'view');
+  await page.locator('#reset-mirrors').click();
+  await closeSettings(page);
+  // Resuming re-acquires pointer lock, which can turn the view, so the reset is checked
+  // through the saved state; unit tests cover the reset reaching the renderer.
+  await expect.poll(async () => (await savedLeft())?.yawDeg).toBe(0);
+  const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });
+  await resume.click();
+  await waitForPointerLock(page);
+
+  await page.keyboard.down('s');
+  await page.keyboard.press('Digit4');
+  await page.keyboard.press('Space');
+  await page.keyboard.up('s');
+  await page.keyboard.press('m');
+  await expect(status).toContainText('Chỉ chỉnh gương khi về số P hoặc kéo phanh tay');
+  expect(errors).toEqual([]);
+});
+
 test('repeatedly opens and closes the preview without uncaught errors', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

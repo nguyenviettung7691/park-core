@@ -23,8 +23,8 @@ unbranded.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 4,976 | 38 / 27 | 367,744 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,650 | 39 / 28 | 413,648 |
+| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 4,976 | 38 / 27 | 368,048 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,650 | 39 / 28 | 413,952 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden. Both are below the 10,000-triangle vehicle gate.
@@ -125,8 +125,20 @@ dimensions and chassis colliders are unchanged:
 
 | Vehicle | COM height (m) | `DriverEye` local (m) | `MirrorRear` local (m) | Left/right mirror local (m) |
 |---|---:|---|---|---|
-| Sedan | 0.52 | (-0.36, 0.60, -0.665) | (0, 0.74, -1.225) | (+/-0.96, 0.43, -1.45) |
-| CUV | 0.62 | (-0.36, 0.68, -0.5462) | (0, 0.82, -1.1062) | (+/-0.965, 0.48, -1.3312) |
+| Sedan | 0.52 | (-0.36, 0.60, -0.665) | (0, 0.74, -1.225) | (+/-0.96, 0.474, -1.45) |
+| CUV | 0.62 | (-0.36, 0.68, -0.5462) | (0, 0.82, -1.1062) | (+/-0.965, 0.524, -1.3312) |
+
+Issue #9 (2026-11-26) made the mirrors true planar reflections. Each `Mirror*` node is
+now the glass pivot and shares the `MirrorSurface*` pose: the renderer reflects the
+driver eye in the live glass plane and renders through the glass rectangle with an
+off-axis frustum, so the image scale follows glass size and distance. Glass is 0.24 x
+0.06 m (rearview) and 0.22 x 0.13 m (sides, passenger 1.3x convex). Side mirrors aim at
+the common setting: the inner view edge shows a sliver of the car's flank (about 5
+degrees outward for the driver, 4 for the passenger), centre ray 3 degrees down; the
+rearview looks straight back, 2 degrees down. Side glass sits 0.044 m above its
+collider centre so the passenger face clears the dashboard from the eye; colliders are
+unchanged. Drivers can tilt each glass +/-12 degrees in P or with the parking brake on
+(M selects, arrows tilt). The cockpit captures above predate these changes.
 
 Mirror anchor yaw remains rear 180 degrees, left +105 degrees and right
 -105 degrees.
