@@ -1163,3 +1163,12 @@ it('offers reload rather than in-place retry after context loss', () => {
   expect([...element.querySelectorAll('button')].map((node) => node.textContent))
     .toEqual(['Tải lại trang', 'Quay lại menu']);
 });
+
+it('lists the mirror adjustment key in the paused controls help', () => {
+  const element = root();
+  const lesson = { stageId: 1 as const, stepIndex: 0, stepDwellS: 0, parkingDwellS: 0,
+    acknowledgedStepIds: [] };
+  mountScreen(element, { kind: 'paused', lesson, reason: 'user' }, context, vi.fn());
+  expect(element.textContent).toContain('M: chọn gương');
+  expect(messages.keyboardExtra).toContain('M: chọn gương');
+});

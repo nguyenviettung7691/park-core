@@ -26,7 +26,7 @@ import {
   DEFAULT_GRAPHICS_CAPABILITIES,
   parseGraphicsSettings,
 } from './views/graphics-settings';
-import { offsetsFromSaved, savedFromOffsets } from './views/mirror-adjust';
+import { offsetsFromSaved, savedFromOffsets, ZERO_MIRROR_OFFSETS } from './views/mirror-adjust';
 
 export interface AppDeps {
   createOnboarding: () => OnboardingStore;
@@ -852,9 +852,14 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         drawScreen();
         break;
       case 'update-settings': {
-        const nextSettings = {
-          ...action.settings,
+        // Mirror adjustments are owned by the cockpit and the reset button, never by the
+        // panel's possibly stale copy of the settings.
+        const { mirrorAdjustments: _panelCopy, ...panelSettings } = action.settings;
+        const nextSettings: typeof context.settings = {
+          ...panelSettings,
           ...parseGraphicsSettings(action.settings, DEFAULT_GRAPHICS_CAPABILITIES),
+          ...(context.settings.mirrorAdjustments
+            ? { mirrorAdjustments: context.settings.mirrorAdjustments } : {}),
         };
         if (view.preview === 'running' ||
             (view.preview === 'paused' && !graphicsSettingsEqual(context.settings, nextSettings))) {
@@ -877,7 +882,15 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         preview?.recenterView();
         break;
       case 'reset-mirrors':
-        preview?.resetMirrors();
+        if (preview) preview.resetMirrors();
+        else {
+          context = { ...context, settings: { ...context.settings, mirrorAdjustments: {
+            ...context.settings.mirrorAdjustments,
+            [context.selectedVehicleId]: savedFromOffsets(ZERO_MIRROR_OFFSETS),
+          } } };
+          reportPersistence(persistence.saveSettings(context.settings));
+          refreshPersistence();
+        }
         break;
       case 'open-calibration':
         if (view.preview === 'running' || gamepadIndex === null || view.pauseReason === 'contact') return;

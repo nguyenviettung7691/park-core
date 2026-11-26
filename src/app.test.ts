@@ -1300,3 +1300,46 @@ it('clears transient mirror notices after five seconds', async () => {
     vi.useRealTimers();
   }
 });
+
+it('keeps a mirror reset when another view setting changes afterwards', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  const events = f.events;
+  vi.mocked(f.previews[0]!.resetMirrors).mockImplementation(() => {
+    events.onMirrorOffsets!('sedan', {
+      rear: { yawRad: 0, pitchRad: 0 }, left: { yawRad: 0, pitchRad: 0 },
+      right: { yawRad: 0, pitchRad: 0 },
+    });
+  });
+  events.onMirrorOffsets!('sedan', {
+    rear: { yawRad: 0, pitchRad: 0 }, left: { yawRad: -0.1, pitchRad: 0 },
+    right: { yawRad: 0, pitchRad: 0 },
+  });
+  events.onPaused('focus');
+  f.click('Cài đặt');
+  f.root.querySelector<HTMLButtonElement>('#reset-mirrors')!.click();
+  const fov = f.root.querySelector<HTMLInputElement>('#driver-fov')!;
+  fov.value = '70';
+  fov.dispatchEvent(new Event('change'));
+  const saved = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(saved.driverFovDeg).toBe(70);
+  expect(saved.mirrorAdjustments.sedan.left.yawDeg).toBe(0);
+  app.dispose();
+});
+
+it('resets the selected vehicle mirrors from the main menu settings', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  f.events.onMirrorOffsets!('sedan', {
+    rear: { yawRad: 0, pitchRad: 0 }, left: { yawRad: -0.1, pitchRad: 0 },
+    right: { yawRad: 0, pitchRad: 0 },
+  });
+  f.click('Quay lại menu');
+  f.click('Cài đặt');
+  f.root.querySelector<HTMLButtonElement>('#reset-mirrors')!.click();
+  const saved = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(saved.mirrorAdjustments.sedan.left.yawDeg).toBe(0);
+  app.dispose();
+});

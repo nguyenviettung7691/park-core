@@ -40,7 +40,7 @@ export const vi = {
   keyboardSteer: 'A / D hoặc ← / →: đánh lái',
   keyboardPedals: 'W / ↑: ga · S / ↓: phanh, không phải lùi',
   keyboardGear: 'Giữ phanh rồi nhấn 1 / 2 / 3 / 4 để chọn P / R / N / D. Chọn R để lùi.',
-  keyboardExtra: 'Space: phanh tay · Q / E: xi-nhan · F: xác nhận khi đã dừng hẳn',
+  keyboardExtra: 'Space: phanh tay · Q / E: xi-nhan · F: xác nhận khi đã dừng hẳn · M: chọn gương, mũi tên: chỉnh (khi ở số P hoặc kéo phanh tay)',
   gamepadControls: 'Dùng trục lái và bàn đạp đã hiệu chuẩn. Chọn số R / D bằng nút đã xác minh; nút 0 điều khiển phanh tay. Các phím số, Space, Q / E và F vẫn dùng được khi khung lái được chọn.',
   appTitle: 'Park-Core',
   menuTitle: 'Luyện đỗ xe an toàn',
@@ -311,6 +311,6 @@ export const vi = {
   sensorRearCenter: 'giữa',
   sensorRearRight: 'phải',
   sensorRearRightOuter: 'phải ngoài',
-  controlsHelp: 'W/↑: ga; S/↓: phanh (không phải lùi); A/D hoặc ←/→: lái. Giữ phanh rồi 1/2/3/4: P/R/N/D. Space: phanh tay; Q/E: xi-nhan; F: xác nhận khi đã dừng hẳn; Escape: tạm dừng.',
+  controlsHelp: 'W/↑: ga; S/↓: phanh (không phải lùi); A/D hoặc ←/→: lái. Giữ phanh rồi 1/2/3/4: P/R/N/D. Space: phanh tay; Q/E: xi-nhan; F: xác nhận khi đã dừng hẳn; M: chọn gương, mũi tên: chỉnh (khi ở số P hoặc kéo phanh tay); Escape: tạm dừng.',
   acknowledgeHint: 'Khi xe đã dừng hẳn, nhấn F để xác nhận bước này.',
 } as const;
