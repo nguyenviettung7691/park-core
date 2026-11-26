@@ -83,6 +83,8 @@ const fr = {
 const forwardWS = [0, 1, 2, 3].map(() => new CANNON.Vec3());
 const axleWS = [0, 1, 2, 3].map(() => new CANNON.Vec3());
 const RIGHT = new CANNON.Vec3(1, 0, 0);
+const PROJECT_FORWARD_LOCAL = new CANNON.Vec3(0, 0, -1);
+const CANNON_FORWARD_LOCAL = new CANNON.Vec3(0, 0, 1);
 
 function impulseDenominator(body: CANNON.Body, pos: CANNON.Vec3, n: CANNON.Vec3): number {
   pos.vsub(body.position, fr.r0);
@@ -107,6 +109,23 @@ function relativeVelocity(a: CANNON.Body, b: CANNON.Body, p: CANNON.Vec3, dir: C
  * limit cycle ~0.056 m/s with 0.0386 m drift in 3 s under P). All other logic is unchanged.
  */
 class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
+  /**
+   * cannon-es spins wheels about its own forward axis (indexForwardAxis 2 = +Z), while this project
+   * drives toward -Z. super.updateVehicle therefore advances wheel.rotation with the opposite sign
+   * of travel. Flip that step's increment (same magnitude) so wheels roll with the vehicle.
+   * Forces, brakes and impulses are untouched; only the visual rotation changes.
+   */
+  override updateVehicle(timeStep: number): void {
+    super.updateVehicle(timeStep);
+    // Project forward (-Z local) against the axis cannon measured travel along (+Z local).
+    const sign = Math.sign(PROJECT_FORWARD_LOCAL.dot(CANNON_FORWARD_LOCAL)); // -1 for this rig
+    if (sign >= 0) return;
+    for (const w of this.wheelInfos) {
+      w.rotation += 2 * sign * w.deltaRotation;
+      w.deltaRotation = sign * w.deltaRotation;
+    }
+  }
+
   override updateFriction(timeStep: number): void {
     const wheels = this.wheelInfos;
     const chassis = this.chassisBody;
