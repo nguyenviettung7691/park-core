@@ -50,6 +50,8 @@ describe('tyreEdge', () => {
 
   it('keeps supportY continuous while climbing and reaches the top', () => {
     const curb = box(0.12);
+    const d0 = Math.sqrt(2 * R * 0.12 - 0.12 * 0.12);
+    expect(tyreEdge(tyreAt(d0 + 0.001), [curb]).supportY).toBeNull();
     let prev = tyreEdge(tyreAt(0.31), [curb]).supportY ?? 0;
     let maxJump = 0;
     for (let i = 1; i <= 310; i += 1) {
@@ -100,16 +102,70 @@ describe('tyreEdge', () => {
   });
 
   it('honours box yaw', () => {
-    // Face normal rotated 90 deg about +Y: box long along x, face at z = -1... rolled along -z.
+    // Yaw 90 deg about +Y turns the box's long local z axis onto world x.
     const yawed = box(0.12, { yawRad: Math.PI / 2, centerM: [0, 0.06, 0] });
     const tyre: TyreFrame = {
       centerM: [0.4, R, 0], rollDir: [1, 0, 0], axleDir: [0, 0, 1],
       radiusM: R, groundY: 0,
     };
-    // Rotated box spans x in [-5,5], z in [-1.5,1.5]: wheel at x=0.4 is over it.
+    // Rotated box spans x in [-5,5], z in [-1,1]: wheel at x=0.4 is over it.
     expect(tyreEdge(tyre, [yawed]).contact.state).toBe('over');
     const far: TyreFrame = { ...tyre, centerM: [5.2, R, 0] };
     const r = tyreEdge(far, [yawed]);
     expect(r.contact.state).toBe('touching');
+  });
+
+  it('gives finite normal and hit point with a slice exactly on the face', () => {
+    const r = tyreEdge(tyreAt(0), [box(0.12)]);
+    for (const v of [...r.normal!, ...r.hitPointM!]) expect(Number.isFinite(v)).toBe(true);
+    expect(r.supportY).toBeCloseTo(0.12, 9);
+  });
+
+  it('applies no lateral penalty to a wheel atop a wide box', () => {
+    const wide = box(0.12, { centerM: [0, 0.06, 0], halfExtentsM: [5, 0.06, 0.5] });
+    const tyre: TyreFrame = {
+      centerM: [0, R, 0.3], rollDir: [1, 0, 0], axleDir: [0, 0, 1], radiusM: R, groundY: 0,
+    };
+    const r = tyreEdge(tyre, [wide]);
+    expect(r.contact.state).toBe('over');
+    expect(r.lateralPenetrationM).toBe(0);
+    expect(r.lateralNormal).toBeNull();
+  });
+
+  it('picks the highest support regardless of box order', () => {
+    const low = box(0.05, { id: 'low', centerM: [faceX - 0.5, 0.025, 0], halfExtentsM: [0.7, 0.025, 5] });
+    const tall = box(0.12, { id: 'tall' });
+    const tyre = tyreAt(0.1); // centre at x=0.4, over `low`, rolling toward `tall`
+    const a = tyreEdge(tyre, [low, tall]);
+    const b = tyreEdge(tyre, [tall, low]);
+    expect(a.supportY).toBeCloseTo(b.supportY!, 12);
+    expect(a.supportY!).toBeGreaterThan(0.1);
+    expect(a.contact.colliderId).toBe('tall');
+    expect(b.contact.colliderId).toBe('tall');
+  });
+
+  it('applies yaw with the right sign (30 deg, off-origin box)', () => {
+    const yaw = Math.PI / 6;
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    // Local +x face normal in world xz is (cos, -sin); local half x = 0.5.
+    const centre: [number, number] = [3, -2];
+    const faceMid: [number, number] = [centre[0] + 0.5 * c, centre[1] - 0.5 * s];
+    const d = 0.1;
+    const wheel: [number, number] = [faceMid[0] + c * d, faceMid[1] - s * d];
+    const yawed = box(0.12, { yawRad: yaw, centerM: [centre[0], 0.06, centre[1]], halfExtentsM: [0.5, 0.06, 4] });
+    const tyre: TyreFrame = {
+      centerM: [wheel[0], R, wheel[1]], rollDir: [-c, 0, s], axleDir: [s, 0, c],
+      radiusM: R, groundY: 0,
+    };
+    const r = tyreEdge(tyre, [yawed]);
+    expect(r.contact.state).toBe('climbing');
+    // Pushes the wheel away from the box: along +(cos, -sin).
+    expect(r.normal![0]).toBeGreaterThan(0);
+    expect(r.normal![2]).toBeLessThan(0);
+    expect(r.normal![0] / -r.normal![2]).toBeCloseTo(c / s, 6);
+    // Equal-support slices tie; the first (-axle) slice wins, so the hit sits 0.1 m along -axle.
+    expect(r.hitPointM![0]).toBeCloseTo(faceMid[0] - 0.1 * s, 6);
+    expect(r.hitPointM![2]).toBeCloseTo(faceMid[1] - 0.1 * c, 6);
   });
 });

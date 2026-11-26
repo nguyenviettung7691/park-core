@@ -61,6 +61,13 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
     const hx = box.halfExtentsM[0];
     const hz = box.halfExtentsM[2];
 
+    // Is the centre slice inside this box? Then it carries the wheel: no lateral push.
+    const cwx = cx - box.centerM[0];
+    const cwz = cz - box.centerM[2];
+    const clx = cwx * cos - cwz * sin;
+    const clz = cwx * sin + cwz * cos;
+    const centreIn = Math.abs(clx) <= hx && Math.abs(clz) <= hz;
+
     for (let i = 0; i < 3; i += 1) {
       const off = SLICE_OFFSETS[i];
       const wx = cx + ax * off - box.centerM[0];
@@ -73,13 +80,13 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
       const dlx = lx - px;
       const dlz = lz - pz;
       const d = Math.hypot(dlx, dlz);
-      const inside = d === 0 && Math.abs(lx) < hx && Math.abs(lz) < hz;
+      const inside = d === 0;
 
       if (inside) {
         if (i === 1) {
           // Centre slice over the box: it carries the wheel.
-          if (top > bestSupport || !over) {
-            over = true;
+          over = true;
+          if (top > bestSupport) {
             bestSupport = top;
             bestBox = box;
             bestH = h;
@@ -102,13 +109,13 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
         const wnx = lnx * cos + lnz * sin;
         const wnz = -lnx * sin + lnz * cos;
         if (Math.abs(wnx * rx + wnz * rz) < 0.5) {
-          if (depth > bestPen) {
+          if (!centreIn && depth > bestPen) {
             bestPen = depth;
             penBox = box;
             penNx = wnx;
             penNz = wnz;
           }
-        } else if (!over && top > bestSupport) {
+        } else if (top > bestSupport) {
           bestSupport = top;
           bestBox = box;
           bestH = h;
@@ -130,7 +137,7 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
       const s = Math.sqrt(r * r - d * d);
       const support = top + s - r;
       // Below the ground plane the tyre is not yet touching the edge.
-      if (over || support < tyre.groundY || support <= bestSupport) continue;
+      if (support < tyre.groundY || support <= bestSupport) continue;
       bestSupport = support;
       bestBox = box;
       bestH = h;
