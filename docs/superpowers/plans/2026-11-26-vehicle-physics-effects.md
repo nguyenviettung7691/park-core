@@ -146,7 +146,7 @@ Algorithm (this is the part the tests do not fully determine). Work per edge box
   - **No pop:** during the momentum climb, the wheel-centre height (from `wheelPoses`) changes by ≤ 0.01 m per step.
   - **Side rub:** steering toward a curb parallel to travel at 0.5 m/s, the outer wheel is `touching` and never `climbing` for 3 s. Every `wheelEdges[i].kind === 'curb'` when touching.
   - **Brake dive:** braking at brake 1 from 2 m/s parallel to the curb, with tyres 0.02 m from its face, the rig's `onContact` never fires.
-  - **Flat ground unchanged:** with `edges = []`, a 3 s creep-forward run on flat ground gives chassis poses identical to a rig built with no edge colliders in the same world (compare to 1e-9), which proves the castRay override is a no-op without edges.
+  - **Flat ground unchanged:** with `edges = []`, a 3 s creep-forward run on flat ground with a stop box placed 20 m away gives chassis and wheel poses identical to the same run with `edges = []` (compare to 1e-9), which proves the override is a no-op away from edges.
 - [ ] **Step 2: Run** `npx vitest run src/vehicle/edge-physics.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement:**
   - In `CorrectedRaycastVehicle`, override `castRay(wheel)`. Call `super.castRay`, build a `TyreFrame` (`groundY` = cannon hit point Y, or the edge box bottom if there is no hit) and call `tyreEdge`. When `supportY` is above the cannon hit:
