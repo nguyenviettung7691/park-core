@@ -101,6 +101,15 @@ const LATERAL_DAMPING_N_PER_MPS = 8000;
  * (inactive off edges).
  */
 const EDGE_REBOUND_DAMPING_N_PER_MPS = 20000;
+/**
+ * Edge-only tyre impact compliance: while a wheel is on the lower half of an edge ('touching' with
+ * support) a capped damper opposes the chassis moving into the edge, standing in for the tyre
+ * carcass deflecting against the corner before the wheel rides up. It makes a single wheel meeting
+ * a curb at creep speed stop below half height (otherwise the whole car's momentum lands on one
+ * corner); the cap keeps it to a small energy loss for momentum climbs and crossings.
+ */
+const EDGE_IMPACT_DAMPING_N_PER_MPS = 20000;
+const EDGE_IMPACT_FORCE_CAP_N = 3000;
 const NO_WHEEL_EDGE: WheelEdgeContact = Object.freeze({ colliderId: null, kind: null, state: 'none' });
 
 /** Per-wheel tyre-edge outcome of the latest castRay, read by applyInput and snapshot. */
@@ -115,6 +124,8 @@ interface WheelEdgeStep {
   readonly pushPoint: CANNON.Vec3;
   /** Edge this wheel has been 'over' since it last reported 'none': a support from it is a descent. */
   descendingFrom: string | null;
+  /** Edge this wheel has side-rubbed since it last reported 'none': its faces stay lateral. */
+  rubbing: string | null;
 }
 
 const edgeTmp = {
@@ -153,7 +164,7 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
     contact: NO_WHEEL_EDGE, lateralPenetrationM: 0,
     lateralNormal: new CANNON.Vec3(), lateralPoint: new CANNON.Vec3(),
     supported: false, pushDir: new CANNON.Vec3(), pushPoint: new CANNON.Vec3(),
-    descendingFrom: null,
+    descendingFrom: null, rubbing: null,
   }));
 
   constructor(
@@ -208,10 +219,12 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
       axleDir: [axle.x, 0, axle.z],
       radiusM: wheel.radius,
       groundY,
-    }, this.edgeBoxes);
+    }, this.edgeBoxes, step.rubbing);
     step.contact = result.contact;
     if (result.contact.state === 'over') step.descendingFrom = result.contact.colliderId;
     else if (result.contact.state === 'none') step.descendingFrom = null;
+    if (result.contact.state === 'none') step.rubbing = null;
+    else if (result.lateralColliderId) step.rubbing = result.lateralColliderId;
     if (result.lateralNormal) {
       step.lateralPenetrationM = result.lateralPenetrationM;
       step.lateralNormal.set(...result.lateralNormal);
@@ -277,8 +290,13 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
       if (!step.supported || step.contact.colliderId === step.descendingFrom) continue;
       chassis.getVelocityAtWorldPoint(step.pushPoint, edgeTmp.velocity);
       const separation = edgeTmp.velocity.dot(step.pushDir);
-      if (separation <= 0) continue;
-      step.pushDir.scale(-EDGE_REBOUND_DAMPING_N_PER_MPS * separation, edgeTmp.force);
+      let f = -EDGE_REBOUND_DAMPING_N_PER_MPS * separation;
+      if (separation < 0) {
+        if (step.contact.state !== 'touching') continue;
+        f = Math.min(-EDGE_IMPACT_DAMPING_N_PER_MPS * separation, EDGE_IMPACT_FORCE_CAP_N);
+      }
+      if (f === 0) continue;
+      step.pushDir.scale(f, edgeTmp.force);
       step.pushPoint.vsub(chassis.position, edgeTmp.rel);
       chassis.applyForce(edgeTmp.force, edgeTmp.rel);
     }

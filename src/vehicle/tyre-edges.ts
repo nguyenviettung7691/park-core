@@ -23,6 +23,8 @@ export interface TyreEdgeResult {
   readonly hitPointM: Vec3Data | null;
   readonly lateralPenetrationM: number;
   readonly lateralNormal: Vec3Data | null;
+  /** The box the lateral penetration is against (null without one). */
+  readonly lateralColliderId: string | null;
 }
 
 const NONE_CONTACT: WheelEdgeContact = Object.freeze({
@@ -30,12 +32,21 @@ const NONE_CONTACT: WheelEdgeContact = Object.freeze({
 });
 const NO_EDGE: TyreEdgeResult = Object.freeze({
   contact: NONE_CONTACT, supportY: null, normal: null, hitPointM: null,
-  lateralPenetrationM: 0, lateralNormal: null,
+  lateralPenetrationM: 0, lateralNormal: null, lateralColliderId: null,
 });
 const SLICE_OFFSETS = [-TYRE_HALF_WIDTH_M, 0, TYRE_HALF_WIDTH_M] as const;
 const EPS = 1e-9;
 
-export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEdgeResult {
+/**
+ * `lateralOnlyId`: a box whose faces count as lateral (sidewall push, no lift) at any angle. The rig
+ * passes the box a wheel is already side-rubbing, so turning while pressed against its face cannot
+ * reclassify the overlap as a deep rolling contact and lift the tyre in one step.
+ */
+export function tyreEdge(
+  tyre: TyreFrame,
+  edges: readonly ColliderBox[],
+  lateralOnlyId: string | null = null,
+): TyreEdgeResult {
   const r = tyre.radiusM;
   const [cx, , cz] = tyre.centerM;
   const [rx, , rz] = tyre.rollDir;
@@ -62,6 +73,7 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
     if (box.kind !== 'curb' && box.kind !== 'wheel-stop') continue;
     const top = box.centerM[1] + box.halfExtentsM[1];
     if (tyre.groundY >= top) continue;
+    const lateralOnly = box.id === lateralOnlyId;
     const h = top - tyre.groundY;
     const cos = Math.cos(box.yawRad);
     const sin = Math.sin(box.yawRad);
@@ -115,7 +127,7 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
         if (gx < gz) { lnx = lx < 0 ? -1 : 1; depth = gx; } else { lnz = lz < 0 ? -1 : 1; depth = gz; }
         const wnx = lnx * cos + lnz * sin;
         const wnz = -lnx * sin + lnz * cos;
-        if (Math.abs(wnx * rx + wnz * rz) < 0.5) {
+        if (lateralOnly || Math.abs(wnx * rx + wnz * rz) < 0.5) {
           if (!centreIn && depth > bestPen) {
             bestPen = depth;
             penBox = box;
@@ -142,7 +154,7 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
       // Outward face normal (world) from the rectangle point to the slice centre.
       const wnx = (dlx * cos + dlz * sin) / d;
       const wnz = (-dlx * sin + dlz * cos) / d;
-      if (Math.abs(wnx * rx + wnz * rz) < 0.5) continue; // lateral: no overlap, no lift
+      if (lateralOnly || Math.abs(wnx * rx + wnz * rz) < 0.5) continue; // lateral: no lift
       if (d > firstTouch) {
         if (d - firstTouch <= TOUCH_MARGIN_M && d - firstTouch < nearGap) {
           nearGap = d - firstTouch;
@@ -187,5 +199,6 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
     hitPointM: hasSupport ? [hitX, hitY, hitZ] : null,
     lateralPenetrationM: penBox ? bestPen : 0,
     lateralNormal: penBox ? [penNx, 0, penNz] : null,
+    lateralColliderId: penBox ? penBox.id : null,
   };
 }

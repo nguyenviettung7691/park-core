@@ -124,27 +124,40 @@ describe('tyre-edge physics in the rig', () => {
     expect(maxDy).toBeLessThanOrEqual(0.01);
   });
 
-  it.each(IDS)('%s: a 1 m/s approach onto a 0.11 m stop raises the wheels smoothly', (id) => {
+  const rank = { none: 0, touching: 1, climbing: 2, over: 3 } as const;
+  /** Reverse at `speed` onto a stop `gap` m behind the rear tyres: furthest state, max wheel dy/step. */
+  function approachStop(id: VehicleId, speed: number) {
     const f = setup(id, [stopBehind(id, 0, 0.3)], { x: 0, z: 0 });
     shift(f, 'R');
-    f.rig.body.velocity.set(0, 0, 1);
+    f.rig.body.velocity.set(0, 0, speed);
     let prev = f.rig.snapshot(f.t);
     let maxDy = 0;
-    let best = 'none';
-    const rank = { none: 0, touching: 1, climbing: 2, over: 3 } as const;
+    let best: keyof typeof rank = 'none';
     for (let i = 0; i < Math.round(2 / H); i++) {
       const snap = step(f, idle);
       for (let w = 0; w < 4; w++) {
         maxDy = Math.max(maxDy,
           Math.abs(snap.wheelPoses[w].positionM[1] - prev.wheelPoses[w].positionM[1]));
         const st = snap.wheelEdges[w].state;
-        if (rank[st] > rank[best as keyof typeof rank]) best = st;
+        if (rank[st] > rank[best]) best = st;
       }
       prev = snap;
     }
-    record(`${id} 1 m/s approach: furthest state ${best}, max wheel dy/step ${maxDy.toFixed(4)} m`);
-    expect(best).not.toBe('none');
+    record(`${id} ${speed} m/s approach: furthest state ${best}, max wheel dy/step ${maxDy.toFixed(4)} m`);
+    return { best, maxDy };
+  }
+
+  it.each(IDS)('%s: a 1 m/s approach onto a 0.11 m stop raises the wheels smoothly', (id) => {
+    const { best, maxDy } = approachStop(id, 1);
+    // Edge impact compliance holds a 1 m/s axle impact below half height (it reaches touching).
+    expect(rank[best]).toBeGreaterThanOrEqual(rank.touching);
     expect(maxDy).toBeLessThanOrEqual(0.01);
+  });
+
+  it.each(IDS)('%s: a 1.5 m/s approach climbs a 0.11 m stop without a pop', (id) => {
+    const { best, maxDy } = approachStop(id, 1.5);
+    expect(rank[best]).toBeGreaterThanOrEqual(rank.climbing);
+    expect(maxDy).toBeLessThanOrEqual(0.35 * 2 * STOP_HALF[1]);
   });
 
   it.each(IDS)('%s: rolls over a 0.11 m stop at 3 m/s without a wheel-height pop', (id) => {
@@ -198,6 +211,60 @@ describe('tyre-edge physics in the rig', () => {
     expect(bad).toBe('');
     expect(touched).toBe(true);
   });
+
+  const LOCK_CASES = IDS.flatMap((id) => (['D', 'R'] as const).flatMap((gear) =>
+    [1, -1, 0.6, -0.6].flatMap((steering) => [0.3, 0.8].map((gap) => ({ id, gear, steering, gap })))));
+  it.each(LOCK_CASES)('$id: creeping in $gear at steering $steering from $gap m never climbs the curb',
+    ({ id, gear, steering, gap }) => {
+      const p = profiles[id];
+      const faceX = 4.05;
+      const x = faceX - gap - TYRE_HALF_WIDTH_M - p.trackM / 2;
+      const f = setup(id, [curbAt(faceX + CURB_HALF[0])], { x, z: 0 });
+      shift(f, gear);
+      let worst = 'none';
+      let touched = false;
+      for (let i = 0; i < Math.round(8 / H); i++) {
+        const snap = step(f, frame({ steering }));
+        for (const w of snap.wheelEdges) {
+          if (w.state === 'touching') touched = true;
+          if (w.state === 'climbing' || w.state === 'over') worst = w.state;
+        }
+      }
+      record(`${id} creep ${gear} steer ${steering} gap ${gap}: touched ${touched}, worst ${worst}`);
+      expect(worst).toBe('none');
+    });
+
+  const ANGLE_CASES = IDS.flatMap((id) => (['D', 'R'] as const).flatMap((gear) =>
+    [15, 30, 45, 60, 75, 90].map((angleDeg) => ({ id, gear, angleDeg }))));
+  it.each(ANGLE_CASES)('$id: creeping straight in $gear at $angleDeg deg to the curb never climbs it',
+    ({ id, gear, angleDeg }) => {
+      // Heading angleDeg from the curb line, toward the curb face at x = 4.05.
+      const world = createWorld();
+      const cleanup = addColliderBoxes(world, [ground, curbAt(4.05 + CURB_HALF[0])]);
+      const rig = createVehicleRig(world, profiles[id], cleanup.idForBody, cleanup.edges);
+      const a = angleDeg * Math.PI / 180;
+      // Forward is (-sin yaw, -cos yaw): yaw -a heads +x in D; in R the rear leads, so yaw +a.
+      // About 1 m of plan gap between the body's curb-side extent and the curb face.
+      const x0 = 4.05 - (2.5 * Math.sin(a) + 1.0 * Math.cos(a)) - 1.0;
+      rig.settle({ positionM: [x0, profiles[id].centerOfMassHeightM, 0],
+        yawRad: gear === 'D' ? -a : a });
+      const f: Fixture = { world, rig, cleanup, t: 0 };
+      shift(f, gear);
+      let worst = 'none';
+      let touched = false;
+      let arrival = 0;
+      for (let i = 0; i < Math.round(14 / H); i++) {
+        const snap = step(f, idle);
+        for (const w of snap.wheelEdges) {
+          if (w.state !== 'none' && !touched) { touched = true; arrival = snap.telemetry.totalSpeedMps; }
+          if (w.state === 'climbing' || w.state === 'over') worst = w.state;
+        }
+      }
+      record(`${id} creep ${gear} at ${angleDeg} deg: touched ${touched} at ${arrival.toFixed(3)} m/s, `
+        + `worst ${worst}`);
+      expect(touched).toBe(true);
+      expect(worst).toBe('none');
+    });
 
   const DIVE_CASES = IDS.flatMap((id) => (['D', 'R'] as const).flatMap((gear) =>
     [0, 0.4, -0.4].map((steering) => ({ id, gear, steering }))));

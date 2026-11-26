@@ -186,4 +186,26 @@ describe('tyreEdge', () => {
     expect(hx * c - hz * s).toBeCloseTo(0, 6);
     expect(Math.abs(hx * s + hz * c)).toBeLessThanOrEqual(0.1 + 1e-9);
   });
+
+  it('keeps a side-rubbed box lateral at any angle when named lateral-only', () => {
+    // Rolling 45 deg into the +x face with the leading outer slice 2 cm inside the box.
+    const c = Math.SQRT1_2;
+    const curb = box(0.11, { id: 'rubbed' });
+    const tyre: TyreFrame = {
+      centerM: [faceX + 0.02 - 0.1 * c, R, -0.1 * c], rollDir: [c, 0, -c], axleDir: [c, 0, c],
+      radiusM: R, groundY: 0,
+    };
+    const rolling = tyreEdge(tyre, [curb]);
+    expect(rolling.supportY).not.toBeNull();
+    expect(rolling.lateralColliderId).toBeNull();
+    const lateral = tyreEdge(tyre, [curb], 'rubbed');
+    expect(lateral.contact).toEqual({ colliderId: 'rubbed', kind: 'curb', state: 'touching' });
+    expect(lateral.supportY).toBeNull();
+    expect(lateral.normal).toBeNull();
+    expect(lateral.lateralPenetrationM).toBeCloseTo(0.02, 9);
+    expect(lateral.lateralNormal).toEqual([-1, 0, 0]);
+    expect(lateral.lateralColliderId).toBe('rubbed');
+    // Another box id leaves the rolling contact unchanged.
+    expect(tyreEdge(tyre, [curb], 'other')).toEqual(rolling);
+  });
 });
