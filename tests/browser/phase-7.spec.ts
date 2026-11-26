@@ -102,7 +102,11 @@ test('grouped calibration supports long device names, cancel, save and disconnec
   await selectGamepadDevice(page);
   const setup = page.getByRole('button', { name: vi.calibrate, exact: true });
   await setup.click();
-  await expect(page.locator('.calibration fieldset')).toHaveCount(4);
+  // Guided calibration shows only the current step's controls (steering first).
+  await expect(page.locator('.calibration fieldset')).toHaveCount(1);
+  await expect(page.locator('.calibration fieldset legend')).toHaveText(vi.steeringGroup);
+  await expect(page.locator('.calibration').getByText(vi.manualSteeringLeft, { exact: true })).toBeVisible();
+  await expect(page.locator('.calibration [data-capture-progress]')).toContainText('0 / 9');
   await expect(page.locator('.calibration details')).not.toHaveAttribute('open');
   await expect(page.getByRole('button', { name: vi.saveCalibration, exact: true })).toBeDisabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

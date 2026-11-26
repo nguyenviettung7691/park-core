@@ -239,6 +239,7 @@ export function createVehicleRig(
   let indicator: Indicator = 'off';
   let steering = 0;
   let serviceBrake = 0;
+  let pedalThrottle = 0;
   let support: Flags = NO_SUPPORT;
   let armed = false;
   let disposed = false;
@@ -316,6 +317,7 @@ export function createVehicleRig(
       if (disposed) throw new Error('Vehicle rig is disposed');
       armed = false;
       gear = 'P'; parkingBrake = true; indicator = 'off'; steering = 0; serviceBrake = 0;
+      pedalThrottle = 0;
       const [x, y, z] = spawn.positionM;
       body.position.set(x, y, z);
       body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), spawn.yawRad);
@@ -365,6 +367,7 @@ export function createVehicleRig(
         : clamp(rawSteer, -1, 1);
       applySteering();
       serviceBrake = brake;
+      pedalThrottle = throttle;
 
       const signed = signedSpeed();
       const direction = gear === 'D' ? 1 : gear === 'R' ? -1 : 0;
@@ -419,6 +422,7 @@ export function createVehicleRig(
           parkingBrake,
           indicator,
           brake: serviceBrake,
+          throttle: pedalThrottle,
         }),
         wheelPoses: Object.freeze(wheels as [BodyPose, BodyPose, BodyPose, BodyPose]),
       });

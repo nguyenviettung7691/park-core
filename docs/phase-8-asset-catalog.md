@@ -1,48 +1,112 @@
 # Phase 8 Original 3D Asset Catalog
 
-Captured and measured: 2026-11-05. These are actual GLTFLoader/WebGL renders,
+Captured and measured: 2026-11-05; vehicle pictures, payload and render-call
+measurements refreshed for issue #12 on 2026-11-26. These are actual GLTFLoader/WebGL renders,
 not the earlier concept drawings. Artwork uses shaped low-poly geometry,
 vertex colors and unlit materials; there are no image textures, downloaded
 meshes, dynamic shadows or custom shaders.
 
 ## Vehicles
 
-The amethyst sedan has a low three-box body, rounded hood and separate angular
-trunk. The ivory/charcoal CUV has a taller cabin, roof rails, wheel-arch cladding,
-an upright hatch and vertical rear lamps. Both include handles, door seams,
-grilles, bumpers, static lamp colors, mirror housings and independently animated
-alloy wheels. Designs are generic and unbranded.
+The amethyst sedan has a boxy three-box body. Its lower shell is closed: hood,
+belt ledges, trunk deck, fascias, floor and lined wheel wells all share edges.
+It has a faceted hood with a raised center panel, painted A/B/C pillars and
+roof rails meeting the glass, four doors with a front quarter window, dark
+wrap-around bumpers, a grille between rectangular headlamps, red/amber tail
+lamps, an amber rear side marker and an exhaust tip. The ivory/charcoal CUV is a
+two-box wagon on the same closed shell construction: a chamfered nose with corner
+headlamps wrapping the chamfer, a dark grille, chunky wrap-around bumpers, dark
+fender flares, framed windshield and raked hatch glass, thick D-pillars, roof rails
+on feet and tall red corner tail lamps. Both include handles, door seams, grilles, bumpers, static lamp colors,
+mirror housings and independently animated alloy wheels. Designs are generic and
+unbranded.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 2,854 | 30 / 21 | 200,548 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 2,970 | 30 / 21 | 209,464 |
+| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 4,976 | 38 / 27 | 367,744 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,650 | 39 / 28 | 413,648 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden. Both are below the 10,000-triangle vehicle gate.
 
 ### Sedan: front and rear
 
-![Amethyst sedan, rounded front hood and alloy wheels](images/phase-8/sedan-front.png)
+Sedan exterior redesigned for issue #12 (captured 2026-11-25). The windshield foot
+moved back to z = -1.68 m and the rear-window foot forward to 1.75 m. The hood is
+now 0.62 m (was 0.43 m) and the trunk deck 0.55 m (was 0.93 m). The roof rear
+moved to z = 0.85 m and the side glass leans in from 0.81 to 0.72 m half-width.
+These values are inferred from two reference views, not measured. The unchanged
+dashboard limits how far back the windshield can go, so the hood ratio is still
+shorter than the reference. The physical profile dimensions and wheel positions
+are unchanged, and so is the visual/physical Z-extent mismatch. The exterior
+subtask kept the eye and mirror anchors; the interior subtask below moved them.
+Each side mirror housing has a low arm to the door belt, below the driver's
+sightline.
 
-![Sedan rear, separate trunk and horizontal red lamps](images/phase-8/sedan-rear.png)
+![Amethyst sedan, faceted hood, grille, headlamps and wrap-around bumper](images/phase-8/sedan-front.png)
+
+![Sedan rear, short trunk deck, red/amber tail lamps, plate and exhaust](images/phase-8/sedan-rear.png)
 
 ### CUV: front and rear
 
-![Ivory CUV, taller cabin, charcoal trim and roof rails](images/phase-8/cuv-front.png)
+CUV exterior redesigned for issue #12 (captured 2026-11-26). It shares the sedan's
+closed shell builder (`authorClosedShell`). The windshield foot moved back to
+z = -1.62 m (was -1.75 m); the reference places it further back, but the
+unchanged CUV dashboard and headliner limit it, so the hood is still shorter
+than the reference. The roof (z -1.10 to 1.15 m), hatch-glass foot (1.975 m) and
+belt (0.99 m) are unchanged; side glass leans in from 0.82 to 0.74 m half-width.
+A fixed front quarter window ends at z = -0.88 m so the unchanged side-mirror
+anchor sits at the front door corner, and each mirror housing gains an arm and
+foot to the door belt. These values are inferred from two reference views, not
+measured. Physical profile, colliders and wheels are unchanged, as is the
+visual/physical Z-extent mismatch. The later CUV interior subtask moved the side
+mirrors to the A-pillar base, so the front quarter window (divider at z = -0.88 m)
+was removed and the front door glass runs from the A-pillar to the B-pillar.
 
-![CUV upright hatch and vertical rear lamps](images/phase-8/cuv-rear.png)
+![Ivory CUV, chamfered nose, corner headlamps, grille, flares and roof rails](images/phase-8/cuv-front.png)
+
+![CUV raked hatch glass, thick D-pillars, tall corner tail lamps and plate](images/phase-8/cuv-rear.png)
 
 ### Cockpits and mirrors
 
-Both cockpits contain a dashboard, simple instrument rings/needles, steering
-wheel with spokes/hub, front seats/headrests, rear-seat silhouette, console,
-floor and roof lining. Captures look slightly downward to show controls;
-application camera controls and default poses are unchanged.
+The sedan cabin was redesigned for issue #12 (captured 2026-11-25). It has:
 
-![Sedan cockpit with controls and working rearview RenderTarget](images/phase-8/sedan-cockpit.png)
+- A dashboard with vents, center stack (radio, buttons, knobs) and glovebox.
+- An instrument binnacle with speedometer, left/right arrows, P lamp and
+  headlamp icon.
+- A three-spoke wheel on a 25-degree raked column, brake and accelerator
+  pedals and a footrest.
+- Bucket seats with bolsters and headrests, a rear bench with headrests, and a
+  center console with shifter, cupholders and a storage bin.
+- Door trims with armrests, handles and pockets, plus a firewall, kick panels,
+  floor, headliner, sun visors and a parcel shelf.
 
-![CUV cockpit and garage viewed through its open interior aperture](images/phase-8/cuv-cockpit.png)
+The wheel, needle, arrows, P lamp and pedals are live: `src/render/asset-scene.ts`
+drives them from telemetry each rendered frame. Positive steering (left) turns
+the wheel counter-clockwise. The needle covers 0-120 km/h over 240 degrees, the
+arrows flash at 1.5 Hz, and the pedals travel 0.3 rad. Captures look slightly
+downward to show controls; application camera controls are unchanged.
+
+The CUV cabin was redesigned for issue #12 (captured 2026-11-26). It reuses the
+sedan cabin with its Cockpit node shifted by the eye difference (+0.18 m up,
++0.119 m back), because the CUV windshield foot, header and wheel wells sit at
+nearly the same eye-relative places. CUV-specific parts follow its references:
+a speedometer and a static second gauge with the P lamp between them and the
+turn arrows outboard (the binnacle hood hides arrows placed above the dials);
+ribbed brake/accelerator pads; a shifter boot; beige door trims; a cargo cover
+over the open cargo bay instead of the sedan's parcel shelf and bulkhead; and a
+console hand lever, `ParkingBrakeLever`, that lifts 0.35 rad while the parking
+brake is applied. It has the same live controls as the sedan.
+
+![Sedan cockpit: live cluster, raked three-spoke wheel, rearview and left mirror in view](images/phase-8/sedan-cockpit.png)
+
+![Sedan cabin cutaway (left side clipped for this capture only)](images/phase-8/sedan-cabin.png)
+
+![Sedan instruments while driving: 25 km/h, left indicator lit, wheel turned left](images/phase-8/sedan-instruments.png)
+
+![CUV cockpit: twin-dial cluster, three-spoke wheel, rearview and left mirror in view](images/phase-8/cuv-cockpit.png)
+
+![CUV cabin from behind the front seats: bucket seats, beige door trims, console](images/phase-8/cuv-cabin.png)
 
 Driven-car window faces are opaque and outward-facing: exterior views show
 closed windows while interior rays see the culled backfaces. These faces are
@@ -50,19 +114,32 @@ excluded from mirror renders. Stationary cars use separate double-sided
 glazing. This is not a transparent-glass simulation.
 
 Vehicle roots remain center-of-mass based, in meters, +Y up and -Z forward.
-The physical profiles, eye anchors and mirror-camera anchors are unchanged:
+The sedan and CUV interior subtasks each moved the eye back 0.3 m. They also
+moved the side mirror anchors, cameras and collider boxes forward 0.585 m to the
+A-pillar base, and put the rearview camera and display together under the
+windshield header. The previous sedan values were eye (-0.36, 0.60, -0.965),
+rearview camera (0, 0.72, -1.715) and side mirrors (+/-0.96, 0.43, -0.865). The
+previous CUV values were eye (-0.36, 0.68, -0.8462), rearview camera
+(0, 0.80, -1.5962) and side mirrors (+/-0.965, 0.48, -0.7462). The physical
+dimensions and chassis colliders are unchanged:
 
 | Vehicle | COM height (m) | `DriverEye` local (m) | `MirrorRear` local (m) | Left/right mirror local (m) |
 |---|---:|---|---|---|
-| Sedan | 0.52 | (-0.36, 0.60, -0.965) | (0, 0.72, -1.715) | (+/-0.96, 0.43, -0.865) |
-| CUV | 0.62 | (-0.36, 0.68, -0.8462) | (0, 0.80, -1.5962) | (+/-0.965, 0.48, -0.7462) |
+| Sedan | 0.52 | (-0.36, 0.60, -0.665) | (0, 0.74, -1.225) | (+/-0.96, 0.43, -1.45) |
+| CUV | 0.62 | (-0.36, 0.68, -0.5462) | (0, 0.82, -1.1062) | (+/-0.965, 0.48, -1.3312) |
 
 Mirror anchor yaw remains rear 180 degrees, left +105 degrees and right
--105 degrees. The smaller rearview **display mesh** is placed inside the
-cabin, offset from its unchanged virtual camera by (-0.25, -0.075, +0.52) m.
-It is a view proxy, not a newly calibrated optical mirror. Planar mirror
-surfaces now have UVs; updates retain the existing 15 FPS cap.
-Side housings sit behind their reflective planes relative to the driver.
+-105 degrees.
+
+Both vehicles: the rearview display (0.18 x 0.045 m, the 4:1 aspect of its
+RenderTarget) coincides with its camera and hangs from the headliner on a stem.
+Each mirror face bisects the directions to the eye and to its camera's view,
+like a real mirror. Its housing sits behind it, so no camera sees its own
+housing; this also cleared the CUV left mirror, which previously showed mostly
+its own housing.
+
+The displays are view proxies, not calibrated optical mirrors. Planar mirror
+surfaces have UVs, and updates keep the existing 15 FPS cap.
 Loaded-mesh 9 x 9 ray grids verify both side faces are unobstructed from
 each fixed eye; this does not establish optical calibration.
 
@@ -109,8 +186,8 @@ driving surface; they do not introduce traversable solid-looking buildings.
 Every existing lesson obstacle now has a visible stationary car, reusing the
 selected vehicle's exterior and wheels without its cockpit or live mirror
 surfaces. Each owns cloned geometry/materials and is fitted to the exact
-collider box before applying its yaw. Stationary geometry is 2,252 triangles
-for sedan and 2,368 for CUV, below the 4,000-triangle gate.
+collider box before applying its yaw. Stationary geometry is 2,790 triangles
+for sedan and 2,996 for CUV, below the 4,000-triangle gate.
 
 ![Stage 1 parked CUV obstacles beside the unchanged lesson target](images/phase-8/lesson-parked-cars.png)
 
@@ -130,10 +207,10 @@ All GLBs are self-contained and use no external image/buffer resources.
 
 | Selected pair | Uncompressed bytes |
 |---|---:|
-| Sedan + garage | 383,172 |
-| Sedan + roadside | 363,344 |
-| CUV + garage | 392,088 |
-| CUV + roadside | 372,260 |
+| Sedan + garage | 550,368 |
+| Sedan + roadside | 530,540 |
+| CUV + garage | 596,272 |
+| CUV + roadside | 576,444 |
 
 All pairs are below the 5,000,000-byte gate.
 
@@ -144,15 +221,18 @@ The table reports an auxiliary-update frame at 80 ms:
 
 | Scene | Main calls / triangles | Three mirror calls | Overhead calls | Composite calls | Full-frame calls |
 |---|---:|---|---:|---:|---:|
-| Sedan + garage | 26 / 3,218 | 27 + 16 + 16 | 31 | 1 | 117 |
-| Sedan + roadside | 22 / 3,038 | 25 + 16 + 16 | 31 | 1 | 111 |
-| CUV + garage | 26 / 3,334 | 27 + 16 + 16 | 31 | 1 | 117 |
-| CUV + roadside | 22 / 3,154 | 25 + 16 + 16 | 31 | 1 | 111 |
-| Stage 1, CUV | 57 / 7,970 | 27 + 18 + 18 | 31 | 1 | 152 |
-| Stage 2, CUV | 22 / 3,170 | 62 + 18 + 18 | 31 | 1 | 152 |
-| Stage 3, CUV | 32 / 4,226 | 45 + 17 + 26 | 48 | 1 | 169 |
-| Stage 4, CUV | 23 / 3,182 | 47 + 18 + 21 | 32 | 1 | 142 |
-| Stage 5, CUV | 26 / 3,274 | 43 + 17 + 26 | 47 | 1 | 160 |
+| Sedan + garage | 34 / 6,166 | 24 + 15 + 15 | 35 | 1 | 124 |
+| Sedan + roadside | 30 / 5,986 | 22 + 15 + 15 | 35 | 1 | 118 |
+| CUV + garage | 32 / 5,952 | 24 + 15 + 15 | 36 | 1 | 123 |
+| CUV + roadside | 28 / 5,772 | 22 + 15 + 15 | 36 | 1 | 117 |
+| Stage 1, CUV | 63 / 11,844 | 24 + 17 + 17 | 36 | 1 | 158 |
+| Stage 2, CUV | 28 / 5,788 | 59 + 17 + 17 | 36 | 1 | 158 |
+| Stage 3, CUV | 39 / 7,498 | 40 + 16 + 25 | 53 | 1 | 174 |
+| Stage 4, CUV | 29 / 5,800 | 44 + 17 + 20 | 37 | 1 | 148 |
+| Stage 5, CUV | 33 / 6,538 | 40 + 15 + 25 | 52 | 1 | 166 |
+
+Measured 2026-11-26 after the issue #12 redesign. The sedan's lesson stages peak
+at 65 main-pass calls (Stage 1).
 
 The gates are <=100 **main-pass** calls in sandbox and <=140 in lessons,
 not limits on the sum of all camera passes. These sampled poses pass; their
@@ -176,11 +256,11 @@ part of the production app. See [asset pipeline](asset-pipeline.md).
 
 ## Verification limits
 
-Final software checks passed: 487 unit/DOM/physics/asset tests, 37 explicitly
-selected generator/loader checks, typecheck, production build, 40 Chromium
-browser checks (including both five-stage journeys) and five production
-checks. The explicit asset selection overlaps the ordinary suite; these
-numbers are not additive. No lint script exists. The existing bundle-size
+Final software checks for issue #12 (2026-11-26) passed: 567 unit/DOM/physics/asset
+tests, the CUV `assets:review` (72 focused generator/loader checks plus four browser
+review checks), typecheck, production build, 50 Chromium browser checks (including
+both five-stage journeys) and six production checks. The focused asset selection
+overlaps the ordinary suite; these numbers are not additive. No lint script exists. The existing bundle-size
 warning remains.
 
 The branch includes the current Phase 7 learner experience. Its app captures

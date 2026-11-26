@@ -46,6 +46,7 @@ export interface VehicleProfile {
   readonly massKg: number;
   readonly bodySizeM: Vec3Data;
   readonly mirrorWidthM: number;
+  readonly mirrorHeightM: number;
   readonly wheelbaseM: number;
   readonly trackM: number;
   readonly frontOverhangM: number;
@@ -88,6 +89,8 @@ export interface VehicleTelemetry {
   readonly parkingBrake: boolean;
   readonly indicator: Indicator;
   readonly brake: number;
+  /** Driver's accelerator pedal position (0-1), for cockpit display only. */
+  readonly throttle?: number;
 }
 
 export type SensorId =

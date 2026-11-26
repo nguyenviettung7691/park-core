@@ -3,12 +3,15 @@ import type { VehicleId, VehicleProfile } from '../contracts';
 const LOCK_RAD = 3 * Math.PI;
 
 // Product design Sections 4-5 seeds; driver eye derived as (-0.36, eyeHeight-COMHeight, frontAxleZ+0.25).
+// Sedan and CUV eyes moved back to frontAxleZ+0.55 for the issue #12 interiors so the
+// windshield, rearview and side mirrors fall inside the neutral driver view.
 export const profiles: Readonly<Record<VehicleId, VehicleProfile>> = Object.freeze({
   sedan: Object.freeze<VehicleProfile>({
     id: 'sedan',
     massKg: 1450,
     bodySizeM: [1.8, 1.45, 4.6],
     mirrorWidthM: 2.04,
+    mirrorHeightM: 0.95,
     wheelbaseM: 2.7,
     trackM: 1.56,
     frontOverhangM: 0.9,
@@ -17,7 +20,7 @@ export const profiles: Readonly<Record<VehicleId, VehicleProfile>> = Object.free
     groundClearanceM: 0.15,
     centerOfMassHeightM: 0.52,
     tireRadiusM: 0.31,
-    driverEyeLocalM: [-0.36, 1.12 - 0.52, -(1 - 0.55) * 2.7 + 0.25],
+    driverEyeLocalM: [-0.36, 1.12 - 0.52, -(1 - 0.55) * 2.7 + 0.55],
     steeringWheelLockRad: LOCK_RAD,
     steeringRatio: 16,
     suspensionRestLengthM: 0.3,
@@ -41,6 +44,7 @@ export const profiles: Readonly<Record<VehicleId, VehicleProfile>> = Object.free
     massKg: 1400,
     bodySizeM: [1.8, 1.62, 4.35],
     mirrorWidthM: 2.06,
+    mirrorHeightM: 1.1,
     wheelbaseM: 2.61,
     trackM: 1.55,
     frontOverhangM: 0.85,
@@ -49,7 +53,7 @@ export const profiles: Readonly<Record<VehicleId, VehicleProfile>> = Object.free
     groundClearanceM: 0.18,
     centerOfMassHeightM: 0.62,
     tireRadiusM: 0.33,
-    driverEyeLocalM: [-0.36, 1.3 - 0.62, -(1 - 0.58) * 2.61 + 0.25],
+    driverEyeLocalM: [-0.36, 1.3 - 0.62, -(1 - 0.58) * 2.61 + 0.55],
     steeringWheelLockRad: LOCK_RAD,
     steeringRatio: 16,
     suspensionRestLengthM: 0.34,

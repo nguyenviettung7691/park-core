@@ -103,7 +103,9 @@ describe('vehicle geometry and steering (no engine)', () => {
     expect(g.mirrors[0].centerLocalM[0]).toBeCloseTo(-0.96, 4);
     expect(g.mirrors[1].centerLocalM[0]).toBeCloseTo(0.96, 4);
     expect(g.mirrors[0].centerLocalM[1]).toBeCloseTo(0.43, 4);
-    expect(g.mirrors[0].centerLocalM[2]).toBeCloseTo(-0.865, 4);
+    // Side mirrors sit at the A-pillar base (issue #12 sedan and CUV interior subtasks).
+    expect(g.mirrors[0].centerLocalM[2]).toBeCloseTo(-1.45, 4);
+    expect(deriveGeometry(profiles.cuv).mirrors[0].centerLocalM[2]).toBeCloseTo(-1.3312, 4);
   });
 
   it('matches the design table for chassis boxes and driver eyes', () => {
@@ -114,7 +116,7 @@ describe('vehicle geometry and steering (no engine)', () => {
     expect(s.chassis.centerLocalM[1]).toBeCloseTo(0.28, 6);
     expect(s.chassis.centerLocalM[2]).toBeCloseTo(0.185, 6);
     expect(s.driverEyeLocalM[1]).toBeCloseTo(0.6, 6);
-    expect(s.driverEyeLocalM[2]).toBeCloseTo(-0.965, 6);
+    expect(s.driverEyeLocalM[2]).toBeCloseTo(-0.665, 6);
     const c = deriveGeometry(profiles.cuv);
     expect(c.frontAxleZ).toBeCloseTo(-1.0962, 4);
     expect(c.rearAxleZ).toBeCloseTo(1.5138, 4);
@@ -122,7 +124,7 @@ describe('vehicle geometry and steering (no engine)', () => {
     expect(c.chassis.halfExtentsM[2]).toBeCloseTo(2.175, 6);
     expect(c.chassis.centerLocalM[2]).toBeCloseTo(0.2288, 4);
     expect(c.driverEyeLocalM[1]).toBeCloseTo(0.68, 6);
-    expect(c.driverEyeLocalM[2]).toBeCloseTo(-0.8462, 4);
+    expect(c.driverEyeLocalM[2]).toBeCloseTo(-0.5462, 4);
     expect(c.mirrors[1].centerLocalM[1]).toBeCloseTo(0.48, 4);
   });
 

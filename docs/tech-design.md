@@ -93,7 +93,10 @@ do not certify support for a physical wheel or controller.
 
 The driver camera is profile-anchored and supports bounded mouse-look. The
 chase camera adjusts around environmental obstructions. Rear and side mirrors
-use RenderTargets with a 15 FPS update cap. The overhead view uses one
+use RenderTargets with a 15 FPS update cap. Cockpit instruments that a vehicle
+asset names (both vehicles: steering wheel, speedometer, indicator and parking
+lamps, pedals; CUV also a parking-brake hand lever) follow interpolated telemetry on every rendered frame; they mirror the
+HUD state and do not add new driving inputs. The overhead view uses one
 high-altitude orthographic camera; its RenderTarget updates at no more than
 30 Hz, while the latest texture is drawn into the canvas inset on rendered
 frames under a DOM border and label. Trajectory lines and camera views are
@@ -171,6 +174,12 @@ bakes. See the [asset pipeline](asset-pipeline.md) and
 [illustrated asset catalog](phase-8-asset-catalog.md) for dimensions,
 provenance, payloads, render-call samples and software evidence.
 
+Reference-driven asset changes use a shared brief and impact map, selected
+candidate generation, source/output parity checks and actual runtime comparison
+captures. Physical profiles and typed view contracts drive both authoring and
+loader expectations. Automated checks and developer visual approval are separate;
+see the asset pipeline for commands and known baseline visual/physical offsets.
+
 Application code, functional tooling and technical documentation are MIT
 licensed. The artwork GLBs in `public/assets`, creative definitions in
 `tools/asset-designs`, and artwork-focused images in `docs/images/phase-8` use
@@ -182,7 +191,8 @@ License notices are in [`public/assets/LICENSE`](../public/assets/LICENSE),
 ## 9. Deployment and validation boundaries
 
 The Pages workflow validates pull requests and pushes to `main` with unit
-tests, typecheck, production build, Chromium `@smoke` browser checks and
+tests, asset parity, typecheck, production build, Chromium `@smoke` browser checks,
+dedicated asset-render/review suites and
 production-preview checks. A passing run on `main` deploys the static `dist`
 build to [park-core.nguyenviettung.id.vn](https://park-core.nguyenviettung.id.vn/);
 the workflow can also be started manually. See the README for setup, domain,

@@ -1,4 +1,5 @@
-import type { BodyPose, QuatData, Vec3Data, VehicleId, VehicleProfile } from '../contracts';
+import type { BodyPose, QuatData, Vec3Data, VehicleProfile } from '../contracts';
+import { mirrorBoxes } from './asset-contract';
 
 export const GRAVITY_MPS2 = 9.81;
 
@@ -9,9 +10,6 @@ export interface VehicleGeometry {
   readonly chassis: LocalBox; readonly mirrors: readonly [LocalBox, LocalBox];
   readonly driverEyeLocalM: Vec3Data;
 }
-
-// Designer-selected conservative mirror mounting heights above ground.
-const MIRROR_HEIGHT_M: Readonly<Record<VehicleId, number>> = { sedan: 0.95, cuv: 1.1 };
 
 export function deriveGeometry(profile: VehicleProfile): VehicleGeometry {
   const f = profile.frontWeightFraction, L = profile.wheelbaseM;
@@ -26,13 +24,6 @@ export function deriveGeometry(profile: VehicleProfile): VehicleGeometry {
   const frontY = mountY(f, k[0]), rearY = mountY(1 - f, k[2]);
   const frontExtent = -frontAxleZ + profile.frontOverhangM;
   const rearExtent = rearAxleZ + profile.rearOverhangM;
-  const mirrorHalfX = (profile.mirrorWidthM - width) / 4;
-  const mirrorX = (profile.mirrorWidthM + width) / 4;
-  const mirrorY = MIRROR_HEIGHT_M[profile.id] - profile.centerOfMassHeightM;
-  const mirrorZ = frontAxleZ + 0.35;
-  const mirror = (sx: number): LocalBox => ({
-    centerLocalM: [sx * mirrorX, mirrorY, mirrorZ], halfExtentsM: [mirrorHalfX, 0.05, 0.1],
-  });
   return {
     frontAxleZ, rearAxleZ,
     wheelMountsLocalM: [[-x, frontY, frontAxleZ], [x, frontY, frontAxleZ],
@@ -42,7 +33,7 @@ export function deriveGeometry(profile: VehicleProfile): VehicleGeometry {
         (rearExtent - frontExtent) / 2],
       halfExtentsM: [width / 2, (height - profile.groundClearanceM) / 2, length / 2],
     },
-    mirrors: [mirror(-1), mirror(1)],
+    mirrors: mirrorBoxes(profile),
     driverEyeLocalM: profile.driverEyeLocalM,
   };
 }
