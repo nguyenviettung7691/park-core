@@ -220,7 +220,8 @@ export function createPreview(
     content = sceneContent;
     ownsAssets = true;
     const lessonScene: LessonScene | null = mode.kind === 'lesson'
-      ? createLessonScene(mode.scenario, prototype.sceneAssets.vehicle)
+      ? createLessonScene(mode.scenario, prototype.sceneAssets.vehicle,
+        prototype.sceneAssets.environment.getObjectByName('WheelStopTemplate') ?? null)
       : null;
     const genericMarkings = prototype.sceneAssets.environment.getObjectByName('ParkingMarkings');
     if (genericMarkings) genericMarkings.visible = mode.kind === 'sandbox';

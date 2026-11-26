@@ -8,6 +8,7 @@ import {
   type Object3D,
 } from 'three';
 import type { LessonRuntime, OrientedRegion, ScenarioDefinition } from '../contracts';
+import type { ColliderBox } from '../runtime-types';
 import { createParkedVehicle } from './parked-vehicle';
 
 const PURPLE = '#9B59B6';
@@ -42,7 +43,27 @@ function createRegionMesh(
   return mesh;
 }
 
-export function createLessonScene(scenario: ScenarioDefinition, vehicleTemplate: Object3D): LessonScene {
+/** A visible copy of the environment's hidden `WheelStopTemplate` at the collider pose; owns its resources. */
+function createWheelStop(template: Object3D, collider: ColliderBox): Object3D {
+  const stop = template.clone(true);
+  stop.traverse((node) => {
+    if (!(node instanceof Mesh)) return;
+    node.geometry = node.geometry.clone();
+    node.material = Array.isArray(node.material)
+      ? node.material.map((material) => material.clone()) : node.material.clone();
+  });
+  stop.name = collider.id;
+  stop.visible = true;
+  stop.position.set(...collider.centerM);
+  stop.rotation.set(0, collider.yawRad, 0);
+  return stop;
+}
+
+export function createLessonScene(
+  scenario: ScenarioDefinition,
+  vehicleTemplate: Object3D,
+  wheelStopTemplate: Object3D | null,
+): LessonScene {
   const group = new Group();
   group.name = 'lesson-visuals';
   group.add(createRegionMesh(scenario.target.region, PURPLE, 0.2, 'lesson-target'));
@@ -57,7 +78,14 @@ export function createLessonScene(scenario: ScenarioDefinition, vehicleTemplate:
   highlight.position.y = 0.04;
   highlight.renderOrder = 2;
   group.add(highlight);
-  for (const collider of scenario.obstacles) group.add(createParkedVehicle(vehicleTemplate, collider));
+  for (const collider of scenario.obstacles) {
+    if (collider.kind === 'wheel-stop') {
+      if (!wheelStopTemplate) throw new Error('Missing environment node: WheelStopTemplate');
+      group.add(createWheelStop(wheelStopTemplate, collider));
+    } else {
+      group.add(createParkedVehicle(vehicleTemplate, collider));
+    }
+  }
 
   let disposed = false;
   return {

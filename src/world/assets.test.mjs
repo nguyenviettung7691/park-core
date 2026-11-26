@@ -282,6 +282,29 @@ describe('phase 5 scene asset loading', () => {
     expect(tracked.disposed).toHaveLength(tracked.expected);
   });
 
+  it('loads the garage wheel-stop template hidden under WallsAndCurbs, 1.8 x 0.11 x 0.15 m', async () => {
+    mockedFetch();
+    const garage = await loadSceneAssets('garage', 'sedan', new AbortController().signal);
+    const template = garage.environment.getObjectByName('WheelStopTemplate');
+    expect(template).toBeTruthy();
+    expect(template.visible).toBe(false);
+    expect(template.parent.name).toBe('WallsAndCurbs');
+    const meshes = [];
+    template.traverse((node) => { if (node instanceof Mesh) meshes.push(node); });
+    expect(meshes).toHaveLength(1);
+    template.updateMatrixWorld(true);
+    const bounds = new Box3().setFromObject(template);
+    const size = bounds.getSize(new Vector3());
+    expect(size.x).toBeCloseTo(1.8, 4);
+    expect(size.y).toBeCloseTo(0.11, 4);
+    expect(size.z).toBeCloseTo(0.15, 4);
+    expect(bounds.getCenter(new Vector3()).length()).toBeLessThan(1e-4);
+    garage.dispose();
+    const roadside = await loadSceneAssets('roadside', 'sedan', new AbortController().signal);
+    expect(roadside.environment.getObjectByName('WheelStopTemplate')).toBeUndefined();
+    roadside.dispose();
+  });
+
   it('reports an indeterminate transfer when content length is unavailable', async () => {
     const progress = [];
     mockedFetch(assetBytes, false);

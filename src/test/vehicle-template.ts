@@ -14,3 +14,14 @@ export function vehicleTemplate(): Group {
   }
   return root;
 }
+
+/** Stand-in for the garage GLB's hidden `WheelStopTemplate` (1.8 x 0.11 x 0.15 m, centred). */
+export function wheelStopTemplate(): Group {
+  const root = new Group();
+  root.name = 'WheelStopTemplate';
+  const body = new Mesh(new BoxGeometry(1.8, 0.11, 0.15), new MeshBasicMaterial());
+  body.name = 'WheelStop';
+  root.add(body);
+  root.visible = false;
+  return root;
+}

@@ -7,6 +7,16 @@ import { deriveGeometry } from './geometry';
 import { profiles } from './profiles';
 import { createVehicleRig, type VehicleRig } from './rig';
 import { TYRE_HALF_WIDTH_M } from './tyre-edges';
+import type { StageId } from '../contracts';
+import { scenarios } from '../lessons/scenarios';
+import { updateFailure, type FailureEvent } from '../lessons/failure';
+import {
+  footprint,
+  footprintInsideRegion,
+  wheelStops,
+  wheelStopTouchingPose,
+} from '../lessons/scenario-test-utils';
+import { collidersForScenario } from '../world/colliders';
 
 const H = 1 / 120;
 const IDS: readonly VehicleId[] = ['sedan', 'cuv'];
@@ -238,5 +248,120 @@ describe('tyre-edge physics in the rig', () => {
     const fb = flat(b);
     fa.forEach((v, i) => expect(Math.abs(v - fb[i])).toBeLessThan(1e-9));
     expect(a.wheelEdges.every((w) => w.state === 'none')).toBe(true);
+  });
+});
+
+const GARAGE_STOP_STAGES: readonly StageId[] = [1, 2, 4];
+const STAGE_CASES = GARAGE_STOP_STAGES.flatMap((stageId) =>
+  IDS.map((id) => ({ stageId, id })));
+
+interface LessonFixture extends Fixture {
+  readonly stageId: StageId;
+  readonly stopId: string;
+  readonly leading: 'front' | 'rear';
+  readonly contacts: (string | null)[];
+  dwell: number;
+  failure: FailureEvent | null;
+}
+
+/** Lesson world (environment + scenario colliders), car square to the target, `gap` m before touching. */
+function lessonSetup(stageId: StageId, id: VehicleId, gap: number): LessonFixture {
+  const scenario = scenarios[stageId];
+  const [stop] = wheelStops(scenario);
+  if (!stop) throw new Error(`stage ${stageId} has no wheel stop`);
+  const { pose, leading } = wheelStopTouchingPose(scenario, stop, profiles[id]);
+  const heading = scenario.target.region.headingRad;
+  // Back the car away from the stop: world (sin h, cos h) is backward for heading h.
+  const away = leading === 'front' ? gap : -gap;
+  const x = pose.positionM[0] + Math.sin(heading) * away;
+  const z = pose.positionM[2] + Math.cos(heading) * away;
+  const world = createWorld();
+  const cleanup = addColliderBoxes(world, collidersForScenario(scenario));
+  const rig = createVehicleRig(world, profiles[id], cleanup.idForBody, cleanup.edges);
+  rig.settle({ positionM: [x, profiles[id].centerOfMassHeightM, z], yawRad: heading });
+  const contacts: (string | null)[] = [];
+  rig.onContact((c) => contacts.push(c));
+  return { world, rig, cleanup, t: 0, stageId, stopId: stop.id, leading, contacts, dwell: 0,
+    failure: null };
+}
+
+function lessonStep(f: LessonFixture, input: InputFrame,
+  actions: readonly InputAction[] = []): PhysicsSnapshot {
+  const snap = step(f, input, actions);
+  const scenario = scenarios[f.stageId];
+  const update = updateFailure(scenario, profiles[snap.telemetry.vehicleId], snap.telemetry,
+    collidersForScenario(scenario), f.contacts.at(-1) ?? null, snap.wheelEdges, f.dwell, H);
+  f.dwell = update.speedEnvelopeDwellS;
+  f.failure ??= update.event;
+  return snap;
+}
+
+const leadingWheels = (f: LessonFixture, snap: PhysicsSnapshot) =>
+  f.leading === 'front' ? [snap.wheelEdges[0], snap.wheelEdges[1]]
+    : [snap.wheelEdges[2], snap.wheelEdges[3]];
+
+describe('garage wheel stops in the lesson world', () => {
+  it.each(STAGE_CASES)('stage $stageId/$id: a creep approach rests touching, parked, no failure',
+    ({ stageId, id }) => {
+      const f = lessonSetup(stageId, id, 0.3);
+      shift(f, f.leading === 'front' ? 'D' : 'R');
+      let snap = f.rig.snapshot(f.t);
+      let worst = 'none';
+      for (let i = 0; i < Math.round(5 / H); i++) {
+        snap = lessonStep(f, idle);
+        for (const w of snap.wheelEdges) {
+          if (w.state === 'climbing' || w.state === 'over') worst = w.state;
+        }
+      }
+      const scenario = scenarios[stageId];
+      const pose = snap.telemetry.pose;
+      const yaw = 2 * Math.atan2(pose.rotation[1], pose.rotation[3]);
+      const headingErr = Math.abs(Math.atan2(Math.sin(yaw - scenario.target.region.headingRad),
+        Math.cos(yaw - scenario.target.region.headingRad)));
+      record(`stage ${stageId}/${id} touch rest: (${pose.positionM[0].toFixed(3)}, `
+        + `${pose.positionM[2].toFixed(3)}) heading err ${headingErr.toExponential(2)} rad, `
+        + `speed ${snap.telemetry.totalSpeedMps.toFixed(4)} m/s`);
+      expect(worst).toBe('none');
+      for (const w of leadingWheels(f, snap)) {
+        expect(w.state).toBe('touching');
+        expect(w.colliderId).toBe(f.stopId);
+      }
+      expect(snap.telemetry.totalSpeedMps).toBeLessThan(0.05);
+      expect(footprintInsideRegion(footprint(pose, profiles[id]), scenario.target.region,
+        scenario.target.insetM)).toBe(true);
+      expect(headingErr).toBeLessThanOrEqual(scenario.target.headingToleranceRad);
+      expect(f.contacts).toEqual([]);
+      expect(f.failure).toBeNull();
+    });
+
+  it.each(STAGE_CASES)('stage $stageId/$id: a 15 km/h approach mounts the stop and fails',
+    ({ stageId, id }) => {
+      const f = lessonSetup(stageId, id, 0.6);
+      shift(f, f.leading === 'front' ? 'D' : 'R');
+      const heading = scenarios[stageId].target.region.headingRad;
+      const v = (15 / 3.6) * (f.leading === 'front' ? 1 : -1);
+      // Forward is local -Z: world (-sin, -cos) * v.
+      f.rig.body.velocity.set(-Math.sin(heading) * v, 0, -Math.cos(heading) * v);
+      for (let i = 0; i < Math.round(2 / H) && !f.failure; i++) lessonStep(f, idle);
+      expect(f.failure).toEqual({ reason: 'wheel-stop-mounted', obstacleId: f.stopId });
+    });
+
+  it.each(IDS)('stage 2/%s: drives away in D after resting against the stop', (id) => {
+    const f = lessonSetup(2, id, 0.3);
+    shift(f, 'R');
+    for (let i = 0; i < Math.round(5 / H); i++) lessonStep(f, idle);
+    const rest = f.rig.snapshot(f.t);
+    expect(leadingWheels(f, rest).every((w) => w.state === 'touching')).toBe(true);
+    step(f, frame({ brake: 0.2 }), [{ type: 'request-gear', gear: 'D' }]);
+    expect(f.rig.snapshot(f.t).telemetry.gear).toBe('D');
+    let snap = rest;
+    for (let i = 0; i < Math.round(3 / H); i++) snap = lessonStep(f, idle);
+    const moved = Math.hypot(snap.telemetry.pose.positionM[0] - rest.telemetry.pose.positionM[0],
+      snap.telemetry.pose.positionM[2] - rest.telemetry.pose.positionM[2]);
+    record(`stage 2/${id} drive-away: moved ${moved.toFixed(3)} m in 3 s`);
+    // Forward for heading pi is +Z.
+    expect(snap.telemetry.pose.positionM[2]).toBeGreaterThan(rest.telemetry.pose.positionM[2]);
+    expect(moved).toBeGreaterThanOrEqual(0.3);
+    expect(f.failure).toBeNull();
   });
 });

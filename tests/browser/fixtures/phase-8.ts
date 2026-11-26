@@ -4,7 +4,7 @@ import {
   PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene,
   Vector3, WebGLRenderer, type Object3D, type WebGLRenderTarget,
 } from 'three';
-import type { StageId } from '../../../src/contracts';
+import type { ScenarioDefinition, SpawnPose, StageId, VehicleProfile } from '../../../src/contracts';
 import { scenarios } from '../../../src/lessons/scenarios';
 import { createAssetScene } from '../../../src/render/asset-scene';
 import { createLessonScene } from '../../../src/render/lesson-scene';
@@ -14,13 +14,14 @@ import { deriveGeometry, vehicleFootprint } from '../../../src/vehicle/geometry'
 import { createVehicleRig } from '../../../src/vehicle/rig';
 import { createViews } from '../../../src/views/cameras';
 import { loadSceneAssets } from '../../../src/world/assets';
+import { wheelStops, wheelStopTouchingPose } from '../../../src/test/wheel-stop-pose';
 import {
   addColliderBoxes, collidersForEnvironment, collidersForScenario, createWorld, prototypeSpawn,
 } from '../../../src/world/colliders';
 
 export type Shot = 'front' | 'rear' | 'side' | 'driver' | 'driver-neutral' |
   'driver-left' | 'driver-right' | 'overhead' | 'environment' | 'props' | 'alignment' |
-  'mirror-rear' | 'mirror-left' | 'mirror-right' | 'steering';
+  'mirror-rear' | 'mirror-left' | 'mirror-right' | 'steering' | 'chase' | 'stop-closeup';
 interface Pass {
   name: string;
   calls: number;
@@ -31,6 +32,8 @@ interface CaptureReport {
   passes: Pass[];
   frames: Pass[][];
   parkedTriangles: number[];
+  wheelStopTriangles: number[];
+  wheelEdges: string[];
   renderer: string | null;
   mirrorVisibility: Record<MirrorId, number>;
 }
@@ -46,6 +49,14 @@ declare global {
   }
 }
 
+/** Spawn square to the target with the leading tyres at first-touch distance from the stop's near face. */
+function stopTouchSpawn(scenario: ScenarioDefinition, profile: VehicleProfile): SpawnPose {
+  const [stop] = wheelStops(scenario);
+  if (!stop) throw new Error('Capture stage has no wheel stop');
+  const { pose } = wheelStopTouchingPose(scenario, stop, profile);
+  return { positionM: pose.positionM, yawRad: scenario.target.region.headingRad };
+}
+
 async function setup() {
   const params = new URLSearchParams(location.search);
   const vehicle = params.get('vehicle') ?? 'sedan';
@@ -58,6 +69,7 @@ async function setup() {
   if (environment !== 'garage' && environment !== 'roadside') throw new Error('Invalid capture environment');
   const stage = params.has('stage') ? Number(params.get('stage')) : null;
   if (stage !== null && ![1, 2, 3, 4, 5].includes(stage)) throw new Error('Invalid capture stage');
+  const atStop = params.get('pose') === 'stop-touch';
   const scenario = stage === null ? null : scenarios[stage as StageId];
   if (scenario && scenario.environmentId !== environment) throw new Error('Capture stage/environment mismatch');
   const assets = await loadSceneAssets(environment, vehicle, new AbortController().signal);
@@ -69,12 +81,15 @@ async function setup() {
   const boxes = scenario ? collidersForScenario(scenario) : collidersForEnvironment(environment);
   const world = createWorld();
   const removeColliders = addColliderBoxes(world, boxes);
-  const rig = createVehicleRig(world, profiles[vehicle], removeColliders.idForBody);
-  rig.settle(scenario ? scenario.spawnByVehicle[vehicle] : prototypeSpawn(profiles[vehicle]));
+  const rig = createVehicleRig(world, profiles[vehicle], removeColliders.idForBody, removeColliders.edges);
+  if (atStop && !scenario) throw new Error('A stop-touch capture needs a stage');
+  rig.settle(scenario ? atStop ? stopTouchSpawn(scenario, profiles[vehicle])
+    : scenario.spawnByVehicle[vehicle] : prototypeSpawn(profiles[vehicle]));
   const current = rig.snapshot(0);
   const frame = { previous: current, current, alpha: 1 };
   content.apply(frame);
-  const lesson = scenario ? createLessonScene(scenario, assets.vehicle) : null;
+  const lesson = scenario ? createLessonScene(scenario, assets.vehicle,
+    assets.environment.getObjectByName('WheelStopTemplate') ?? null) : null;
   if (lesson) {
     content.scene.add(lesson.group);
     lesson.update({ stageId: scenario!.stageId, stepIndex: 0, stepDwellS: 0,
@@ -125,11 +140,16 @@ async function setup() {
     });
     return count;
   };
-  const parkedTriangles = scenario?.obstacles.map((box) => triangles(lesson!.group.getObjectByName(box.id)!)) ?? [];
+  const obstacleTriangles = (stops: boolean) => scenario?.obstacles
+    .filter(({ kind }) => (kind === 'wheel-stop') === stops)
+    .map((box) => triangles(lesson!.group.getObjectByName(box.id)!)) ?? [];
+  const parkedTriangles = obstacleTriangles(false);
+  const wheelStopTriangles = obstacleTriangles(true);
+  const wheelEdges = current.wheelEdges.map((edge) => `${edge.colliderId ?? '-'}:${edge.state}`);
   const context = renderer.getContext();
   const debug = context.getExtension('WEBGL_debug_renderer_info');
   const gpu: unknown = debug ? context.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null;
-  const report: CaptureReport = { passes: frames[2]!, frames, parkedTriangles,
+  const report: CaptureReport = { passes: frames[2]!, frames, parkedTriangles, wheelStopTriangles, wheelEdges,
     renderer: typeof gpu === 'string' ? gpu : null,
     mirrorVisibility: { rear: 0, left: 0, right: 0 } };
   const contract = deriveVehicleAssetContract(profiles[vehicle]);
@@ -265,6 +285,11 @@ async function setup() {
         showMirror(shot.slice(7) as MirrorId);
         return;
       }
+      if (shot === 'chase') {
+        views.setCamera('chase');
+        views.render(frame, time += 100);
+        return;
+      }
       if (shot === 'driver' || shot.startsWith('driver-')) {
         views.setCamera('driver');
         views.recenter();
@@ -291,6 +316,14 @@ async function setup() {
         camera.position.copy(origin).add(shot === 'side' || shot === 'alignment'
           ? new Vector3(7, 1, 0) : new Vector3(4.1, 2.2, shot === 'rear' ? 5.8 : -5.8));
         camera.lookAt(origin.clone().add(new Vector3(0, 0.1, 0)));
+      } else if (shot === 'stop-closeup') {
+        const stop = scenario?.obstacles.find(({ kind }) => kind === 'wheel-stop');
+        if (!stop) throw new Error('Capture stage has no wheel stop');
+        // Low, from the far side of the stop, in the gap beside the learner's left tyres.
+        const away = Math.sign(stop.centerM[2] - scenario!.target.region.centerM[2]);
+        const at = new Vector3(stop.centerM[0] - 0.78, 0.08, stop.centerM[2]);
+        camera.position.set(stop.centerM[0] - 1.75, 0.4, stop.centerM[2] + away * 1.1);
+        camera.lookAt(at);
       } else if (shot === 'props') {
         camera.position.set(environment === 'garage' ? -5.8 : 3.8, 2.4, environment === 'garage' ? -4.8 : 4);
         camera.lookAt(environment === 'garage' ? new Vector3(-9, 1.4, -8) : new Vector3(7, 0.6, 0));

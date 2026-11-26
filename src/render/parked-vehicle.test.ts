@@ -1,7 +1,7 @@
 import { Box3, Mesh, Object3D, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { ColliderBox } from '../runtime-types';
-import { vehicleTemplate } from '../test/vehicle-template';
+import { vehicleTemplate, wheelStopTemplate } from '../test/vehicle-template';
 import { scenarios } from '../lessons/scenarios';
 import { createLessonScene } from './lesson-scene';
 import { createParkedVehicle } from './parked-vehicle';
@@ -33,7 +33,7 @@ describe('parked vehicle artwork', () => {
     const original = template.getObjectByName('Exterior') as Mesh;
     const originalGeometry = vi.spyOn(original.geometry, 'dispose');
     const originalMaterial = vi.spyOn(original.material as import('three').Material, 'dispose');
-    const lesson = createLessonScene(scenarios[1], template);
+    const lesson = createLessonScene(scenarios[1], template, wheelStopTemplate());
     const clone = lesson.group.getObjectByName('stage1-parked-left')!.getObjectByName('Exterior') as Mesh;
     expect(clone.geometry).not.toBe(original.geometry);
     expect(clone.material).not.toBe(original.material);
@@ -46,7 +46,7 @@ describe('parked vehicle artwork', () => {
   });
 
   it.each([1, 2, 3, 4, 5] as const)('renders every parked collider in stage %s', (stage) => {
-    const lesson = createLessonScene(scenarios[stage], vehicleTemplate());
+    const lesson = createLessonScene(scenarios[stage], vehicleTemplate(), wheelStopTemplate());
     for (const collider of scenarios[stage].obstacles) {
       expect(lesson.group.getObjectByName(collider.id)?.visible).toBe(true);
     }

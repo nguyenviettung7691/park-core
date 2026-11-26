@@ -70,6 +70,12 @@ function box(
   return { id, kind, centerM, halfExtentsM, yawRad: 0 };
 }
 
+// Concrete wheel stop, 1.8 x 0.11 x 0.15 m (below both ground clearances). Positions are the middle
+// of the windows where both vehicles' tyre-on-stop poses lie inside the target with its inset.
+const WHEEL_STOP_HALF_M: Vec3Data = [0.9, 0.055, 0.075];
+const wheelStop = (id: string, x: number, z: number): ScenarioCollider =>
+  box(id, [x, WHEEL_STOP_HALF_M[1], z], WHEEL_STOP_HALF_M, 'wheel-stop');
+
 function step(
   id: string,
   instructionKey: MessageKey,
@@ -107,6 +113,7 @@ const scenarios: Readonly<Record<StageId, ScenarioDefinition>> = Object.freeze({
     obstacles: [
       box('stage1-parked-left', [-3.4, 0.8, -5], [0.9, 0.8, 2.2]),
       box('stage1-parked-right', [3.4, 0.8, -5], [0.9, 0.8, 2.2]),
+      wheelStop('stage1-wheel-stop', 0, -6.70),
     ],
   },
   2: {
@@ -141,6 +148,7 @@ const scenarios: Readonly<Record<StageId, ScenarioDefinition>> = Object.freeze({
     obstacles: [
       box('stage2-parked-left', [-3.2, 0.8, -7], [0.8, 0.8, 2.2]),
       box('stage2-parked-right', [3.2, 0.8, -7], [0.8, 0.8, 2.2]),
+      wheelStop('stage2-wheel-stop', 0, -8.60),
     ],
   },
   3: {
@@ -206,6 +214,7 @@ const scenarios: Readonly<Record<StageId, ScenarioDefinition>> = Object.freeze({
     guidance: 'reduced',
     obstacles: [
       box('stage4-adjacent-vehicle', [2.7, 0.8, -7], [0.7, 0.8, 2.1]),
+      wheelStop('stage4-wheel-stop', 5.4, -8.60),
     ],
   },
   5: {

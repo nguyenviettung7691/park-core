@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import type { SensorId } from '../contracts';
 import { profiles } from '../vehicle/profiles';
 import { classifyDistance, createSensors } from './proximity';
+import { scenarios } from '../lessons/scenarios';
+import { wheelStops, wheelStopTouchingPose } from '../lessons/scenario-test-utils';
+import { addColliderBoxes, collidersForScenario, createWorld } from '../world/colliders';
+import { createVehicleRig } from '../vehicle/rig';
 
 const profile = profiles.sedan;
 const frontIds: readonly SensorId[] = [
@@ -166,5 +170,27 @@ describe('Cannon proximity rays', () => {
     const reading = sensors.sample(0.051).readings.find(({ id }) => id === 'front-center')!;
     expect(reading.distanceM).toBeCloseTo(2.53, 2);
     expect(reading.band).toBe('green');
+  });
+});
+
+describe('garage wheel stops and the parking sensors', () => {
+  it.each([
+    [1, 'sedan'], [1, 'cuv'], [2, 'sedan'], [2, 'cuv'], [4, 'sedan'], [4, 'cuv'],
+  ] as const)('stage %s/%s: no sensor reports the stop while the tyres touch it', (stageId, id) => {
+    const scenario = scenarios[stageId];
+    const [stop] = wheelStops(scenario);
+    expect(stop).toBeDefined();
+    const world = createWorld();
+    const cleanup = addColliderBoxes(world, collidersForScenario(scenario));
+    const stopBody = cleanup.edges.find(({ box }) => box.id === stop!.id)!.body;
+    const rig = createVehicleRig(world, profiles[id], cleanup.idForBody, cleanup.edges);
+    const { pose } = wheelStopTouchingPose(scenario, stop!, profiles[id]);
+    rig.settle({ positionM: pose.positionM, yawRad: scenario.target.region.headingRad });
+    const readings = createSensors(world, rig.body, profiles[id]).sample(0).readings;
+    for (const reading of readings) {
+      expect(reading.obstacleId, reading.id).not.toBe(String(stopBody.id));
+    }
+    rig.dispose();
+    cleanup();
   });
 });

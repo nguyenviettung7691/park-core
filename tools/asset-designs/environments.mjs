@@ -1,6 +1,30 @@
 // SPDX-License-Identifier: CC-BY-NC-4.0
-import { boxGeometry, mergeGeometry, transformGeometry } from '../asset-geometry.mjs';
+import { boxGeometry, facesGeometry, mergeGeometry, transformGeometry } from '../asset-geometry.mjs';
 import { palette } from './palette.mjs';
+
+// Wheel-stop cross-section (z, y), centred: 0.15 m deep, 0.11 m tall, 0.025 m top chamfers.
+const STOP_PROFILE = [[-0.075, -0.055], [0.075, -0.055], [0.075, 0.03], [0.05, 0.055],
+  [-0.05, 0.055], [-0.075, 0.03]];
+
+function stopPrism(x0, x1, color, caps) {
+  const faces = [];
+  STOP_PROFILE.forEach(([az, ay], index) => {
+    const [bz, by] = STOP_PROFILE[(index + 1) % STOP_PROFILE.length];
+    faces.push({ color, points: [[x0, ay, az], [x1, ay, az], [x1, by, bz], [x0, by, bz]] });
+  });
+  if (caps[0]) faces.push({ color, points: STOP_PROFILE.map(([z, y]) => [x0, y, z]) });
+  if (caps[1]) faces.push({ color, points: STOP_PROFILE.map(([z, y]) => [x1, y, z]).reverse() });
+  return facesGeometry(faces);
+}
+
+/** Hidden 1.8 x 0.11 x 0.15 m concrete wheel stop with two yellow bands, cloned per lesson stop. */
+function wheelStopGeometry() {
+  const concrete = [0.6, 0.58, 0.55], yellow = [0.86, 0.69, 0.12];
+  const bands = [[-0.9, -0.62, concrete], [-0.62, -0.48, yellow], [-0.48, 0.48, concrete],
+    [0.48, 0.62, yellow], [0.62, 0.9, concrete]];
+  return mergeGeometry(bands.map(([x0, x1, color], index) =>
+    stopPrism(x0, x1, color, [index === 0, index === bands.length - 1])));
+}
 
 export function authorEnvironment({ root, addNode, addMesh, box }, assetId) {
   const garage = assetId === 'garage';
@@ -52,6 +76,7 @@ export function authorEnvironment({ root, addNode, addMesh, box }, assetId) {
     wallParts.push(part([-0.1, 2.25, -14.56], [1.4, 0.8, 0.04], dark));
     wallParts.push(...lettering('B1', -0.58, 2.49, -14.53, 0.11));
     batch('GarageWallDetails', walls, wallParts);
+    addMesh('WheelStop', addNode('WheelStopTemplate', walls), wheelStopGeometry(), [0.6, 0.58, 0.55]);
     const floorParts = [];
     for (let v = -12; v <= 12; v += 3) {
       floorParts.push(part([v, 0.002, 0], [0.012, 0.002, 30], [0.32, 0.31, 0.32]));

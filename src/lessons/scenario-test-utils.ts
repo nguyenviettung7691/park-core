@@ -150,3 +150,5 @@ export function scenarioNumbersAreFinite(value: unknown): boolean {
   }
   return true;
 }
+
+export { firstTouchDistanceM, wheelStops, wheelStopTouchingPose } from '../test/wheel-stop-pose';

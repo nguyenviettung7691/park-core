@@ -7,6 +7,7 @@ import { collidersForEnvironment, createWorld } from '../world/colliders';
 import { profiles } from '../vehicle/profiles';
 import { buildPrototypeScene } from './prototype';
 import { testGamepad } from '../test/gamepad';
+import { wheelStopTemplate } from '../test/vehicle-template';
 import type { SensorReading } from '../contracts';
 import { scenarios } from '../lessons/scenarios';
 import {
@@ -44,6 +45,7 @@ function options(settingsOverride: PrototypeOptions['settings'] = settings) {
   const markings = new Group();
   markings.name = 'ParkingMarkings';
   sceneAssets.environment.add(markings);
+  sceneAssets.environment.add(wheelStopTemplate());
   sceneAssets.wheelNodes.forEach((wheel, index) => {
     wheel.name = ['WheelFL', 'WheelFR', 'WheelRL', 'WheelRR'][index]!;
     sceneAssets.vehicle.add(wheel);

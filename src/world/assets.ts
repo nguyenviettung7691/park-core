@@ -461,6 +461,8 @@ async function loadAsset(
       requiredObject(root, 'WallsAndCurbs', resource);
       if (id === 'garage') {
         requiredObject(root, 'Pillars', resource);
+        // Lesson scenes clone this at each scenario's wheel-stop collider; the template never renders.
+        requiredObject(root, 'WheelStopTemplate', resource).visible = false;
         const ceiling = requiredObject(root, 'Ceiling', resource);
         ceiling.traverse((object) => object.layers.set(OVERHEAD_EXCLUDED_LAYER));
       }
