@@ -12,16 +12,18 @@ belt ledges, trunk deck, fascias, floor and lined wheel wells all share edges.
 It has a faceted hood with a raised center panel, painted A/B/C pillars and
 roof rails meeting the glass, four doors with a front quarter window, dark
 wrap-around bumpers, a grille between rectangular headlamps, red/amber tail
-lamps, an amber rear side marker and an exhaust tip. The ivory/charcoal CUV has a
-taller cabin, roof rails, wheel-arch cladding, an upright hatch and vertical rear
-lamps. Both include handles, door seams, grilles, bumpers, static lamp colors,
+lamps, an amber rear side marker and an exhaust tip. The ivory/charcoal CUV is a
+two-box wagon on the same closed shell construction: a chamfered nose with corner
+headlamps wrapping the chamfer, a dark grille, chunky wrap-around bumpers, dark
+fender flares, framed windshield and raked hatch glass, thick D-pillars, roof rails
+on feet and tall red corner tail lamps. Both include handles, door seams, grilles, bumpers, static lamp colors,
 mirror housings and independently animated alloy wheels. Designs are generic and
 unbranded.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
 | [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 4,976 | 38 / 27 | 367,744 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 2,970 | 30 / 21 | 209,464 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 3,602 | 30 / 21 | 256,540 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden. Both are below the 10,000-triangle vehicle gate.
@@ -46,9 +48,23 @@ sightline.
 
 ### CUV: front and rear
 
-![Ivory CUV, taller cabin, charcoal trim and roof rails](images/phase-8/cuv-front.png)
+CUV exterior redesigned for issue #12 (captured 2026-11-26). It shares the sedan's
+closed shell builder (`authorClosedShell`). The windshield foot moved back to
+z = -1.62 m (was -1.75 m); the reference places it further back, but the
+unchanged CUV dashboard and headliner limit it, so the hood is still shorter
+than the reference. The roof (z -1.10 to 1.15 m), hatch-glass foot (1.975 m) and
+belt (0.99 m) are unchanged; side glass leans in from 0.82 to 0.74 m half-width.
+A fixed front quarter window ends at z = -0.88 m so the unchanged side-mirror
+anchor sits at the front door corner, and each mirror housing gains an arm and
+foot to the door belt. These values are inferred from two reference views, not
+measured. Physical profile, colliders, wheels, driver eye, mirror anchors, cameras
+and faces, and cockpit geometry are unchanged, as is the visual/physical Z-extent
+mismatch. The left mirror capture is still largely blocked by a dark surface, exactly
+as before this change; that belongs to CUV mirror/view work.
 
-![CUV upright hatch and vertical rear lamps](images/phase-8/cuv-rear.png)
+![Ivory CUV, chamfered nose, corner headlamps, grille, flares and roof rails](images/phase-8/cuv-front.png)
+
+![CUV raked hatch glass, thick D-pillars, tall corner tail lamps and plate](images/phase-8/cuv-rear.png)
 
 ### Cockpits and mirrors
 
@@ -159,7 +175,7 @@ Every existing lesson obstacle now has a visible stationary car, reusing the
 selected vehicle's exterior and wheels without its cockpit or live mirror
 surfaces. Each owns cloned geometry/materials and is fitted to the exact
 collider box before applying its yaw. Stationary geometry is 2,790 triangles
-for sedan and 2,368 for CUV, below the 4,000-triangle gate.
+for sedan and 2,992 for CUV, below the 4,000-triangle gate.
 
 ![Stage 1 parked CUV obstacles beside the unchanged lesson target](images/phase-8/lesson-parked-cars.png)
 
@@ -181,8 +197,8 @@ All GLBs are self-contained and use no external image/buffer resources.
 |---|---:|
 | Sedan + garage | 383,172 |
 | Sedan + roadside | 363,344 |
-| CUV + garage | 392,088 |
-| CUV + roadside | 372,260 |
+| CUV + garage | 439,164 |
+| CUV + roadside | 419,336 |
 
 All pairs are below the 5,000,000-byte gate.
 

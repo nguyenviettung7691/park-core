@@ -124,7 +124,7 @@ is promoted, so a pre-promotion `assets:review` stops before the browser step.
 Until the command handles this, run the focused unit tests (expecting only that
 failure) and run `asset-review.spec.ts` directly with the `PARK_CORE_REVIEW_*`
 variables. After promotion, rerun the full `assets:review`, which must pass.
-The sedan exterior redesign for issue #12 followed this path.
+The sedan and CUV exterior redesigns for issue #12 followed this path.
 If dimensional/anchor changes make the old public GLB incompatible with the new
 contract, the report labels its baseline unavailable. Use the pre-edit review for
 comparison; do not bypass validation just to obtain a before image.

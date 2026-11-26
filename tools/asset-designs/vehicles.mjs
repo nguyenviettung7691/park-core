@@ -6,14 +6,12 @@ import { palette } from './palette.mjs';
 export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
   const cuv = assetId === 'cuv';
   const paint = cuv ? [0.74, 0.66, 0.52] : [0.43, 0.23, 0.52];
-  const [width, height, length] = data.bodySizeM;
+  const height = data.bodySizeM[1], length = data.bodySizeM[2];
   const roofY = height - (cuv ? 0.075 : 0);
   const half = length / 2, belt = cuv ? 0.99 : 0.83;
   const frontZ = -(1 - data.frontWeightFraction) * data.wheelbaseM;
   const rearZ = data.frontWeightFraction * data.wheelbaseM;
   const eyeZ = data.contract.driverEyeLocalM[2];
-  const roofFront = eyeZ - 0.25, roofRear = cuv ? 1.15 : 0.62;
-  const frontFoot = eyeZ - 0.9, rearFoot = cuv ? half - 0.2 : 1.37;
   const exterior = addNode('Exterior', root);
   const part = (size, center, color, rotation) =>
     transformGeometry(boxGeometry(size, color), center, rotation);
@@ -22,121 +20,18 @@ export function authorVehicle({ root, addNode, addMesh, box }, assetId, data) {
       { exterior, paint, part, frontZ, rearZ, half, belt, roofY, roofFront: frontZ });
     authorSedanCockpit({ root, addNode, addMesh }, data, { roofFront: frontZ, part });
     authorWheels({ root, addMesh }, data, { frontZ, rearZ, part });
-    authorMirrors({ root, addNode, addMesh }, data, exterior, true);
+    authorMirrors({ root, addNode, addMesh }, data, exterior, 'sedan');
     return;
   }
-  const widthAt = (z) => width / 2 - Math.max(0, -z - (half - 0.45)) * 0.38 -
-    Math.max(0, z - (half - 0.2)) * 0.22;
-  const archRadius = data.tireRadiusM + 0.075;
-  const sections = new Set([-half, -half + 0.15, -half + 0.45, frontFoot, rearFoot, half - 0.2, half]);
-  for (const axle of [frontZ, rearZ]) {
-    for (let i = 0; i <= 12; i++) sections.add(axle + archRadius * Math.cos(i * Math.PI / 12));
-  }
-  const zValues = [...sections].sort((a, b) => a - b);
-  const lowerAt = (z) => Math.max(data.clearanceM, ...[frontZ, rearZ].map((axle) =>
-    Math.abs(z - axle) <= archRadius
-      ? data.tireRadiusM + Math.sqrt(Math.max(0, archRadius ** 2 - (z - axle) ** 2)) : 0));
-  const upperAt = (z) => z < frontFoot
-    ? belt - 0.15 + Math.min(1, (z + half) / 0.5) * 0.11 : belt;
-  const faces = [];
-  for (const side of [-1, 1]) {
-    for (let i = 0; i < zValues.length - 1; i++) {
-      const a = zValues[i], b = zValues[i + 1];
-      faces.push({ color: paint, points: [[side * widthAt(a), lowerAt(a), a],
-        [side * widthAt(b), lowerAt(b), b], [side * widthAt(b), upperAt(b), b], [side * widthAt(a), upperAt(a), a]] });
-    }
-  }
-  faces.push({ color: palette.trim, points: [[-0.7, data.clearanceM, -half], [0.7, data.clearanceM, -half],
-    [0.7, data.clearanceM, half], [-0.7, data.clearanceM, half]] });
-  for (const z of [-half, half]) faces.push({ color: paint, points: [[-widthAt(z), data.clearanceM, z],
-    [widthAt(z), data.clearanceM, z], [widthAt(z), belt - 0.13, z], [-widthAt(z), belt - 0.13, z]] });
-  faces.push({ color: paint, points: [[-0.69, roofY, roofFront], [0.69, roofY, roofFront],
-    [0.69, roofY, roofRear], [-0.69, roofY, roofRear]] });
-  const rails = cuv ? [-1, 1].map((s) => part([0.065, 0.075, 1.65],
-    [s * 0.57, height - 0.0375, 0.37], palette.trim)) : [];
-  const body = addMesh('Body', exterior, mergeGeometry([facesGeometry(faces), ...rails]),
-    paint, [0, -data.comHeightM, 0]);
-
-  const hoodFaces = [];
-  const hoodZ = [-half, -half + 0.12, -half + 0.35, frontFoot];
-  for (let i = 0; i < hoodZ.length - 1; i++) {
-    for (let segment = 0; segment < 4; segment++) {
-      const point = (z, s) => {
-        const x = (s / 2 - 1) * widthAt(z);
-        const rise = Math.min(1, (z + half) / 0.5);
-        return [x, belt - 0.15 + rise * 0.11 + (1 - (x / widthAt(z)) ** 2) * 0.04, z];
-      };
-      hoodFaces.push({ color: paint, points: [point(hoodZ[i], segment), point(hoodZ[i], segment + 1),
-        point(hoodZ[i + 1], segment + 1), point(hoodZ[i + 1], segment)] });
-    }
-  }
-  addMesh('Hood', body, facesGeometry(hoodFaces), paint);
-  const frameParts = [];
-  const pillar = (side, z1, y1, z2, y2, thickness) => {
-    const dy = y2 - y1, dz = z2 - z1;
-    return part([thickness, Math.hypot(dy, dz), 0.065],
-      [side * 0.73, (y1 + y2) / 2, (z1 + z2) / 2], paint, [Math.atan2(dz, dy), 0, 0]);
-  };
-  for (const side of [-1, 1]) {
-    frameParts.push(pillar(side, 0.15, belt, 0.15, roofY - 0.02, 0.06));
-    frameParts.push(part([0.07, 0.055, roofRear - roofFront], [side * 0.72, roofY - 0.03, (roofRear + roofFront) / 2], paint));
-  }
-  addMesh('Cabin', body, mergeGeometry(frameParts), paint);
-  addMesh('Windshield', body, mergeGeometry([-1, 1].map((s) =>
-    pillar(s, frontFoot, belt, roofFront, roofY - 0.05, 0.065))), paint);
-  addMesh('RearWindow', body, mergeGeometry([-1, 1].map((s) =>
-    pillar(s, rearFoot, belt, roofRear, roofY - 0.05, cuv ? 0.12 : 0.075))), paint);
-  const glazing = addNode('ParkedGlazing', body);
-  const glassFaces = [
-    { points: [[-0.7, belt, frontFoot], [0.7, belt, frontFoot],
-      [0.69, roofY - 0.04, roofFront], [-0.69, roofY - 0.04, roofFront]], color: palette.glass },
-    { points: [[-0.7, belt, rearFoot], [0.7, belt, rearFoot],
-      [0.69, roofY - 0.04, roofRear], [-0.69, roofY - 0.04, roofRear]], color: palette.glass },
-    ...[-1, 1].map((s) => ({ points: [[s * 0.73, belt, frontFoot], [s * 0.73, belt, rearFoot],
-      [s * 0.69, roofY - 0.04, roofRear], [s * 0.69, roofY - 0.04, roofFront]], color: palette.glass })),
-  ];
-  addMesh('StaticWindowFaces', glazing, facesGeometry(glassFaces), palette.glass);
-  const exteriorGlass = addNode('ExteriorGlazing', body);
-  const outerGlass = facesGeometry(glassFaces.map((face, index) => ({
-    ...face, points: index === 0 || index === 3 ? [...face.points].reverse() : face.points,
-  })));
-  outerGlass.singleSided = true;
-  addMesh('ExteriorWindowFaces', exteriorGlass, outerGlass, palette.glass);
-  const rearDeck = cuv
-    ? part([1.66, 0.1, half - rearFoot], [0, belt - 0.04, (half + rearFoot) / 2], paint)
-    : part([1.72, 0.09, half - rearFoot], [0, belt - 0.07, (half + rearFoot) / 2], paint);
-  const detail = [rearDeck];
-  for (const side of [-1, 1]) {
-    detail.push(part([0.025, 0.035, length - 0.4], [side * 0.885, belt - 0.23, 0], palette.trim));
-    for (const z of [-0.25, 0.85]) {
-      detail.push(part([0.035, 0.035, 0.16], [side * 0.9, belt - 0.09, z], palette.metal));
-      detail.push(part([0.012, belt - 0.28, 0.012], [side * 0.901, (belt + 0.22) / 2, z + 0.2], palette.trim));
-    }
-    detail.push(part([0.33, 0.115, 0.05], [side * 0.57, belt - 0.22, -half + 0.015], [0.98, 0.89, 0.69]));
-    detail.push(part(cuv ? [0.14, 0.32, 0.05] : [0.36, 0.12, 0.05],
-      [side * 0.64, belt - 0.19, half - 0.01], [0.65, 0.06, 0.09]));
-    if (cuv) {
-      for (const axle of [frontZ, rearZ]) {
-        for (let i = 0; i < 12; i++) {
-          const a = i * Math.PI / 12, b = (i + 1) * Math.PI / 12;
-          const point = (angle, radius) => [side * 0.903,
-            data.tireRadiusM + radius * Math.sin(angle), axle + radius * Math.cos(angle)];
-          detail.push(facesGeometry([{ color: palette.trim, points: [point(a, archRadius - 0.02),
-            point(b, archRadius - 0.02), point(b, archRadius + 0.02), point(a, archRadius + 0.02)] }]));
-        }
-      }
-    }
-  }
-  detail.push(part([0.76, 0.16, 0.035], [0, belt - 0.35, -half - 0.005], palette.trim));
-  for (const z of [-half, half]) {
-    detail.push(part([1.6, 0.13, 0.06], [0, 0.3, z], palette.trim));
-    detail.push(part([0.34, 0.09, 0.015], [0, belt - 0.31, z * 1.003], [0.84, 0.8, 0.71]));
-  }
-  addMesh('ExteriorDetails', body, mergeGeometry(detail), paint);
+  // The CUV cockpit (dashboard, headliner, seats) is unchanged by the exterior subtask,
+  // so the roof front stays on its headliner and the windshield foot clears its dashboard.
+  const roofFront = eyeZ - 0.25, roofRear = cuvRoofRearZ;
+  authorCuvExterior({ addNode, addMesh }, data,
+    { exterior, paint, part, frontZ, rearZ, half, belt, roofY, roofFront });
   authorCockpit({ root, addNode, addMesh, box }, data,
     { belt, eyeZ, roofRear, roofFront, roofY, part });
   authorWheels({ root, addMesh }, data, { frontZ, rearZ, part });
-  authorMirrors({ root, addNode, addMesh }, data, exterior);
+  authorMirrors({ root, addNode, addMesh }, data, exterior, 'cuv');
 }
 
 function authorCockpit({ root, addNode, addMesh, box }, data,
@@ -337,25 +232,21 @@ function authorWheels({ root, addMesh }, data, { frontZ, rearZ, part }) {
 
 // Inferred: the sedan roof covers the rear bench; exterior and cabin headliner share it.
 const sedanRoofRearZ = 0.85;
+// The CUV roof and headliner end above the cargo area, ahead of the raked hatch.
+const cuvRoofRearZ = 1.15;
+const shellWell = [0.09, 0.09, 0.1], shellSeam = [0.12, 0.11, 0.13];
 
-// Sedan exterior shell: one closed lofted lower body (hood, belt ledges, trunk deck,
-// fascias, floor and lined wheel wells) plus a greenhouse whose glass and pillar
-// panels share edges, so no interior cavity shows from outside.
-// Inferred from a two-view reference: windshield foot is limited by the unchanged
-// dashboard, so the hood/trunk ratio is approximate. The roof front stays on the
-// cockpit headliner; physical profile, eye and mirror anchors are unchanged.
-function authorSedanExterior({ addNode, addMesh }, data, s) {
-  const { exterior, paint, part, frontZ, rearZ, half, belt, roofY, roofFront } = s;
-  const roofRear = sedanRoofRearZ;
+// Closed exterior shell shared by both vehicles: one lofted lower body (hood, belt ledges,
+// rear deck, fascias, floor and lined wheel wells) plus a greenhouse whose glass and pillar
+// panels share edges, so no interior cavity shows from outside. `shape` carries the
+// vehicle-specific outline; bolt-on details are authored by the caller on the returned Body.
+function authorClosedShell({ addNode, addMesh }, data, s, shape) {
+  const { exterior, paint, frontZ, rearZ, half, belt, roofY, roofFront } = s;
+  const { roofRear, wsFoot, rearFoot, glassBase, glassTop, hoodNose, crown, wellInner, railH,
+    quarterZ, pillarB, widthAt, sections: outline, cLine: cLineAt } = shape;
   const sill = data.clearanceM, tire = data.tireRadiusM;
   const archRadius = tire + 0.075;
-  const wsFoot = -1.68, rearFoot = 1.75, glassBase = 0.81, glassTop = 0.72;
-  const hoodNose = 0.74, crown = 0.03, wellInner = 0.5, railH = 0.045;
-  const quarterZ = -1.0, pillarB = 0.1, doorRearZ = 0.95, cPillarTopZ = 0.72;
-  const well = [0.09, 0.09, 0.1], seam = [0.12, 0.11, 0.13];
-  const amber = [0.86, 0.46, 0.06], lampRed = [0.65, 0.06, 0.09];
-  const widthAt = (z) => data.bodySizeM[0] / 2 - Math.max(0, -z - (half - 0.3)) * 0.2 -
-    Math.max(0, z - (half - 0.2)) * 0.2;
+  const well = shellWell;
   const hoodT = (z) => Math.min(1, Math.max(0, (z + half) / (wsFoot + half)));
   const topAt = (z) => z < wsFoot ? hoodNose + (belt - hoodNose) * (1 - (1 - hoodT(z)) ** 2) : belt;
   const crownAt = (z) => z < wsFoot ? crown * (1 - hoodT(z)) : 0;
@@ -365,8 +256,7 @@ function authorSedanExterior({ addNode, addMesh }, data, s) {
   const archPoints = (axle) => Array.from({ length: 13 }, (_, i) =>
     [axle + archRadius * Math.cos(i * Math.PI / 12), tire + archRadius * Math.sin(i * Math.PI / 12)]);
 
-  const sections = new Set([-half, -half + 0.1, -half + 0.3, -half + 0.5, -1.95, wsFoot,
-    rearFoot, half - 0.2, half]);
+  const sections = new Set(outline);
   for (const axle of axles) for (const [z] of archPoints(axle)) sections.add(z);
   const zs = [...sections].sort((a, b) => a - b);
   const faces = [], hoodFaces = [];
@@ -422,7 +312,8 @@ function authorSedanExterior({ addNode, addMesh }, data, s) {
   }
   faces.push({ color: paint, points: [[-glassTop, roofY, roofFront], [glassTop, roofY, roofFront],
     [glassTop, roofY, roofRear], [-glassTop, roofY, roofRear]] });
-  const body = addMesh('Body', exterior, facesGeometry(faces), paint, [0, -data.comHeightM, 0]);
+  const shell = shape.bodyParts ? mergeGeometry([facesGeometry(faces), ...shape.bodyParts]) : facesGeometry(faces);
+  const body = addMesh('Body', exterior, shell, paint, [0, -data.comHeightM, 0]);
   addMesh('Hood', body, facesGeometry(hoodFaces), paint);
 
   // Greenhouse planes. Side glass leans in from glassBase to glassTop.
@@ -450,7 +341,7 @@ function authorSedanExterior({ addNode, addMesh }, data, s) {
   };
   const front = endPanels(wsFoot, roofFront), rear = endPanels(rearFoot, roofRear);
   const aWidth = 0.09;
-  const cLine = (y) => doorRearZ + (cPillarTopZ - doorRearZ) * tY(y) / tY(railY);
+  const cLine = (y) => cLineAt(y, { tY, railY, rearEdge });
   const glassFaces = [front.glass, rear.glass];
   const aPillars = [...front.frame], bPillars = [], cPillars = [...rear.frame];
   for (const side of [-1, 1]) {
@@ -482,6 +373,27 @@ function authorSedanExterior({ addNode, addMesh }, data, s) {
   }));
   outerGlass.singleSided = true;
   addMesh('ExteriorWindowFaces', addNode('ExteriorGlazing', body), outerGlass, palette.glass);
+  return { body, sill, archRadius, railY, sidePoint, rearEdge };
+}
+
+// Sedan exterior (issue #12 sedan exterior subtask) on the shared closed shell.
+// Inferred from a two-view reference: windshield foot is limited by the unchanged
+// dashboard, so the hood/trunk ratio is approximate. The roof front stays on the
+// cockpit headliner; physical profile, eye and mirror anchors are unchanged.
+function authorSedanExterior({ addNode, addMesh }, data, s) {
+  const { paint, part, frontZ, half, belt } = s;
+  const wsFoot = -1.68, rearFoot = 1.75;
+  const quarterZ = -1.0, pillarB = 0.1, doorRearZ = 0.95, cPillarTopZ = 0.72;
+  const seam = shellSeam;
+  const amber = [0.86, 0.46, 0.06], lampRed = [0.65, 0.06, 0.09];
+  const widthAt = (z) => data.bodySizeM[0] / 2 - Math.max(0, -z - (half - 0.3)) * 0.2 -
+    Math.max(0, z - (half - 0.2)) * 0.2;
+  const { body, sill, archRadius } = authorClosedShell({ addNode, addMesh }, data, s, {
+    roofRear: sedanRoofRearZ, wsFoot, rearFoot, glassBase: 0.81, glassTop: 0.72,
+    hoodNose: 0.74, crown: 0.03, wellInner: 0.5, railH: 0.045, quarterZ, pillarB, widthAt,
+    sections: [-half, -half + 0.1, -half + 0.3, -half + 0.5, -1.95, wsFoot, rearFoot, half - 0.2, half],
+    cLine: (y, { tY, railY }) => doorRearZ + (cPillarTopZ - doorRearZ) * tY(y) / tY(railY),
+  });
 
   // Bolt-on details: bumpers wrap the tapered corners, lamps, grille, seams.
   const detail = [];
@@ -521,7 +433,100 @@ function authorSedanExterior({ addNode, addMesh }, data, s) {
   addMesh('ExteriorDetails', body, mergeGeometry(detail), paint);
 }
 
-function authorMirrors({ root, addNode, addMesh }, data, exterior, sedanStyle = false) {
+// CUV exterior (issue #12 CUV exterior subtask) on the shared closed shell: a two-box
+// wagon with chamfered nose, long raked hatch glass over a short tailgate ledge, thick
+// D-pillars, flared arches and roof rails on feet.
+// Inferred from two three-quarter views: the reference windshield foot sits further back,
+// but the unchanged dashboard/headliner limit it, so the hood is shorter than pictured.
+// A fixed quarter pane puts the unchanged side-mirror anchor at the front door corner.
+// Physical profile, eye, mirror anchors/cameras and cockpit geometry are unchanged.
+function authorCuvExterior({ addNode, addMesh }, data, s) {
+  const { paint, part, frontZ, rearZ, half, belt, roofY } = s;
+  const wsFoot = -1.62, rearFoot = half - 0.2;
+  const quarterZ = -0.88, pillarB = 0.15, dPillar = 0.17;
+  const seam = shellSeam, flare = [0.2, 0.19, 0.21], lamp = [0.98, 0.89, 0.69];
+  const lampRed = [0.72, 0.07, 0.11], marker = [0.36, 0.35, 0.4];
+  const frontTaper = 0.38, rearTaper = 0.22;
+  const widthAt = (z) => data.bodySizeM[0] / 2 - Math.max(0, -z - (half - 0.45)) * frontTaper -
+    Math.max(0, z - (half - 0.2)) * rearTaper;
+  // Roof rails on front and rear feet; they are part of Body, whose bounds reach full height.
+  const rails = [];
+  for (const side of [-1, 1]) {
+    rails.push(part([0.05, 0.04, 1.6], [side * 0.6, data.bodySizeM[1] - 0.02, 0.3], palette.trim));
+    for (const z of [-0.45, 1.05]) rails.push(part([0.06, 0.05, 0.1], [side * 0.6, roofY + 0.025, z], palette.trim));
+  }
+  const { body, sill, archRadius } = authorClosedShell({ addNode, addMesh }, data, s, {
+    bodyParts: rails, roofRear: cuvRoofRearZ, wsFoot, rearFoot, glassBase: 0.82, glassTop: 0.74,
+    hoodNose: 0.86, crown: 0.03, wellInner: 0.5, railH: 0.045, quarterZ, pillarB, widthAt,
+    sections: [-half, -half + 0.12, -half + 0.3, -half + 0.45, -half + 0.6, wsFoot, rearFoot, half],
+    cLine: (y, { rearEdge }) => rearEdge(y) - dPillar,
+  });
+
+  const detail = [];
+  const sideOf = (z) => widthAt(z) + 0.004;
+  const seamBar = (side, z1, y1, z2, y2) => part([0.01, Math.hypot(y2 - y1, z2 - z1), 0.012],
+    [side * sideOf((z1 + z2) / 2), (y1 + y2) / 2, (z1 + z2) / 2], seam,
+    [Math.atan2(z2 - z1, y2 - y1), 0, 0]);
+  // Chunky bumpers wrap the chamfered corners; the tapered faces carry lamp wraps.
+  const bumperY = 0.36, bumperH = 0.17;
+  for (const [z, wrapZ, wrapLength, taper, sign] of [[-half, -half + 0.2, 0.42, frontTaper, 1],
+    [half, half - 0.1, 0.22, rearTaper, -1]]) {
+    detail.push(part([2 * widthAt(z) + 0.04, bumperH, 0.1], [0, bumperY, z], palette.trim));
+    for (const side of [-1, 1]) {
+      detail.push(part([0.07, bumperH, wrapLength], [side * widthAt(wrapZ), bumperY, wrapZ], palette.trim,
+        [0, side * sign * Math.atan(taper), 0]));
+    }
+  }
+  // Front: headlamps across the upper corners and wrapping the chamfer; dark grille between.
+  const noseTop = 0.86;
+  detail.push(part([0.78, 0.17, 0.03], [0, 0.66, -half - 0.005], [0.2, 0.19, 0.22]));
+  detail.push(part([0.78, 0.014, 0.035], [0, 0.73, -half - 0.006], [0.62, 0.6, 0.6]));
+  detail.push(part([0.5, 0.04, 0.03], [0, 0.48, -half - 0.03], [0.2, 0.19, 0.22]));
+  // Rear: tailgate seam and garnish under the hatch glass, plate, exhaust.
+  detail.push(part([1.5, 0.012, 0.012], [0, belt - 0.035, half + 0.005], seam));
+  detail.push(part([0.5, 0.05, 0.02], [0, 0.82, half + 0.008], palette.trim));
+  detail.push(part([0.34, 0.11, 0.015], [0, 0.66, half + 0.008], [0.84, 0.8, 0.71]));
+  detail.push(transformGeometry(cylinderXGeometry(0.035, 0.16, palette.metal, 10),
+    [-0.5, 0.25, half + 0.03], [0, Math.PI / 2, 0]));
+  const lampZ = -half + 0.09, tailZ = half - 0.05;
+  for (const side of [-1, 1]) {
+    detail.push(part([0.24, 0.12, 0.04], [side * 0.55, noseTop - 0.08, -half - 0.005], lamp));
+    detail.push(part([0.03, 0.12, 0.2], [side * (widthAt(lampZ) + 0.003), noseTop - 0.08, lampZ], lamp,
+      [0, side * Math.atan(frontTaper), 0]));
+    detail.push(part([0.02, 0.05, 0.14], [side * sideOf(-1.62), 0.8, -1.62], marker));
+    // Tall tail lamps on the rear corners, wrapping onto the quarter panels.
+    detail.push(part([0.12, 0.36, 0.04], [side * (widthAt(half) - 0.055), 0.78, half + 0.005], lampRed));
+    detail.push(part([0.03, 0.36, 0.11], [side * (widthAt(tailZ) + 0.003), 0.78, tailZ], lampRed,
+      [0, -side * Math.atan(rearTaper), 0]));
+    detail.push(part([0.012, belt - 0.485, 0.012], [side * 0.64, (belt + 0.415) / 2, half + 0.005], seam));
+    // Fender flares follow each arch.
+    for (const axle of [frontZ, rearZ]) {
+      for (let i = 0; i < 12; i++) {
+        const a = i * Math.PI / 12, b = (i + 1) * Math.PI / 12;
+        const point = (angle, radius) => {
+          const z = axle + radius * Math.cos(angle);
+          return [side * (widthAt(z) + 0.012), data.tireRadiusM + radius * Math.sin(angle), z];
+        };
+        const face = { color: flare, points: [point(a, archRadius), point(b, archRadius),
+          point(b, archRadius + 0.055), point(a, archRadius + 0.055)] };
+        detail.push(facesGeometry([face]));
+      }
+    }
+    // Doors: front door clears the arch then rises to the quarter-pane divider; rear door
+    // ends ahead of the rear arch. Handles sit just under the belt.
+    const frontArchEnd = frontZ + archRadius + 0.03, rearDoorZ = rearZ - archRadius - 0.03;
+    detail.push(seamBar(side, frontArchEnd, sill + 0.04, frontArchEnd, 0.8));
+    detail.push(seamBar(side, frontArchEnd, 0.8, quarterZ, belt - 0.005));
+    detail.push(seamBar(side, pillarB, sill + 0.04, pillarB, belt - 0.005));
+    detail.push(seamBar(side, rearDoorZ, sill + 0.04, rearDoorZ, belt - 0.005));
+    for (const z of [pillarB - 0.22, rearDoorZ - 0.16]) {
+      detail.push(part([0.02, 0.03, 0.14], [side * 0.91, belt - 0.12, z], palette.metal));
+    }
+  }
+  addMesh('ExteriorDetails', body, mergeGeometry(detail), paint);
+}
+
+function authorMirrors({ root, addNode, addMesh }, data, exterior, style) {
   const eye = data.contract.driverEyeLocalM;
   addNode('DriverEye', root, { translation: eye });
   for (const [id, pose] of Object.entries(data.contract.mirrors)) {
@@ -531,7 +536,7 @@ function authorMirrors({ root, addNode, addMesh }, data, exterior, sedanStyle = 
     const display = name === 'Rear'
       ? data.contract.rearDisplayM : position;
     // Sedan rearview is a 4:1 display matching its 512x128 RenderTarget.
-    const size = name === 'Rear' ? (sedanStyle ? [0.18, 0.045, 0.025] : [0.12, 0.05, 0.025])
+    const size = name === 'Rear' ? (style === 'sedan' ? [0.18, 0.045, 0.025] : [0.12, 0.05, 0.025])
       : [0.18, 0.1, 0.035];
     const surface = {
       positions: [-size[0] / 2, -size[1] / 2, 0, size[0] / 2, -size[1] / 2, 0,
@@ -548,7 +553,7 @@ function authorMirrors({ root, addNode, addMesh }, data, exterior, sedanStyle = 
     const faceYaw = Math.atan2(toEye[0] / eyeLength - Math.sin(cameraYaw),
       toEye[1] / eyeLength - Math.cos(cameraYaw));
     const faceRotation = [0, Math.sin(faceYaw / 2), 0, Math.cos(faceYaw / 2)];
-    if (sedanStyle && name === 'Rear') {
+    if (style === 'sedan' && name === 'Rear') {
       // Display hangs from the headliner on a short stem; shell sits ahead of the face.
       addMesh(`MirrorSurface${name}`, root, surface, [1, 1, 1], display, faceRotation);
       const headlinerY = data.bodySizeM[1] - 0.065 - data.comHeightM;
@@ -562,7 +567,7 @@ function authorMirrors({ root, addNode, addMesh }, data, exterior, sedanStyle = 
       ]), palette.trim, display);
       continue;
     }
-    if (sedanStyle) {
+    if (style === 'sedan') {
       const side = Math.sign(position[0]);
       addMesh(`MirrorSurface${name}`, root, surface, [1, 1, 1], display, faceRotation);
       const shell = transformGeometry(transformGeometry(
@@ -578,7 +583,23 @@ function authorMirrors({ root, addNode, addMesh }, data, exterior, sedanStyle = 
       continue;
     }
     addMesh(`MirrorSurface${name}`, root, surface, [1, 1, 1], display);
-    addMesh(`MirrorHousing${name}`, exterior, boxGeometry(size.map((v) => v + 0.025), palette.trim),
+    const shell = boxGeometry(size.map((v) => v + 0.025), palette.trim);
+    if (style === 'cuv' && name !== 'Rear') {
+      // CUV exterior subtask: same face and shell placement, plus an arm and foot down
+      // to the door belt so the housing no longer floats. Anchors and cameras unchanged.
+      const side = Math.sign(position[0]);
+      const doorX = data.bodySizeM[0] / 2 - 0.02;
+      const armLength = Math.abs(position[0]) - doorX;
+      const beltDrop = position[1] + data.comHeightM - 0.99;
+      addMesh(`MirrorHousing${name}`, exterior, mergeGeometry([
+        transformGeometry(shell, [0, 0, 0.04]),
+        transformGeometry(boxGeometry([armLength, 0.035, 0.04], palette.trim), [-side * armLength / 2, -0.06, 0.065]),
+        transformGeometry(boxGeometry([0.05, beltDrop, 0.06], palette.trim),
+          [-side * armLength, -beltDrop / 2, 0.065]),
+      ]), palette.trim, display);
+      continue;
+    }
+    addMesh(`MirrorHousing${name}`, exterior, shell,
       palette.trim, [display[0], display[1], display[2] + (name === 'Rear' ? -0.04 : 0.04)]);
   }
 }
