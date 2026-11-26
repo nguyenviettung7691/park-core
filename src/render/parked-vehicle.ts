@@ -34,6 +34,11 @@ export function createParkedVehicle(template: Object3D, collider: ColliderBox): 
   if (glazing) glazing.visible = true;
   const exteriorGlazing = shape.getObjectByName('ExteriorGlazing');
   if (exteriorGlazing) exteriorGlazing.visible = false;
+  // Telemetry-driven lit lamps belong to the driven car only.
+  for (const name of ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit']) {
+    const lamp = shape.getObjectByName(name);
+    if (lamp) lamp.visible = false;
+  }
   const bounds = new Box3().setFromObject(shape);
   const size = bounds.getSize(new Vector3());
   if ([size.x, size.y, size.z].some((value) => !Number.isFinite(value) || value <= 0)) {

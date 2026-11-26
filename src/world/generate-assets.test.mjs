@@ -177,6 +177,24 @@ describe('phase 5 original GLB generator', () => {
     }
   });
 
+  it.each(['sedan', 'cuv'])('adds batched exterior lit-lamp nodes under Exterior for %s', (id) => {
+    const glb = readGlbBytes(buildGlb(id));
+    const index = (name) => glb.nodes.findIndex((node) => node.name === name);
+    const ancestors = (name) => {
+      const chain = [];
+      let current = index(name);
+      while (current >= 0) {
+        chain.push(glb.nodes[current].name);
+        current = glb.nodes.findIndex((node) => node.children?.includes(current));
+      }
+      return chain;
+    };
+    for (const name of ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit']) {
+      expect(glb.nodes[index(name)]?.mesh, name).toBeTypeOf('number');
+      expect(ancestors(name), name).toContain('Exterior');
+    }
+  });
+
   it.each(['sedan', 'cuv'])('keeps the hood below the driver eye for %s', (assetId) => {
     const root = mkdtempSync(join(tmpdir(), 'park-core-cockpit-'));
     temporaryRoots.push(root);

@@ -1,4 +1,4 @@
-import { Box3, Mesh, Vector3 } from 'three';
+import { Box3, Mesh, Object3D, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { ColliderBox } from '../runtime-types';
 import { vehicleTemplate } from '../test/vehicle-template';
@@ -51,5 +51,20 @@ describe('parked vehicle artwork', () => {
       expect(lesson.group.getObjectByName(collider.id)?.visible).toBe(true);
     }
     lesson.dispose();
+  });
+
+  it('hides the telemetry-driven exterior lit lamps on parked clones', () => {
+    const template = vehicleTemplate();
+    const exterior = template.getObjectByName('Exterior')!;
+    const names = ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit'];
+    for (const name of names) {
+      const lamp = new Object3D();
+      lamp.name = name;
+      lamp.visible = true;
+      exterior.add(lamp);
+    }
+    const car = createParkedVehicle(template, { id: 'parked', kind: 'obstacle', centerM: [0, 0.8, 0],
+      halfExtentsM: [0.9, 0.8, 2.2], yawRad: 0 });
+    for (const name of names) expect(car.getObjectByName(name)!.visible, name).toBe(false);
   });
 });

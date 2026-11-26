@@ -4,7 +4,7 @@ import type { BodyPose, VehicleTelemetry } from '../contracts';
 import type { PhysicsSnapshot, SceneAssets } from '../runtime-types';
 import {
   INDICATOR_FLASH_HZ, PARKING_LEVER_RAD, PEDAL_TRAVEL_RAD, SPEEDOMETER_MAX_KMH, createAssetScene,
-  speedometerAngleRad,
+  exteriorLampState, indicatorLit, speedometerAngleRad,
 } from './asset-scene';
 
 const identity: BodyPose = {
@@ -138,4 +138,45 @@ it('flashes indicator lamps at 1.5 Hz on simulation time and tolerates missing t
   sceneContent.apply({ previous: frame, current: frame, alpha: 1 });
   expect(node('AcceleratorPedal').rotation.x).toBe(0);
   expect(node('ParkingBrakeLever').rotation.x).toBe(0);
+});
+
+const lampNodes = ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit'];
+
+it('derives exterior lamp state from telemetry', () => {
+  const at = (overrides: Partial<VehicleTelemetry>) => telemetryFrame(overrides).telemetry;
+  expect(exteriorLampState(at({ brake: 0.05 })).brake).toBe(false);
+  expect(exteriorLampState(at({ brake: 0.06 })).brake).toBe(true);
+  expect(exteriorLampState(at({ gear: 'R' })).reverse).toBe(true);
+  for (const gear of ['P', 'N', 'D'] as const) {
+    expect(exteriorLampState(at({ gear })).reverse).toBe(false);
+  }
+  for (const simulationTimeS of [0.1, 0.4]) {
+    const t = at({ indicator: 'left', simulationTimeS });
+    expect(exteriorLampState(t).left).toBe(indicatorLit(t, 'left'));
+    expect(exteriorLampState(t).right).toBe(false);
+  }
+  expect(exteriorLampState(at({ indicator: 'right', simulationTimeS: 0.1 })).right).toBe(true);
+});
+
+it('toggles the exterior lit lamp nodes from current telemetry and tolerates their absence', () => {
+  const { assets, node } = cockpitAssets();
+  for (const name of lampNodes) {
+    const lamp = new Object3D();
+    lamp.name = name;
+    assets.vehicle.add(lamp);
+  }
+  const sceneContent = createAssetScene(assets);
+  for (const name of lampNodes) expect(node(name).visible, name).toBe(false);
+  const frame = telemetryFrame({ brake: 0.5, gear: 'R', indicator: 'left', simulationTimeS: 0.1 });
+  sceneContent.apply({ previous: telemetryFrame({}), current: frame, alpha: 0.5 });
+  expect(node('BrakeLampsLit').visible).toBe(true);
+  expect(node('ReverseLampsLit').visible).toBe(true);
+  expect(node('TurnSignalLeftLit').visible).toBe(true);
+  expect(node('TurnSignalRightLit').visible).toBe(false);
+  const idle = telemetryFrame({});
+  sceneContent.apply({ previous: idle, current: idle, alpha: 1 });
+  for (const name of lampNodes) expect(node(name).visible, name).toBe(false);
+  const bare = cockpitAssets();
+  const bareScene = createAssetScene(bare.assets);
+  expect(() => bareScene.apply({ previous: frame, current: frame, alpha: 1 })).not.toThrow();
 });
