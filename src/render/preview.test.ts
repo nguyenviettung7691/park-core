@@ -124,6 +124,7 @@ function fixture() {
   const events = {
     onPaused: vi.fn(), onFault: vi.fn(), onTelemetry: vi.fn(), onNotice: vi.fn(),
     onSensors: vi.fn(), onLessonUpdate: vi.fn(), onAttemptOutcome: vi.fn(),
+    onMirrorOffsets: vi.fn(),
   };
   vi.spyOn(container, 'getBoundingClientRect').mockImplementation(() =>
     new DOMRect(0, 0, width, height));
@@ -1137,5 +1138,80 @@ describe('preview frame observer', () => {
     expect(f.frames.size).toBe(0);
     p.dispose();
     expect(onFrame).not.toHaveBeenCalled();
+  });
+});
+
+describe('preview mirror adjustment', () => {
+  const DEG = Math.PI / 180;
+
+  it('tilts the selected mirror at 8°/s while parked and saves once on deselect', () => {
+    const f = fixture();
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
+    f.frame(20);
+    f.key('KeyM');
+    f.frame();
+    expect(f.events.onNotice).toHaveBeenLastCalledWith('mirrorAdjustLeft');
+    f.key('ArrowLeft');
+    const start = 40;
+    f.frame(start);
+    for (let i = 1; i <= 30; i++) f.frame(start + i * 1000 / 60);
+    f.key('ArrowLeft', 'keyup');
+    f.frame();
+    expect(f.events.onMirrorOffsets).not.toHaveBeenCalled();
+    f.key('KeyM'); f.frame();
+    f.key('KeyM'); f.frame();
+    f.key('KeyM'); f.frame();
+    expect(f.events.onMirrorOffsets).toHaveBeenCalledTimes(1);
+    const [vehicleId, offsets] = f.events.onMirrorOffsets.mock.calls[0]!;
+    expect(vehicleId).toBe('sedan');
+    expect(offsets.left.yawRad).toBeCloseTo(-4 * DEG, 2);
+    expect(offsets.left.pitchRad).toBe(0);
+    expect(offsets.right).toEqual({ yawRad: 0, pitchRad: 0 });
+    expect(f.events.onNotice).toHaveBeenLastCalledWith('mirrorAdjustDone');
+    p.dispose();
+  });
+
+  it('refuses to select a mirror while the car can move', () => {
+    const f = fixture();
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
+    f.key('KeyS'); f.key('Digit4'); f.key('Space');
+    f.frame(20);
+    f.key('KeyS', 'keyup');
+    f.frame();
+    f.key('KeyM');
+    f.frame();
+    expect(f.events.onNotice).toHaveBeenLastCalledWith('mirrorAdjustBlocked');
+    f.key('ArrowLeft');
+    for (let i = 0; i < 10; i++) f.frame();
+    expect(f.events.onMirrorOffsets).not.toHaveBeenCalled();
+    p.dispose();
+  });
+
+  it('saves the adjustment when the preview pauses mid-adjustment', () => {
+    const f = fixture();
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
+    f.frame(20);
+    f.key('KeyM'); f.frame();
+    f.key('ArrowUp');
+    for (let i = 0; i < 10; i++) f.frame();
+    p.pause();
+    expect(f.events.onMirrorOffsets).toHaveBeenCalledTimes(1);
+    expect(f.events.onMirrorOffsets.mock.calls[0]![1].left.pitchRad).toBeLessThan(0);
+    p.dispose();
+  });
+
+  it('applies saved offsets and resets them', () => {
+    const f = fixture();
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
+    p.setMirrorOffsets({
+      rear: { yawRad: 0, pitchRad: 0 }, left: { yawRad: 0, pitchRad: 0 },
+      right: { yawRad: 0.1, pitchRad: 0 },
+    });
+    p.resetMirrors();
+    expect(f.events.onMirrorOffsets).toHaveBeenLastCalledWith('sedan', {
+      rear: { yawRad: 0, pitchRad: 0 }, left: { yawRad: 0, pitchRad: 0 },
+      right: { yawRad: 0, pitchRad: 0 },
+    });
+    p.dispose();
   });
 });

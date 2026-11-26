@@ -23,6 +23,10 @@ import {
   prototypeSpawn,
 } from '../world/colliders';
 import { createViews, type ViewSystem } from '../views/cameras';
+import {
+  clampMirrorOffsets, stepMirrorOffsets, ZERO_MIRROR_OFFSETS, type MirrorOffsets,
+} from '../views/mirror-adjust';
+import type { MirrorId } from '../vehicle/asset-contract';
 import type { RendererPort } from '../views/auxiliary';
 import { createAssetScene, type AssetScene } from './asset-scene';
 import { fitDrawingBuffer } from './fit';
@@ -72,6 +76,8 @@ export interface PreviewEvents {
   onNotice(messageKey: MessageKey): void;
   onLessonUpdate?(runtime: LessonRuntime): void;
   onAttemptOutcome?(summary: AttemptSummary): void;
+  /** The driver finished adjusting (or reset) the mirrors of this vehicle. */
+  onMirrorOffsets?(vehicleId: VehicleId, offsets: MirrorOffsets): void;
 }
 export type PreviewSessionMode =
   | { readonly kind: 'sandbox' }
@@ -91,6 +97,10 @@ export interface Preview {
   requestPointerLock(): Promise<boolean>;
   updateSettings(settings: SettingsSaveV1): void;
   recenterView(): void;
+  /** Applies saved mirror adjustments for the current vehicle. */
+  setMirrorOffsets(offsets: MirrorOffsets): void;
+  /** Returns every mirror to its default aim and reports it for saving. */
+  resetMirrors(): void;
   dispose(): void;
 }
 export class PreviewStartError extends Error {
@@ -257,6 +267,32 @@ export function createPreview(
       views.setFov(value.driverFovDeg);
     }
     applySettings(currentSettings);
+    let mirrorOffsets: MirrorOffsets = ZERO_MIRROR_OFFSETS;
+    let mirrorSelected: MirrorId | null = null;
+    const mirrorNotices = {
+      left: 'mirrorAdjustLeft', right: 'mirrorAdjustRight', rear: 'mirrorAdjustRear',
+    } as const;
+    /** Applies the controller's mirror state: selection notices, tilt, save on deselect. */
+    function syncMirror(dtS: number) {
+      const mirror = input.mirrorInput();
+      if (mirror.blocked) events.onNotice('mirrorAdjustBlocked');
+      if (mirror.selected !== null && dtS > 0) {
+        const next = stepMirrorOffsets(mirrorOffsets, mirror.selected, mirror.intent, dtS);
+        if (next !== mirrorOffsets) {
+          mirrorOffsets = next;
+          views.setMirrorOffsets(mirrorOffsets);
+        }
+      }
+      if (mirror.selected === mirrorSelected) return;
+      const finished = mirrorSelected !== null && mirror.selected === null;
+      mirrorSelected = mirror.selected;
+      views.setMirrorHighlight(mirrorSelected);
+      if (mirrorSelected !== null) events.onNotice(mirrorNotices[mirrorSelected]);
+      if (finished) {
+        events.onMirrorOffsets?.(prototype.vehicleId, mirrorOffsets);
+        events.onNotice('mirrorAdjustDone');
+      }
+    }
     const input = createInputController(canvas, prototype.getGamepads);
     cleanups.push(() => input.dispose());
     if (prototype.calibration) input.setCalibration(prototype.calibration);
@@ -272,6 +308,7 @@ export function createPreview(
       contactStopped = true;
       stop();
       input.clear();
+      syncMirror(0);
       audio?.suspend();
       releasePointerLock();
       lessonEvents.onAttemptOutcome(summary);
@@ -281,6 +318,7 @@ export function createPreview(
       if (!running || disposed || faulted) return;
       stop();
       input.clear();
+      syncMirror(0);
       audio?.suspend();
       releasePointerLock();
       events.onPaused(reason);
@@ -317,6 +355,7 @@ export function createPreview(
       frameId = null;
       if (!running || disposed || faulted) return;
       try {
+        input.setMirrorAdjustAllowed(current.telemetry.gear === 'P' || current.telemetry.parkingBrake);
         const poll = input.poll();
         if (poll.issue) {
           pause(prototype.source === 'gamepad' ? 'controller' : 'focus');
@@ -329,6 +368,7 @@ export function createPreview(
         }
         pending.push(...poll.actions);
         const time = deps.now();
+        syncMirror(Math.min(0.1, Math.max(0, (time - lastTime) / 1000)));
         const audioUpdates: {
           readonly sensors: SensorSnapshot;
           readonly speedMps: number;
@@ -621,6 +661,21 @@ export function createPreview(
         } catch (error) { fault('runtime-error', error); }
       },
       recenterView: () => views.recenter(),
+      setMirrorOffsets(offsets) {
+        if (disposed || faulted) return;
+        try {
+          mirrorOffsets = clampMirrorOffsets(offsets);
+          views.setMirrorOffsets(mirrorOffsets);
+        } catch (error) { fault('runtime-error', error); }
+      },
+      resetMirrors() {
+        if (disposed || faulted) return;
+        try {
+          mirrorOffsets = ZERO_MIRROR_OFFSETS;
+          views.setMirrorOffsets(mirrorOffsets);
+          events.onMirrorOffsets?.(prototype.vehicleId, mirrorOffsets);
+        } catch (error) { fault('runtime-error', error); }
+      },
       dispose,
     };
   } catch (error) {
