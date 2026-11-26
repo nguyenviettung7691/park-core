@@ -58,7 +58,7 @@ for (const stage of [1, 2, 3, 4, 5]) {
 
 for (const stage of [1, 2, 4]) {
   for (const vehicle of ['sedan', 'cuv']) {
-    test(`stage ${stage} ${vehicle} rests its tyres against the garage wheel stop`, async ({ page }) => {
+    test(`stage ${stage} ${vehicle} rests its tyres against the garage wheel stop`, async ({ page }, info) => {
       const errors: string[] = [];
       page.on('pageerror', (error) => errors.push(error.message));
       await page.goto(`/tests/browser/fixtures/phase-8.html?vehicle=${vehicle}&environment=garage&stage=${stage}&pose=stop-touch`);
@@ -69,10 +69,10 @@ for (const stage of [1, 2, 4]) {
       for (const frame of report.frames) {
         expect(frame.find((pass) => pass.name === 'main')!.calls).toBeLessThanOrEqual(140);
       }
-      // Review captures for the environment change (issue #11); approval is the developer's.
+      // Review captures for the garage wheel stops, written to the test's output folder.
       for (const shot of ['chase', 'overhead', 'driver-neutral', 'stop-closeup'] as const) {
         await page.evaluate((value) => window.phase8Capture.setShot(value), shot);
-        await page.screenshot({ path: `test-results/issue-11-task6/stage-${stage}-${vehicle}-${shot}.png` });
+        await page.screenshot({ path: info.outputPath(`stage-${stage}-${vehicle}-${shot}.png`) });
       }
       expect(errors).toEqual([]);
     });

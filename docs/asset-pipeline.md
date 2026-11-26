@@ -184,6 +184,16 @@ drives from telemetry each rendered frame. `SteeringWheelPivot` (under the raked
 optional `throttle` telemetry. The CUV console `ParkingBrakeLever` lifts 0.35 rad
 while the parking brake is applied. Vehicles without a node are left untouched;
 geometry alone is not the feature.
+Exterior lamp nodes (issue #11) are hidden by default and shown from telemetry:
+`BrakeLampsLit` (brake above 0.05), `ReverseLampsLit` (gear R) and
+`TurnSignalLeftLit`/`TurnSignalRightLit` (the indicator flash). They sit under
+`Body`, are one batched unlit mesh each, and parked clones hide them. The vehicle
+GLBs that contain them are **candidates pending developer approval and are not
+promoted**: the public GLBs lack the nodes, and until promotion the
+`keeps checked-in GLBs in sync` test fails. Do not run plain `assets:generate`
+to regenerate environments; use
+`writeAssets('.', ['garage','roadside'])` so unapproved vehicle output is never
+written to `public`.
 The driven exterior uses outward-only opaque glazing: no transparency sorting,
 with open interior sightlines. That glazing is excluded from mirror passes.
 `ParkedGlazing` is hidden on the driven car and enabled on parked clones.
@@ -201,6 +211,14 @@ groups remain. Garage pipes and fixtures belong to Ceiling, whose rendering
 layer is excluded from the overhead camera. Lamp faces are unlit geometry,
 not new lights. Fixed color shading is not an image-based light bake.
 
+The garage GLB carries a hidden `WallsAndCurbs/WheelStopTemplate` (one mesh,
+1.8 x 0.11 x 0.15 m, centred on its origin). The loader requires it, and
+`createLessonScene` clones it for every `wheel-stop` collider in the scenario,
+taking the collider's id, position and yaw; it throws if a stage has stops but no
+template, and never builds a parked car for a stop. Roadside curbs are 0.12 m tall
+(`CurbLeft`/`CurbRight` 0.3 x 0.12 x 32 m at x = +/-4.2); art and colliders must
+move together.
+
 `src\world\colliders.ts` and `src\lessons\scenarios.ts` remain authoritative.
 Parked lesson cars clone exterior/wheel resources, fit their visible bounds
 to existing collider boxes and own their copies. They do not create physics
@@ -213,7 +231,8 @@ Generator and loader regressions cover deterministic GLBs, dimensions,
 anchors, geometry/payload budgets, cockpit sightlines, mirror UVs and layer
 assignment. Render tests exercise actual GLTFLoader/WebGL and multi-pass views.
 These checks do not replace manual mirror-landmark, vehicle-clearance,
-instructor, real-wheel or reference-hardware validation.
+instructor, real-wheel or reference-hardware validation. SwiftShader captures do
+not verify 1440p60 performance or training readiness.
 
 Application and functional generator code remain MIT. New artwork and its
 creative sources use [CC BY-NC 4.0](../public/assets/LICENSE), with original

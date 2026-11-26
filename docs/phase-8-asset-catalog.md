@@ -28,6 +28,31 @@ unbranded.
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden. Both are below the 10,000-triangle vehicle gate.
+The figures above describe the **current public GLBs**, which do not yet have
+exterior lamps (see the next section).
+
+### Exterior lamps (issue #11): candidates pending developer approval
+
+Candidate vehicle GLBs add four hidden lit-lamp nodes under `Body` (so under
+`Exterior`): `BrakeLampsLit`, `ReverseLampsLit`, `TurnSignalLeftLit` and
+`TurnSignalRightLit`. Each is one batched mesh of thin (6 mm) bright vertex-color
+panels placed 4 mm outboard of the static lamps. `exteriorLampState` and
+`createAssetScene.apply` in `src/render/asset-scene.ts` show them from telemetry:
+brake above 0.05, reverse in R, and the indicators from the same 1.5 Hz flash as
+the cockpit arrows. Parked lesson cars hide them. Placements of the sedan high
+mount and the reverse/side-repeater lamps are inferred, not measured.
+
+**These GLBs are not promoted.** The checked-in `public/assets/vehicles/*.glb`
+files are unchanged and the lamp captures await developer approval, so the
+`keeps checked-in GLBs in sync` test fails until promotion. Candidate figures
+(pending, not yet catalog values):
+
+| Candidate | Stored triangles | GLB bytes |
+|---|---:|---:|
+| Sedan | 5,108 | 382,072 |
+| CUV | 5,758 | 426,084 |
+
+Both stay below the 10,000-triangle and 5,000,000-byte gates.
 
 ### Sedan: front and rear
 
@@ -147,7 +172,7 @@ each fixed eye; this does not establish optical calibration.
 
 | Asset | Declared width x height x depth (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Underground garage](../public/assets/environments/garage.glb) | 30 x 6 x 30 | 2,160 | 19 / 14 | 182,624 |
+| [Underground garage](../public/assets/environments/garage.glb) | 30 x 6 x 30 | 2,228 | 21 / 15 | 188,796 |
 | [Urban roadside](../public/assets/environments/roadside.glb) | 50 x 3 x 32 | 1,968 | 12 / 9 | 162,796 |
 
 Both are below the 30,000-triangle environment gate. Repeated static details
@@ -164,6 +189,21 @@ are geometry, not lights or an image-based lighting bake.
 
 ![Garage pillar guard, hazard stripes, identifier and concrete joints](images/phase-8/garage-details.png)
 
+#### Wheel stops (issue #11)
+
+`WallsAndCurbs/WheelStopTemplate` is a hidden template: one batched mesh, 68
+triangles, a 1.8 x 0.11 x 0.15 m concrete prism with 0.025 m top chamfers and two
+yellow bands. The lesson scene clones it per `wheel-stop` collider (half extents
+0.9 x 0.055 x 0.075 m) in stages 1, 2 and 4: `stage1-wheel-stop` at z = -6.70,
+`stage2-wheel-stop` at z = -8.60 and `stage4-wheel-stop` at (x 5.4, z = -8.60). The
+garage GLB grew by that template (+68 triangles, +6,172 bytes). The car's tyres
+meet the stop's top edge when the tyre centre is about 0.24 m from its near face;
+measured resting poses leave 0.29 to 0.83 m of margin inside the target (minimum
+0.288 m, stage 4 sedan). A 15 km/h approach fails with `wheel-stop-mounted`.
+The stop is a simple box collider, not per-polygon contact. Its visual sign-off
+is pending the developer, and the garage capture images under `images/phase-8`
+were not refreshed.
+
 The cockpit pictures above also show ceiling fixtures and pipe runs.
 All overhead details remain in `Ceiling`, excluded from the overhead camera
 but retained in ordinary views.
@@ -173,7 +213,7 @@ but retained in ordinary views.
 ### Urban roadside
 
 The road has an asphalt color region, lane/edge markings, sidewalk slabs,
-curb joints (curbs 0.12 m tall since issue #11), a concrete barrier block and
+curb joints (curbs 0.12 m tall and 0.3 m wide since issue #11), a concrete barrier block and
 detailed existing fence. Restrained
 background frontages sit behind that physical fence, outside the reachable
 driving surface; they do not introduce traversable solid-looking buildings.
@@ -181,6 +221,14 @@ driving surface; they do not introduce traversable solid-looking buildings.
 ![Roadside asphalt, curbs, sidewalk, barrier, fence and background frontage](images/phase-8/roadside-overview.png)
 
 ![Roadside fence rails/posts, sidewalk joints and frontage windows](images/phase-8/roadside-details.png)
+
+Issue #11 lowered the curb to 0.12 m (collider centre y 0.06, half extents
+0.15 x 0.06 x 16 m at x = +/-4.2). Tyres now rest on the curb's top edge through
+tyre-edge contact (`src/vehicle/tyre-edges.ts`, `rig.ts`) instead of hitting a
+vertical wall: a touch is a warning in lessons and climbing or mounting fails.
+Roadside driving bounds are the curb's outer face (half width 4.35 m). The
+sedan's chassis clears the curb top by only 3.8 mm during a 2 m/s brake dive
+(CUV 28 mm). The roadside GLB size and triangle count are unchanged.
 
 ### Parked lesson cars and guidance
 
@@ -208,9 +256,9 @@ All GLBs are self-contained and use no external image/buffer resources.
 
 | Selected pair | Uncompressed bytes |
 |---|---:|
-| Sedan + garage | 550,368 |
+| Sedan + garage | 556,540 |
 | Sedan + roadside | 530,540 |
-| CUV + garage | 596,272 |
+| CUV + garage | 602,444 |
 | CUV + roadside | 576,444 |
 
 All pairs are below the 5,000,000-byte gate.
@@ -233,13 +281,30 @@ The table reports an auxiliary-update frame at 80 ms:
 | Stage 5, CUV | 33 / 6,538 | 40 + 15 + 25 | 52 | 1 | 166 |
 
 Measured 2026-11-26 after the issue #12 redesign. The sedan's lesson stages peak
-at 65 main-pass calls (Stage 1).
+at 65 main-pass calls (Stage 1). With the issue #11 garage wheel stops, CUV Stage 1
+is 64 / 11,912 main calls / triangles (full frame 159 calls) and stages 2 and 4
+are unchanged in the main pass (28 / 5,788 and 29 / 5,800) because the stop is
+culled from the spawn camera; their full-frame count is one higher (159 and 149).
+Every touching-pose frame stayed at or below the 140 main-pass gate. The vehicle
+candidates with lamps (pending, above) add under 140 triangles each and no draw
+calls while the lamps are hidden.
 
 The gates are <=100 **main-pass** calls in sandbox and <=140 in lessons,
 not limits on the sum of all camera passes. These sampled poses pass; their
 full-frame costs are explicitly larger. A frame at 20 ms has no mirror
 update, preserving the existing rate cap. Counts are not an FPS benchmark
 or a worst-case guarantee for every driving pose.
+
+## Cockpit visibility (issue #11)
+
+Neutral driver-view captures at the stage 1 touching pose (1280 x 720, idle
+telemetry) were checked for both vehicles after the physics, lamp and stop changes,
+and no cockpit anchor was moved. The steering wheel rim, the left and right
+indicator arrows and the P lamp are visible. The CUV shows both dial needles.
+In the sedan the speedometer needle is visible only as a short tip above the wheel
+rim at 0 km/h, so it is mostly hidden by the rim in the neutral pose (not checked at speed).
+This is a limit of the unchanged cockpit anchors, not a
+regression.
 
 ## Reproduce and inspect
 
@@ -275,6 +340,10 @@ host's hardware GPU. App screenshots are 1920 x 1080; asset captures are
 1280 x 720. The 2560 x 1440 benchmark was attempted with honest metadata,
 but the host display was 144 Hz, so the existing 60 Hz eligibility gate
 rejected it before measurement. No cases or FPS were measured.
+
+Issue #11 captures and measurements also came from SwiftShader. They do not
+verify 1440p60 performance or training readiness, and the physics, lamp and stop
+behaviour have not been validated against a real vehicle or reference hardware.
 
 The approved 1440p60 target (p95 <=17.5 ms, mean >=57 FPS, zero loss) is
 **unverified**. These runs used Node 24.13.1, below the declared 24.15.0
