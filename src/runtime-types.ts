@@ -21,6 +21,7 @@ import type {
 export interface PhysicsSnapshot {
   readonly telemetry: VehicleTelemetry;
   readonly wheelPoses: readonly [BodyPose, BodyPose, BodyPose, BodyPose];
+  readonly wheelEdges: readonly [WheelEdgeContact, WheelEdgeContact, WheelEdgeContact, WheelEdgeContact];
 }
 
 export interface RenderFrame {

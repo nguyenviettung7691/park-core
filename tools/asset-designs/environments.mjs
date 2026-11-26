@@ -86,15 +86,15 @@ export function authorEnvironment({ root, addNode, addMesh, box }, assetId) {
     for (const z of [-8, 8]) fixtures.push(part([0, 5.48, z], [30, 0.2, 0.25], [0.38, 0.35, 0.37]));
     batch('CeilingFixtures', ceiling, fixtures);
   } else {
-    box('CurbLeft', walls, [-4.2, 0.12, 0], [0.3, 0.24, 32], [0.66, 0.63, 0.57]);
-    box('CurbRight', walls, [4.2, 0.12, 0], [0.3, 0.24, 32], [0.66, 0.63, 0.57]);
+    box('CurbLeft', walls, [-4.2, 0.06, 0], [0.3, 0.12, 32], [0.66, 0.63, 0.57]);
+    box('CurbRight', walls, [4.2, 0.06, 0], [0.3, 0.12, 32], [0.66, 0.63, 0.57]);
     box('RoadsideFence', walls, [8, 0.9, 0], [0.18, 1.8, 28], [0.48, 0.45, 0.42]);
     box('RoadsideBlock', walls, [-7.2, 0.35, -1], [1.2, 0.7, 0.7], [0.56, 0.53, 0.48]);
     const surface = [part([0, 0.001, 0], [8.1, 0.002, 32], [0.23, 0.23, 0.25])];
     for (const side of [-1, 1]) {
       for (let z = -15; z <= 15; z += 1.5) {
         surface.push(part([side * 6.1, 0.003, z], [3.4, 0.003, 0.015], [0.43, 0.4, 0.38]));
-        surface.push(part([side * 4.2, 0.242, z], [0.3, 0.004, 0.02], [0.34, 0.32, 0.31]));
+        surface.push(part([side * 4.2, 0.122, z], [0.3, 0.004, 0.02], [0.34, 0.32, 0.31]));
       }
       surface.push(part([side * 6.2, 0.003, 0], [0.016, 0.003, 32], [0.43, 0.4, 0.38]));
       surface.push(part([side * 3.85, 0.004, 0], [0.08, 0.004, 32], [0.79, 0.76, 0.69]));

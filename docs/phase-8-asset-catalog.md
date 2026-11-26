@@ -173,7 +173,8 @@ but retained in ordinary views.
 ### Urban roadside
 
 The road has an asphalt color region, lane/edge markings, sidewalk slabs,
-curb joints, a concrete barrier block and detailed existing fence. Restrained
+curb joints (curbs 0.12 m tall since issue #11), a concrete barrier block and
+detailed existing fence. Restrained
 background frontages sit behind that physical fence, outside the reachable
 driving surface; they do not introduce traversable solid-looking buildings.
 

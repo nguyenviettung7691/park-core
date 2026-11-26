@@ -28,7 +28,8 @@ function snapshot(pose: BodyPose, wheelPoses: readonly [BodyPose, BodyPose, Body
     indicator: 'off',
     brake: 0,
   };
-  return { telemetry, wheelPoses };
+  const none = { colliderId: null, kind: null, state: 'none' } as const;
+  return { telemetry, wheelPoses, wheelEdges: [none, none, none, none] };
 }
 
 it('composes loaded groups, converts wheel world poses into vehicle space, and releases assets once', () => {

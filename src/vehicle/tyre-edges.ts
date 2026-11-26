@@ -2,6 +2,11 @@ import type { Vec3Data } from '../contracts';
 import type { ColliderBox, WheelEdgeContact } from '../runtime-types';
 
 export const TYRE_HALF_WIDTH_M = 0.1;
+/**
+ * A rolling slice up to this far beyond first-touch distance still reports 'touching' (no support,
+ * no force), so a tyre resting against an edge does not flicker between touching and none.
+ */
+export const TOUCH_MARGIN_M = 0.005;
 
 export interface TyreFrame {
   readonly centerM: Vec3Data;
@@ -50,6 +55,8 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
   let penBox: ColliderBox | null = null;
   let penNx = 0;
   let penNz = 0;
+  let nearBox: ColliderBox | null = null;
+  let nearGap = Infinity;
 
   for (const box of edges) {
     if (box.kind !== 'curb' && box.kind !== 'wheel-stop') continue;
@@ -129,11 +136,20 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
         continue;
       }
 
-      if (d >= r) continue;
+      // First-touch distance: where the tyre circle reaches the edge corner from the ground.
+      const firstTouch = Math.sqrt(Math.max(0, 2 * r * h - h * h));
+      if (d >= r && d > firstTouch + TOUCH_MARGIN_M) continue;
       // Outward face normal (world) from the rectangle point to the slice centre.
       const wnx = (dlx * cos + dlz * sin) / d;
       const wnz = (-dlx * sin + dlz * cos) / d;
       if (Math.abs(wnx * rx + wnz * rz) < 0.5) continue; // lateral: no overlap, no lift
+      if (d > firstTouch) {
+        if (d - firstTouch <= TOUCH_MARGIN_M && d - firstTouch < nearGap) {
+          nearGap = d - firstTouch;
+          nearBox = box;
+        }
+        continue;
+      }
       const s = Math.sqrt(r * r - d * d);
       const support = top + s - r;
       // Below the ground plane the tyre is not yet touching the edge.
@@ -152,13 +168,13 @@ export function tyreEdge(tyre: TyreFrame, edges: readonly ColliderBox[]): TyreEd
   }
 
   const hasSupport = bestBox !== null;
-  if (!hasSupport && penBox === null) return NO_EDGE;
+  if (!hasSupport && penBox === null && nearBox === null) return NO_EDGE;
 
   let state: WheelEdgeContact['state'] = 'touching';
   if (over) state = 'over';
   else if (hasSupport && bestSupport - tyre.groundY >= bestH / 2) state = 'climbing';
 
-  const owner = bestBox ?? penBox!;
+  const owner = bestBox ?? penBox ?? nearBox!;
   const contact: WheelEdgeContact = {
     colliderId: owner.id,
     kind: owner.kind as 'curb' | 'wheel-stop',

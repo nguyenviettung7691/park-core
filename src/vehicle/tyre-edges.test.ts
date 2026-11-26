@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ColliderBox } from '../runtime-types';
-import { tyreEdge, type TyreFrame } from './tyre-edges';
+import { TOUCH_MARGIN_M, tyreEdge, type TyreFrame } from './tyre-edges';
 
 const R = 0.31;
 const faceX = 0.5;
@@ -61,6 +61,22 @@ describe('tyreEdge', () => {
     }
     expect(maxJump).toBeLessThanOrEqual(0.002);
     expect(tyreEdge(tyreAt(0), [curb]).supportY!).toBeCloseTo(0.12, 9);
+  });
+
+  it('reports touching without support within the touch margin beyond first touch', () => {
+    const h = 0.11;
+    const d0 = Math.sqrt(2 * R * h - h * h);
+    expect(TOUCH_MARGIN_M).toBe(0.005);
+    for (const extra of [1e-6, 0.0025, TOUCH_MARGIN_M - 1e-6]) {
+      const r = tyreEdge(tyreAt(d0 + extra), [box(h, { id: 'stop-m', kind: 'wheel-stop' })]);
+      expect(r.contact).toEqual({ colliderId: 'stop-m', kind: 'wheel-stop', state: 'touching' });
+      expect(r.supportY).toBeNull();
+      expect(r.normal).toBeNull();
+      expect(r.hitPointM).toBeNull();
+      expect(r.lateralPenetrationM).toBe(0);
+      expect(r.lateralNormal).toBeNull();
+    }
+    expect(tyreEdge(tyreAt(d0 + TOUCH_MARGIN_M + 1e-6), [box(h)]).contact.state).toBe('none');
   });
 
   it('is climbing once lift reaches half the curb height', () => {

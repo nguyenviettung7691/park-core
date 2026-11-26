@@ -1,5 +1,5 @@
 /*
- * Friction adapter derived from cannon-es 0.20.0 RaycastVehicle:
+ * Friction adapter and tyre-edge castRay derived from cannon-es 0.20.0 RaycastVehicle:
  * https://github.com/pmndrs/cannon-es/blob/v0.20.0/src/objects/RaycastVehicle.ts
  *
  * Copyright (c) 2015 cannon.js Authors
@@ -26,9 +26,13 @@ import * as CANNON from 'cannon-es';
 import type {
   BodyPose, Gear, Indicator, InputAction, InputFrame, SpawnPose, Vec3Data, VehicleProfile,
 } from '../contracts';
-import type { ControlNotice, PhysicsSnapshot } from '../runtime-types';
+import type {
+  ColliderBox, ControlNotice, PhysicsSnapshot, WheelEdgeContact,
+} from '../runtime-types';
+import type { ColliderEdge } from '../world/colliders';
 import { GRAVITY_MPS2, deriveGeometry } from './geometry';
 import { ackermann, stepKeyboardSteering } from './steering';
+import { tyreEdge, type TyreEdgeResult } from './tyre-edges';
 
 export type SimulationStateReason = 'non-finite' | 'settle-failed' | 'settle-contact';
 
@@ -84,6 +88,35 @@ const forwardWS = [0, 1, 2, 3].map(() => new CANNON.Vec3());
 const axleWS = [0, 1, 2, 3].map(() => new CANNON.Vec3());
 const RIGHT = new CANNON.Vec3(1, 0, 0);
 
+/** Lateral (sidewall) curb push: spring per metre of tyre overlap and damper per m/s into the face. */
+const LATERAL_STIFFNESS_N_PER_M = 150000;
+const LATERAL_DAMPING_N_PER_MPS = 8000;
+/**
+ * Edge-only tyre compliance: while a raised edge supports a wheel, a damper opposes the chassis
+ * moving away from the edge (horizontal part of the contact normal). It absorbs the suspension
+ * spring's rebound so a creeping car settles against a stop instead of bouncing off it; it never
+ * acts toward the edge, so it does not resist climbing. Not a handling number (inactive off edges).
+ */
+const EDGE_REBOUND_DAMPING_N_PER_MPS = 20000;
+const NO_WHEEL_EDGE: WheelEdgeContact = Object.freeze({ colliderId: null, kind: null, state: 'none' });
+
+/** Per-wheel tyre-edge outcome of the latest castRay, read by applyInput and snapshot. */
+interface WheelEdgeStep {
+  contact: WheelEdgeContact;
+  lateralPenetrationM: number;
+  readonly lateralNormal: CANNON.Vec3;
+  readonly lateralPoint: CANNON.Vec3;
+  /** Raised-edge support this step: horizontal push direction (away from the edge) and hit point. */
+  supported: boolean;
+  readonly pushDir: CANNON.Vec3;
+  readonly pushPoint: CANNON.Vec3;
+}
+
+const edgeTmp = {
+  axle: new CANNON.Vec3(), velocity: new CANNON.Vec3(), rel: new CANNON.Vec3(),
+  force: new CANNON.Vec3(), center: new CANNON.Vec3(),
+};
+
 function impulseDenominator(body: CANNON.Body, pos: CANNON.Vec3, n: CANNON.Vec3): number {
   pos.vsub(body.position, fr.r0);
   fr.r0.cross(n, fr.c0);
@@ -107,6 +140,142 @@ function relativeVelocity(a: CANNON.Body, b: CANNON.Body, p: CANNON.Vec3, dir: C
  * limit cycle ~0.056 m/s with 0.0386 m drift in 3 s under P). All other logic is unchanged.
  */
 class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
+  private readonly edgeBoxes: readonly ColliderBox[];
+  private readonly edgeBodyById = new Map<string, CANNON.Body>();
+  private readonly edgeBoxByBody = new Map<CANNON.Body, ColliderBox>();
+  private readonly lowestEdgeBottomY: number;
+  readonly edgeSteps: readonly WheelEdgeStep[] = [0, 1, 2, 3].map(() => ({
+    contact: NO_WHEEL_EDGE, lateralPenetrationM: 0,
+    lateralNormal: new CANNON.Vec3(), lateralPoint: new CANNON.Vec3(),
+    supported: false, pushDir: new CANNON.Vec3(), pushPoint: new CANNON.Vec3(),
+  }));
+
+  constructor(
+    options: ConstructorParameters<typeof CANNON.RaycastVehicle>[0],
+    edges: readonly ColliderEdge[],
+  ) {
+    super(options);
+    this.edgeBoxes = edges.map((e) => e.box);
+    for (const { box, body } of edges) {
+      this.edgeBodyById.set(box.id, body);
+      this.edgeBoxByBody.set(body, box);
+    }
+    this.lowestEdgeBottomY = Math.min(...this.edgeBoxes.map((b) => b.centerM[1] - b.halfExtentsM[1]));
+  }
+
+  /**
+   * cannon-es castRay plus tyre shape: after the single suspension ray, the tyre (three slices
+   * across its width, see tyreEdge) is tested against curb and wheel-stop boxes. When a raised
+   * edge supports the tyre above the ray's hit, the ray result is rewritten to that support:
+   * shorter suspension, the corner-to-centre normal (so the suspension impulse pushes back along
+   * the rolling direction by the step-climb relation) and the edge's body. The suspension length,
+   * relative velocity and clipped inverse contact dot use cannon-es 0.20.0 castRay's formulas.
+   * With no edge within reach nothing is touched, so flat-ground results are bit-identical.
+   */
+  override castRay(wheel: CANNON.WheelInfo): number {
+    const depth = super.castRay(wheel);
+    const step = this.edgeSteps[this.wheelInfos.indexOf(wheel)];
+    step.contact = NO_WHEEL_EDGE;
+    step.lateralPenetrationM = 0;
+    step.supported = false;
+    if (this.edgeBoxes.length === 0) return depth;
+
+    const ray = wheel.raycastResult;
+    const chassis = this.chassisBody;
+    const hitBody = ray.body;
+    const hitEdge = hitBody ? this.edgeBoxByBody.get(hitBody) : undefined;
+    // The lower surface the tyre stands on: the ray's ground, or below an edge the ray hit/missed.
+    const groundY = hitBody && !hitEdge ? ray.hitPointWorld.y
+      : hitEdge ? hitEdge.centerM[1] - hitEdge.halfExtentsM[1] : this.lowestEdgeBottomY;
+    const center = edgeTmp.center;
+    wheel.directionWorld.scale(wheel.suspensionLength, center);
+    center.vadd(wheel.chassisConnectionPointWorld, center);
+    // Steered axle, flattened to the ground plane.
+    const axle = edgeTmp.axle;
+    axle.set(Math.cos(wheel.steering), 0, -Math.sin(wheel.steering));
+    chassis.quaternion.vmult(axle, axle);
+    axle.y = 0;
+    if (axle.normalize() === 0) return depth;
+    const result: TyreEdgeResult = tyreEdge({
+      centerM: [center.x, center.y, center.z],
+      rollDir: [-axle.z, 0, axle.x],
+      axleDir: [axle.x, 0, axle.z],
+      radiusM: wheel.radius,
+      groundY,
+    }, this.edgeBoxes);
+    step.contact = result.contact;
+    if (result.lateralNormal) {
+      step.lateralPenetrationM = result.lateralPenetrationM;
+      step.lateralNormal.set(...result.lateralNormal);
+      if (hitBody) step.lateralPoint.copy(ray.hitPointWorld);
+      else step.lateralPoint.set(center.x, center.y - wheel.radius, center.z);
+    }
+    const supportY = result.supportY;
+    if (supportY === null || !result.normal || !result.hitPointM) return depth;
+    if (hitBody && supportY <= ray.hitPointWorld.y) return depth;
+
+    const dirY = wheel.directionWorld.y;
+    if (dirY >= -1e-6) return depth;
+    let suspensionLength = (supportY + wheel.radius - wheel.chassisConnectionPointWorld.y) / dirY;
+    const minLength = wheel.suspensionRestLength - wheel.maxSuspensionTravel;
+    const maxLength = wheel.suspensionRestLength + wheel.maxSuspensionTravel;
+    if (suspensionLength > maxLength) return depth;
+    const distance = suspensionLength + wheel.radius;
+    if (suspensionLength < minLength) suspensionLength = minLength;
+
+    const [hx, hy, hz] = result.hitPointM;
+    // Project onto the wheel's centre plane so tied slices (+-half width) do not move the arm.
+    const off = (hx - center.x) * axle.x + (hz - center.z) * axle.z;
+    ray.hitPointWorld.set(hx - axle.x * off, hy, hz - axle.z * off);
+    ray.hitNormalWorld.set(...result.normal);
+    step.pushDir.set(result.normal[0], 0, result.normal[2]);
+    step.supported = step.pushDir.normalize() > 1e-6;
+    step.pushPoint.copy(ray.hitPointWorld);
+    ray.distance = distance;
+    ray.body = this.edgeBodyById.get(result.contact.colliderId!) ?? null;
+    ray.hasHit = true;
+    ray.groundObject = 0;
+    wheel.isInContact = true;
+    wheel.suspensionLength = suspensionLength;
+
+    const denominator = ray.hitNormalWorld.dot(wheel.directionWorld);
+    chassis.getVelocityAtWorldPoint(ray.hitPointWorld, edgeTmp.velocity);
+    const projVel = ray.hitNormalWorld.dot(edgeTmp.velocity);
+    if (denominator >= -0.1) {
+      wheel.suspensionRelativeVelocity = 0;
+      wheel.clippedInvContactDotSuspension = 1 / 0.1;
+    } else {
+      const inv = -1 / denominator;
+      wheel.suspensionRelativeVelocity = projVel * inv;
+      wheel.clippedInvContactDotSuspension = inv;
+    }
+    return distance;
+  }
+
+  /** Edge forces from the latest castRay: sidewall-against-face push, then rebound damping. */
+  applyEdgeForces(): void {
+    const chassis = this.chassisBody;
+    for (const step of this.edgeSteps) {
+      if (step.lateralPenetrationM <= 0) continue;
+      chassis.getVelocityAtWorldPoint(step.lateralPoint, edgeTmp.velocity);
+      const f = LATERAL_STIFFNESS_N_PER_M * step.lateralPenetrationM
+        - LATERAL_DAMPING_N_PER_MPS * edgeTmp.velocity.dot(step.lateralNormal);
+      if (f <= 0) continue;
+      step.lateralNormal.scale(f, edgeTmp.force);
+      step.lateralPoint.vsub(chassis.position, edgeTmp.rel);
+      chassis.applyForce(edgeTmp.force, edgeTmp.rel);
+    }
+    for (const step of this.edgeSteps) {
+      if (!step.supported) continue;
+      chassis.getVelocityAtWorldPoint(step.pushPoint, edgeTmp.velocity);
+      const separation = edgeTmp.velocity.dot(step.pushDir);
+      if (separation <= 0) continue;
+      step.pushDir.scale(-EDGE_REBOUND_DAMPING_N_PER_MPS * separation, edgeTmp.force);
+      step.pushPoint.vsub(chassis.position, edgeTmp.rel);
+      chassis.applyForce(edgeTmp.force, edgeTmp.rel);
+    }
+  }
+
   /**
    * cannon-es spins wheels about its own forward axis (indexForwardAxis 2 = +Z), while this project
    * drives toward -Z, so super.updateVehicle advances wheel.rotation against the direction of travel.
@@ -212,6 +381,7 @@ export function createVehicleRig(
   world: CANNON.World,
   profile: VehicleProfile,
   colliderIdForBody: (body: CANNON.Body) => string | null = () => null,
+  edges: readonly ColliderEdge[] = [],
 ): VehicleRig {
   const g = deriveGeometry(profile);
   const mass = profile.massKg;
@@ -227,7 +397,7 @@ export function createVehicleRig(
   }
   const vehicle = new CorrectedRaycastVehicle({
     chassisBody: body, indexRightAxis: 0, indexUpAxis: 1, indexForwardAxis: 2,
-  });
+  }, edges);
   g.wheelMountsLocalM.forEach((mount, i) => {
     vehicle.addWheel({
       radius: profile.tireRadiusM,
@@ -404,6 +574,7 @@ export function createVehicleRig(
       vehicle.applyEngineForce(resistance / 4, 2);
       vehicle.applyEngineForce(resistance / 4, 3);
       applyBrakes(brake, h);
+      vehicle.applyEdgeForces();
       return Object.freeze(notices);
     },
 
@@ -439,6 +610,8 @@ export function createVehicleRig(
           throttle: pedalThrottle,
         }),
         wheelPoses: Object.freeze(wheels as [BodyPose, BodyPose, BodyPose, BodyPose]),
+        wheelEdges: Object.freeze(vehicle.edgeSteps.map((e) => e.contact) as
+          [WheelEdgeContact, WheelEdgeContact, WheelEdgeContact, WheelEdgeContact]),
       });
     },
 

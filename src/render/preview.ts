@@ -205,7 +205,8 @@ export function createPreview(
     const colliderCleanup = addColliderBoxes(world, boxes);
     cleanups.push(colliderCleanup);
     const profile = profiles[prototype.vehicleId];
-    const rig = createVehicleRig(world, profile, colliderCleanup.idForBody);
+    const rig = createVehicleRig(world, profile, colliderCleanup.idForBody,
+      colliderCleanup.edges);
     const sensors = createSensors(world, rig.body, profile);
     cleanups.push(() => rig.dispose());
     rig.settle(mode.kind === 'lesson'
