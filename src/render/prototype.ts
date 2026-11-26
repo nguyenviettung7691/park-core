@@ -53,9 +53,6 @@ export function buildPrototypeScene(
   scene.add(chassis);
   const geometry = deriveGeometry(profile);
   box(chassis, 'chassis', geometry.chassis.halfExtentsM, geometry.chassis.centerLocalM, materials[2]!);
-  geometry.mirrors.forEach((mirror, index) => {
-    box(chassis, `mirror-${index}`, mirror.halfExtentsM, mirror.centerLocalM, materials[3]!);
-  });
   box(chassis, 'prototype-dashboard', [0.75, 0.12, 0.55], [0, 0.25, -0.65], materials[1]!);
   const steeringWheelGeometry = new TorusGeometry(0.18, 0.025, 6, 16);
   geometries.push(steeringWheelGeometry);
@@ -65,38 +62,28 @@ export function buildPrototypeScene(
   steeringWheel.position.set(-0.36, 0.42, profile.driverEyeLocalM[2] - 0.5);
   chassis.add(steeringWheel);
 
-  const rearSurface = new Mesh(
-    new PlaneGeometry(0.24, 0.1),
-    new MeshBasicMaterial({ color: 0xffffff }),
-  );
-  geometries.push(rearSurface.geometry);
-  materials.push(rearSurface.material);
-  rearSurface.name = 'mirror-surface-rear';
-  // The box prototype keeps its own larger rear display in front of the eye; its virtual
-  // camera uses the shared cabin view contract's rearview anchor.
-  const rearMirror = deriveVehicleAssetContract(profile).mirrors.rear;
-  rearSurface.position.set(0, profile.driverEyeLocalM[1] + 0.12, profile.driverEyeLocalM[2] - 0.75);
-  rearSurface.layers.set(MIRROR_EXCLUDED_LAYER);
-  chassis.add(rearSurface);
-
-  geometry.mirrors.forEach((mirror, index) => {
-    const isLeft = index === 0;
+  // Glass faces sit at the shared contract poses; side housings sit just behind them.
+  const mirrorSpecs = deriveVehicleAssetContract(profile).mirrors;
+  for (const id of ['rear', 'left', 'right'] as const) {
+    const spec = mirrorSpecs[id];
     const surface = new Mesh(
-      new PlaneGeometry(0.18, 0.12),
+      new PlaneGeometry(spec.halfSizeM[0] * 2, spec.halfSizeM[1] * 2),
       new MeshBasicMaterial({ color: 0xffffff }),
     );
     geometries.push(surface.geometry);
     materials.push(surface.material);
-    surface.name = `mirror-surface-${isLeft ? 'left' : 'right'}`;
-    surface.position.set(
-      (mirror.centerLocalM[0] + profile.driverEyeLocalM[0]) / 2,
-      mirror.centerLocalM[1],
-      profile.driverEyeLocalM[2] - 1.5,
-    );
-    surface.rotation.y = isLeft ? Math.PI / 4 : -Math.PI / 4;
+    surface.name = `mirror-surface-${id}`;
+    surface.position.set(...spec.positionM);
+    surface.quaternion.set(...spec.rotation);
     surface.layers.set(MIRROR_EXCLUDED_LAYER);
     chassis.add(surface);
-  });
+    if (id === 'rear') continue;
+    const housing = box(chassis, `mirror-${id === 'left' ? 0 : 1}`,
+      [spec.halfSizeM[0] + 0.0125, spec.halfSizeM[1] + 0.0125, 0.025], [0, 0, 0], materials[3]!);
+    housing.quaternion.set(...spec.rotation);
+    housing.position.set(...spec.positionM)
+      .add(new Vector3(0, 0, -0.03).applyQuaternion(housing.quaternion));
+  }
 
   const tire = new CylinderGeometry(profile.tireRadiusM, profile.tireRadiusM, 0.18, 12);
   tire.rotateZ(Math.PI / 2);
@@ -112,29 +99,9 @@ export function buildPrototypeScene(
   const nextPosition = new Vector3();
   const offset = new Vector3();
   const look = new Vector3();
-  const yawQuaternion = (yaw: number): readonly [number, number, number, number] =>
-    [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)];
   const anchors: VehicleAnchors = {
     driverEyeLocalM: geometry.driverEyeLocalM,
-    mirrors: {
-      rear: rearMirror,
-      left: {
-        positionM: [
-          geometry.mirrors[0].centerLocalM[0] + geometry.mirrors[0].halfExtentsM[0],
-          geometry.mirrors[0].centerLocalM[1],
-          geometry.mirrors[0].centerLocalM[2],
-        ],
-        rotation: yawQuaternion(105 * Math.PI / 180),
-      },
-      right: {
-        positionM: [
-          geometry.mirrors[1].centerLocalM[0] - geometry.mirrors[1].halfExtentsM[0],
-          geometry.mirrors[1].centerLocalM[1],
-          geometry.mirrors[1].centerLocalM[2],
-        ],
-        rotation: yawQuaternion(-105 * Math.PI / 180),
-      },
-    },
+    mirrors: mirrorSpecs,
   };
   let disposed = false;
   const dispose = () => {

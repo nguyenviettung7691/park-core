@@ -1,5 +1,6 @@
 import type * as THREE from 'three';
 import type { ControllerProfileId } from './input/profiles';
+import type { MirrorId, MirrorSpec } from './vehicle/asset-contract';
 import type {
   AppState,
   AttemptSummary,
@@ -48,7 +49,7 @@ export const OVERHEAD_EXCLUDED_LAYER = 2;
 
 export interface VehicleAnchors {
   readonly driverEyeLocalM: Vec3Data;
-  readonly mirrors: Readonly<Record<'rear' | 'left' | 'right', BodyPose>>;
+  readonly mirrors: Readonly<Record<MirrorId, MirrorSpec>>;
 }
 
 export interface SceneAssets {

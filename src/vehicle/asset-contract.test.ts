@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Quaternion, Vector3 } from 'three';
 import { deriveVehicleAssetContract, mirrorBoxes } from './asset-contract';
 import { profiles } from './profiles';
 import { deriveGeometry, vehicleFootprint } from './geometry';
@@ -45,5 +46,81 @@ describe('shared vehicle asset contract', () => {
       .toThrow('axle/overhang');
     expect(() => deriveVehicleAssetContract({ ...profiles.sedan, mirrorHeightM: NaN }))
       .toThrow('mirrorHeightM');
+  });
+});
+
+const DEG = Math.PI / 180;
+
+function glassFrame(contract: ReturnType<typeof deriveVehicleAssetContract>, id: 'rear' | 'left' | 'right') {
+  const spec = contract.mirrors[id];
+  const q = new Quaternion(...spec.rotation);
+  return {
+    spec,
+    center: new Vector3(...spec.positionM),
+    normal: new Vector3(0, 0, 1).applyQuaternion(q),
+    right: new Vector3(1, 0, 0).applyQuaternion(q),
+    up: new Vector3(0, 1, 0).applyQuaternion(q),
+  };
+}
+
+/** Direction the eye sees by way of a point on the glass (vehicle-local). */
+function reflectedRay(eye: Vector3, normal: Vector3, onGlass: Vector3): Vector3 {
+  const incoming = onGlass.clone().sub(eye).normalize();
+  return incoming.addScaledVector(normal, -2 * incoming.dot(normal));
+}
+
+/** Horizontal angle of a ray from straight back (+Z); positive is towards -X (left). */
+function outwardLeftDeg(ray: Vector3): number {
+  return Math.atan2(-ray.x, ray.z) / DEG;
+}
+
+describe.each(['sedan', 'cuv'] as const)('%s mirror glass contract', (id) => {
+  const contract = deriveVehicleAssetContract(profiles[id]);
+  const eye = new Vector3(...profiles[id].driverEyeLocalM);
+
+  it('sizes and convexity match the spec', () => {
+    expect(contract.mirrors.rear.halfSizeM).toEqual([0.12, 0.03]);
+    expect(contract.mirrors.left.halfSizeM).toEqual([0.11, 0.065]);
+    expect(contract.mirrors.right.halfSizeM).toEqual([0.11, 0.065]);
+    expect(contract.mirrors.rear.convexity).toBe(1);
+    expect(contract.mirrors.left.convexity).toBe(1);
+    expect(contract.mirrors.right.convexity).toBe(1.3);
+  });
+
+  it('side mirrors show a sliver of the flank on the inner edge', () => {
+    for (const [mirror, side] of [['left', -1], ['right', 1]] as const) {
+      const glass = glassFrame(contract, mirror);
+      const span = glass.spec.halfSizeM[0] * glass.spec.convexity;
+      const edges = [1, -1].map((sign) => glass.center.clone().addScaledVector(glass.right, sign * span));
+      const [inner, outer] = Math.abs(edges[0]!.x) < Math.abs(edges[1]!.x) ? edges : [edges[1]!, edges[0]!];
+      // Positive = outward on this mirror's side of the car.
+      const outward = (point: Vector3) => -side * outwardLeftDeg(reflectedRay(eye, glass.normal, point));
+      expect(outward(inner!), mirror).toBeCloseTo(-1, 1);
+      expect(outward(outer!), mirror).toBeGreaterThan(0);
+      const centre = outward(glass.center);
+      expect(centre, mirror).toBeGreaterThan(3);
+      expect(centre, mirror).toBeLessThan(mirror === 'left' ? 8 : 9);
+    }
+  });
+
+  it('pitches side centre rays 3° down and the rear ray 2° down, straight back', () => {
+    for (const [mirror, pitch] of [['left', -3], ['right', -3], ['rear', -2]] as const) {
+      const glass = glassFrame(contract, mirror);
+      const ray = reflectedRay(eye, glass.normal, glass.center);
+      expect(Math.asin(ray.y) / DEG, mirror).toBeCloseTo(pitch, 1);
+    }
+    const rear = glassFrame(contract, 'rear');
+    expect(outwardLeftDeg(reflectedRay(eye, rear.normal, rear.center))).toBeCloseTo(0, 1);
+  });
+
+  it('glass rotations are unit, finite, roll-free and face the eye', () => {
+    for (const mirror of ['rear', 'left', 'right'] as const) {
+      const glass = glassFrame(contract, mirror);
+      expect(glass.spec.rotation.every(Number.isFinite)).toBe(true);
+      expect(Math.hypot(...glass.spec.rotation)).toBeCloseTo(1, 9);
+      expect(glass.right.y, mirror).toBeCloseTo(0, 9);
+      expect(glass.up.y, mirror).toBeGreaterThan(0.9);
+      expect(eye.clone().sub(glass.center).dot(glass.normal), mirror).toBeGreaterThan(0);
+    }
   });
 });
