@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import type { ControllerProfileId } from './input/profiles';
 import type { MirrorId, MirrorSpec } from './vehicle/asset-contract';
+import type { SavedMirrorOffsets } from './views/mirror-adjust';
 import type {
   AppState,
   AttemptSummary,
@@ -83,6 +84,8 @@ export interface SettingsSaveV1 extends GraphicsSettings {
   readonly overhead: boolean;
   readonly trajectory: boolean;
   readonly inputSource: InputSource;
+  /** Driver mirror adjustments per vehicle (degrees); absent means default aim. */
+  readonly mirrorAdjustments?: Readonly<Partial<Record<VehicleId, SavedMirrorOffsets>>>;
 }
 
 export type PersistenceRecord = 'progress' | 'settings' | 'calibration';
@@ -169,6 +172,7 @@ export type ScreenAction =
       readonly gamepadIndex: number | null }
   | { readonly type: 'update-settings'; readonly settings: SettingsSaveV1 }
   | { readonly type: 'recenter-view' }
+  | { readonly type: 'reset-mirrors' }
   | { readonly type: 'open-preview' }
   | { readonly type: 'close-preview' }
   | { readonly type: 'pause' }

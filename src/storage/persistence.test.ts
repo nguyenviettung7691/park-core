@@ -205,3 +205,42 @@ describe('versioned persistence', () => {
     expect(storage.data.size).toBe(0);
   });
 });
+
+describe('mirror adjustments in settings', () => {
+  it('round-trips mirror adjustments per vehicle', () => {
+    const storage = memoryStorage();
+    const store = createPersistence(() => storage);
+    const mirrorAdjustments = {
+      sedan: { rear: { yawDeg: 1, pitchDeg: -2 }, left: { yawDeg: -4, pitchDeg: 0 },
+        right: { yawDeg: 0, pitchDeg: 3 } },
+    };
+    expect(store.saveSettings({ ...initialSettings, mirrorAdjustments }).status).toBe('persistent');
+    expect(createPersistence(() => storage).snapshot().settings.mirrorAdjustments)
+      .toEqual(mirrorAdjustments);
+  });
+
+  it('loads older saves without mirror adjustments unchanged', () => {
+    const storage = memoryStorage([[keys.settings, JSON.stringify(initialSettings)]]);
+    const snapshot = createPersistence(() => storage).snapshot();
+    expect(snapshot.recordStatus.settings).toBe('persistent');
+    expect(snapshot.settings).toEqual(initialSettings);
+    expect(snapshot.settings.mirrorAdjustments).toBeUndefined();
+  });
+
+  it('clamps or zeroes malformed entries without rejecting the record', () => {
+    const raw = { ...initialSettings, volume: 0.3, mirrorAdjustments: {
+      sedan: { rear: { yawDeg: 'x', pitchDeg: 90 }, left: { yawDeg: -40, pitchDeg: null },
+        right: 7 },
+      truck: { rear: { yawDeg: 1, pitchDeg: 1 } },
+      cuv: 'broken',
+    } };
+    const storage = memoryStorage([[keys.settings, JSON.stringify(raw)]]);
+    const snapshot = createPersistence(() => storage).snapshot();
+    expect(snapshot.recordStatus.settings).toBe('persistent');
+    expect(snapshot.settings.volume).toBe(0.3);
+    expect(snapshot.settings.mirrorAdjustments).toEqual({
+      sedan: { rear: { yawDeg: 0, pitchDeg: 12 }, left: { yawDeg: -12, pitchDeg: 0 },
+        right: { yawDeg: 0, pitchDeg: 0 } },
+    });
+  });
+});

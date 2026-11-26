@@ -5,6 +5,7 @@ import { validateCalibration } from '../input/calibration';
 import {
   createDefaultGraphicsSettings, DEFAULT_GRAPHICS_CAPABILITIES, parseGraphicsSettings,
 } from '../views/graphics-settings';
+import { parseSavedMirrorAdjustments } from '../views/mirror-adjust';
 import type {
   PersistenceRecord, PersistenceResult, PersistenceSnapshot, RecordStatus, SettingsSaveV1,
 } from '../runtime-types';
@@ -84,6 +85,7 @@ function validateSettings(value: unknown): SettingsSaveV1 | null {
       typeof value.overhead !== 'boolean' || typeof value.trajectory !== 'boolean' ||
       (value.inputSource !== 'keyboard' && value.inputSource !== 'gamepad')) return null;
   const graphics = parseGraphicsSettings(value, DEFAULT_GRAPHICS_CAPABILITIES);
+  const mirrorAdjustments = parseSavedMirrorAdjustments(value.mirrorAdjustments, ['sedan', 'cuv']);
   return {
     version: 1,
     volume: value.volume,
@@ -94,6 +96,7 @@ function validateSettings(value: unknown): SettingsSaveV1 | null {
     trajectory: value.trajectory,
     inputSource: value.inputSource,
     ...graphics,
+    ...(mirrorAdjustments ? { mirrorAdjustments } : {}),
   };
 }
 

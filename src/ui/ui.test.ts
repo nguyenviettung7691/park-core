@@ -547,6 +547,8 @@ it('keeps moved settings labeled and preserves edits across view and audio tabs'
 
   element.querySelector<HTMLButtonElement>('#recenter-view')!.click();
   expect(action).toHaveBeenLastCalledWith({ type: 'recenter-view' });
+  element.querySelector<HTMLButtonElement>('#reset-mirrors')!.click();
+  expect(action).toHaveBeenLastCalledWith({ type: 'reset-mirrors' });
   unmountView.dispose();
   const unmountAudio = mountViewSettings(element, { ...context.settings, cameraMode: 'chase',
     overhead: true, trajectory: true, driverFovDeg: 75 }, 'audio', action);

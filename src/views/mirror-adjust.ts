@@ -54,3 +54,51 @@ export function stepMirrorOffsets(
   if (next.yawRad === current.yawRad && next.pitchRad === current.pitchRad) return offsets;
   return { ...offsets, [id]: next };
 }
+
+/** On-disk form: degrees, keyed by mirror. */
+export type SavedMirrorOffsets = Readonly<Record<MirrorId, { readonly yawDeg: number; readonly pitchDeg: number }>>;
+
+const MIRROR_IDS: readonly MirrorId[] = ['rear', 'left', 'right'];
+const DEG = Math.PI / 180;
+
+export function offsetsFromSaved(saved: SavedMirrorOffsets | undefined): MirrorOffsets {
+  if (!saved) return ZERO_MIRROR_OFFSETS;
+  const convert = (id: MirrorId): MirrorOffset =>
+    ({ yawRad: saved[id].yawDeg * DEG, pitchRad: saved[id].pitchDeg * DEG });
+  return clampMirrorOffsets({ rear: convert('rear'), left: convert('left'), right: convert('right') });
+}
+
+export function savedFromOffsets(offsets: MirrorOffsets): SavedMirrorOffsets {
+  const clamped = clampMirrorOffsets(offsets);
+  const convert = (id: MirrorId) =>
+    ({ yawDeg: clamped[id].yawRad / DEG, pitchDeg: clamped[id].pitchRad / DEG });
+  return { rear: convert('rear'), left: convert('left'), right: convert('right') };
+}
+
+/**
+ * Lenient parse of saved adjustments: unknown vehicles and non-object entries are dropped,
+ * bad numbers become 0 and large ones are capped, so a damaged entry never rejects settings.
+ */
+export function parseSavedMirrorAdjustments(
+  value: unknown, vehicleIds: readonly string[],
+): Readonly<Record<string, SavedMirrorOffsets>> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const limitDeg = MIRROR_LIMIT_RAD / DEG;
+  const angle = (raw: unknown) => typeof raw === 'number' && Number.isFinite(raw)
+    ? Math.max(-limitDeg, Math.min(limitDeg, raw)) : 0;
+  const result: Record<string, SavedMirrorOffsets> = {};
+  for (const vehicleId of vehicleIds) {
+    const entry = record[vehicleId];
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
+    const mirrors = entry as Record<string, unknown>;
+    const parsed = {} as Record<MirrorId, { yawDeg: number; pitchDeg: number }>;
+    for (const id of MIRROR_IDS) {
+      const raw = mirrors[id];
+      const offset = typeof raw === 'object' && raw !== null ? raw as Record<string, unknown> : {};
+      parsed[id] = { yawDeg: angle(offset.yawDeg), pitchDeg: angle(offset.pitchDeg) };
+    }
+    result[vehicleId] = parsed;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}

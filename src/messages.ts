@@ -187,6 +187,7 @@ export const vi = {
   mirrorAdjustRear: 'Đang chỉnh gương chiếu hậu trong — dùng phím mũi tên, nhấn M để kết thúc.',
   mirrorAdjustBlocked: 'Chỉ chỉnh gương khi về số P hoặc kéo phanh tay.',
   mirrorAdjustDone: 'Đã lưu vị trí gương.',
+  resetMirrors: 'Đặt lại gương',
   physicsStartFailed: 'Không thể ổn định mô hình vật lý. Hãy thử lại.',
   contactStop: 'Xe đã chạm vật cản hoặc mặt đất. Đặt lại xe hoặc quay lại menu.',
   pause: 'Tạm dừng',

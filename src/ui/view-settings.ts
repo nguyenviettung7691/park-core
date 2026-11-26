@@ -228,6 +228,10 @@ export function mountViewSettings(
     recenter.type = 'button'; recenter.id = 'recenter-view'; recenter.textContent = vi.recenterView;
     recenter.addEventListener('click', () => onAction({ type: 'recenter-view' }), { signal: listeners.signal });
     group.append(recenter);
+    const resetMirrors = document.createElement('button');
+    resetMirrors.type = 'button'; resetMirrors.id = 'reset-mirrors'; resetMirrors.textContent = vi.resetMirrors;
+    resetMirrors.addEventListener('click', () => onAction({ type: 'reset-mirrors' }), { signal: listeners.signal });
+    group.append(resetMirrors);
   } else {
     range('volume', vi.warningVolume, settings.volume, 0, 1, 0.05, (volume) => change({ volume }));
     checkbox('mute-audio', vi.muteWarnings, settings.muted, (muted) => change({ muted }));

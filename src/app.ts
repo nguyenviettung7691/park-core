@@ -26,6 +26,7 @@ import {
   DEFAULT_GRAPHICS_CAPABILITIES,
   parseGraphicsSettings,
 } from './views/graphics-settings';
+import { offsetsFromSaved, savedFromOffsets } from './views/mirror-adjust';
 
 export interface AppDeps {
   createOnboarding: () => OnboardingStore;
@@ -128,7 +129,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     if (key === 'audioUnavailable') audioUnavailable = true;
     status.setAttribute('aria-live', key === 'gearRejected' ? 'off' : 'polite');
     if (status.textContent !== vi[key]) status.textContent = vi[key];
-    if (key === 'gearRejected') noticeTimer = setTimeout(clearStatus, 5000);
+    if (key === 'gearRejected' || key === 'mirrorAdjustBlocked' || key === 'mirrorAdjustDone') {
+      noticeTimer = setTimeout(clearStatus, 5000);
+    }
   }
   function clearStatus() {
     clearTimeout(noticeTimer);
@@ -469,6 +472,14 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
           }
           notice(key);
         },
+        onMirrorOffsets(savedVehicleId, offsets) {
+          if (disposed || token !== generation) return;
+          context = { ...context, settings: { ...context.settings, mirrorAdjustments: {
+            ...context.settings.mirrorAdjustments, [savedVehicleId]: savedFromOffsets(offsets),
+          } } };
+          reportPersistence(persistence.saveSettings(context.settings));
+          refreshPersistence();
+        },
       }, {
         environmentId, vehicleId,
         sceneAssets: assets, source: context.settings.inputSource,
@@ -476,7 +487,11 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         getGamepads: deps.getGamepads, settings: context.settings,
       }, undefined, mode);
       if (disposed || token !== generation) opened.dispose();
-      else { preview = opened; void resumePreview(); }
+      else {
+        opened.setMirrorOffsets(offsetsFromSaved(context.settings.mirrorAdjustments?.[vehicleId]));
+        preview = opened;
+        void resumePreview();
+      }
     } catch (error) {
       assets.dispose();
       if (disposed || token !== generation) return;
@@ -860,6 +875,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       }
       case 'recenter-view':
         preview?.recenterView();
+        break;
+      case 'reset-mirrors':
+        preview?.resetMirrors();
         break;
       case 'open-calibration':
         if (view.preview === 'running' || gamepadIndex === null || view.pauseReason === 'contact') return;

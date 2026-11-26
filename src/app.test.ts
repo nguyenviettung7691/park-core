@@ -1238,3 +1238,65 @@ it('turns observer failures into the standard runtime fault', async () => {
   expect(f.live).toBe(0);
   app.dispose();
 });
+
+it('saves mirror adjustments per vehicle and applies them to the next preview', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  const sedanOffsets = {
+    rear: { yawRad: 0, pitchRad: 0 },
+    left: { yawRad: -4 * Math.PI / 180, pitchRad: 0 },
+    right: { yawRad: 0, pitchRad: 0 },
+  };
+  f.events.onMirrorOffsets!('sedan', sedanOffsets);
+  const saved = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(saved.mirrorAdjustments.sedan.left.yawDeg).toBeCloseTo(-4, 9);
+  expect(saved.mirrorAdjustments.cuv).toBeUndefined();
+  f.click('Quay lại menu');
+  await f.openPreview();
+  const applied = vi.mocked(f.previews[1]!.setMirrorOffsets).mock.lastCall![0];
+  expect(applied.left.yawRad).toBeCloseTo(-4 * Math.PI / 180, 9);
+
+  f.click('Quay lại menu');
+  const select = f.root.querySelector<HTMLSelectElement>('#vehicle')!;
+  select.value = 'cuv';
+  select.dispatchEvent(new Event('change'));
+  await f.openPreview();
+  expect(vi.mocked(f.previews[2]!.setMirrorOffsets).mock.lastCall![0].left.yawRad).toBe(0);
+  f.events.onMirrorOffsets!('cuv', { ...sedanOffsets, left: { yawRad: 0, pitchRad: 0.05 } });
+  const both = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(both.mirrorAdjustments.sedan.left.yawDeg).toBeCloseTo(-4, 9);
+  expect(both.mirrorAdjustments.cuv.left.pitchDeg).toBeCloseTo(0.05 * 180 / Math.PI, 9);
+  app.dispose();
+});
+
+it('resets mirrors through the open preview', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
+  const reset = f.root.querySelector<HTMLButtonElement>('#reset-mirrors');
+  expect(reset).not.toBeNull();
+  reset!.click();
+  expect(f.previews[0]!.resetMirrors).toHaveBeenCalledTimes(1);
+  app.dispose();
+});
+
+it('clears transient mirror notices after five seconds', async () => {
+  vi.useFakeTimers();
+  try {
+    const f = fixture();
+    const app = f.app();
+    await f.openPreview();
+    for (const key of ['mirrorAdjustBlocked', 'mirrorAdjustDone'] as const) {
+      f.events.onNotice(key);
+      expect(f.root.querySelector('#status-message')?.textContent).not.toBe('');
+      vi.advanceTimersByTime(5000);
+      expect(f.root.querySelector('#status-message')?.textContent).toBe('');
+    }
+    app.dispose();
+  } finally {
+    vi.useRealTimers();
+  }
+});
