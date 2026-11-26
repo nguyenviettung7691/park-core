@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BodyPose, VehicleTelemetry } from '../contracts';
-import type { ColliderBox } from '../runtime-types';
-import { deriveGeometry } from '../vehicle/geometry';
+import type { ColliderBox, TyreEdgeState, WheelEdgeContact } from '../runtime-types';
 import { profiles } from '../vehicle/profiles';
 import { SimulationStateError } from '../vehicle/rig';
 import { collidersForScenario } from '../world/colliders';
@@ -41,6 +40,18 @@ function telemetry(overrides: Partial<VehicleTelemetry> = {}): VehicleTelemetry 
   };
 }
 
+const noEdges: readonly WheelEdgeContact[] = Array.from(
+  { length: 4 }, () => ({ colliderId: null, kind: null, state: 'none' as const }),
+);
+
+function edge(
+  kind: 'curb' | 'wheel-stop',
+  state: TyreEdgeState,
+  colliderId = kind === 'curb' ? 'roadside-curb-right' : 'stage5-wheel-stop',
+): readonly WheelEdgeContact[] {
+  return [{ colliderId, kind, state }, ...noEdges.slice(1)];
+}
+
 function update(
   scenario = scenarios[1],
   car = telemetry(),
@@ -48,6 +59,7 @@ function update(
   previousDwellS = 0,
   deltaS = 1 / 120,
   colliders: readonly ColliderBox[] = collidersForScenario(scenario),
+  wheelEdges: readonly WheelEdgeContact[] = noEdges,
 ) {
   return updateFailure(
     scenario,
@@ -55,6 +67,7 @@ function update(
     car,
     colliders,
     contactId,
+    wheelEdges,
     previousDwellS,
     deltaS,
   );
@@ -84,23 +97,24 @@ describe('lesson failure evaluation', () => {
     expect(result.event).toBeNull();
   });
 
-  it('detects wheel-side overlap with a curb collider', () => {
-    const geometry = deriveGeometry(profile);
-    const frontRight = geometry.wheelMountsLocalM[1];
-    const curb: ColliderBox = {
-      id: 'test-wheel-curb',
-      kind: 'curb',
-      centerM: [
-        profile.trackM / 2 + 0.11,
-        profile.tireRadiusM * 0.4,
-        frontRight[2],
-      ],
-      halfExtentsM: [0.01, profile.tireRadiusM * 0.4, 0.02],
-      yawRad: 0,
-    };
+  it('does not fail on a curb tyre touch', () => {
+    expect(update(scenarios[3], telemetry(), null, 0, 1 / 120, undefined, edge('curb', 'touching')).event)
+      .toBeNull();
+  });
 
-    expect(update(scenarios[1], telemetry(), null, 0, 1 / 120, [curb]).event)
-      .toEqual({ reason: 'curb-contact', obstacleId: curb.id });
+  it.each(['climbing', 'over'] as const)('fails curb-contact when a tyre is %s a curb', (state) => {
+    expect(update(scenarios[3], telemetry(), null, 0, 1 / 120, undefined, edge('curb', state)).event)
+      .toEqual({ reason: 'curb-contact', obstacleId: 'roadside-curb-right' });
+  });
+
+  it.each(['touching', 'climbing'] as const)('does not fail while a tyre is %s a wheel stop', (state) => {
+    expect(update(scenarios[3], telemetry(), null, 0, 1 / 120, undefined, edge('wheel-stop', state)).event)
+      .toBeNull();
+  });
+
+  it('fails wheel-stop-mounted once a tyre is over a wheel stop', () => {
+    expect(update(scenarios[3], telemetry(), null, 0, 1 / 120, undefined, edge('wheel-stop', 'over')).event)
+      .toEqual({ reason: 'wheel-stop-mounted', obstacleId: 'stage5-wheel-stop' });
   });
 
   it('keeps the approved 0.15 m body-to-curb parking gap free of wheel-curb failure', () => {

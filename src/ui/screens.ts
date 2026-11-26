@@ -27,6 +27,7 @@ const FAILURE_MESSAGES: Readonly<Record<FailureReason, keyof typeof vi>> = {
   'out-of-bounds': 'failureOutOfBounds',
   tipped: 'failureTipped',
   'speed-envelope': 'failureSpeedEnvelope',
+  'wheel-stop-mounted': 'failureWheelStopMounted',
 };
 const PRACTICE_MESSAGES: Readonly<Record<FailureReason, keyof typeof vi>> = {
   collision: 'practiceCollision',
@@ -34,6 +35,7 @@ const PRACTICE_MESSAGES: Readonly<Record<FailureReason, keyof typeof vi>> = {
   'out-of-bounds': 'practiceOutOfBounds',
   tipped: 'practiceTipped',
   'speed-envelope': 'practiceSpeedEnvelope',
+  'wheel-stop-mounted': 'practiceWheelStopMounted',
 };
 const STEP_LABELS = new Map(
   Object.values(scenarios).flatMap(({ steps }) =>
@@ -76,6 +78,7 @@ function summaryRows(summary: AttemptSummary): readonly (readonly [string, strin
     [vi.historyClosestClearance, clearances],
     [vi.historyPeakSpeed, `${(summary.peakSpeedMps * 3.6).toFixed(1)} km/h`],
     [vi.historyDirectionChanges, String(summary.directionChanges)],
+    [vi.metricCurbTouches, String(summary.curbTouches)],
     [vi.historyAcknowledged, steps],
     [vi.historyAids, aids],
   ];

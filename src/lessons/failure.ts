@@ -1,13 +1,12 @@
 import type {
   FailureReason,
   ScenarioDefinition,
-  Vec3Data,
   VehicleProfile,
   VehicleTelemetry,
 } from '../contracts';
-import type { ColliderBox } from '../runtime-types';
+import type { ColliderBox, WheelEdgeContact } from '../runtime-types';
 import { SimulationStateError } from '../vehicle/rig';
-import { deriveGeometry, rotate, vehicleFootprint } from '../vehicle/geometry';
+import { rotate, vehicleFootprint } from '../vehicle/geometry';
 
 const BOUNDS_EPSILON_M = 1e-8;
 const TIP_LIMIT_RAD = 30 * Math.PI / 180;
@@ -60,53 +59,13 @@ function insideBounds(
   });
 }
 
-function wheelTouchesCurb(
-  telemetry: VehicleTelemetry,
-  profile: VehicleProfile,
-  curb: ColliderBox,
-): boolean {
-  const geometry = deriveGeometry(profile);
-  const right = rotate(telemetry.pose.rotation, [1, 0, 0]);
-  const forward = rotate(telemetry.pose.rotation, [0, 0, -1]);
-  const cos = Math.cos(curb.yawRad);
-  const sin = Math.sin(curb.yawRad);
-  const normal: readonly [number, number] = [cos, -sin];
-  const tangent: readonly [number, number] = [sin, cos];
-  const dotXZ = (vector: Vec3Data, axis: readonly [number, number]) =>
-    vector[0] * axis[0] + vector[2] * axis[1];
-  const sideHalfWidthM = Math.max(0, (profile.bodySizeM[0] - profile.trackM) / 2);
-  const halfNormalM = sideHalfWidthM * Math.abs(dotXZ(right, normal))
-    + profile.tireRadiusM * Math.abs(dotXZ(forward, normal));
-  const halfTangentM = sideHalfWidthM * Math.abs(dotXZ(right, tangent))
-    + profile.tireRadiusM * Math.abs(dotXZ(forward, tangent));
-  const curbMinY = curb.centerM[1] - curb.halfExtentsM[1];
-  const curbMaxY = curb.centerM[1] + curb.halfExtentsM[1];
-
-  return geometry.wheelMountsLocalM.some((mount) => {
-    const rotated = rotate(telemetry.pose.rotation, mount);
-    const wheelCenter: Vec3Data = [
-      telemetry.pose.positionM[0] + rotated[0],
-      telemetry.pose.positionM[1] + rotated[1],
-      telemetry.pose.positionM[2] + rotated[2],
-    ];
-    const dx = wheelCenter[0] - curb.centerM[0];
-    const dz = wheelCenter[2] - curb.centerM[2];
-    const localNormal = cos * dx - sin * dz;
-    const localTangent = sin * dx + cos * dz;
-    const verticalOverlap = wheelCenter[1] + profile.tireRadiusM >= curbMinY
-      && wheelCenter[1] - profile.tireRadiusM <= curbMaxY;
-    return verticalOverlap
-      && Math.abs(localNormal) <= curb.halfExtentsM[0] + halfNormalM
-      && Math.abs(localTangent) <= curb.halfExtentsM[2] + halfTangentM;
-  });
-}
-
 function firstFailure(
   scenario: ScenarioDefinition,
   profile: VehicleProfile,
   telemetry: VehicleTelemetry,
   colliders: readonly ColliderBox[],
   contactId: string | null,
+  wheelEdges: readonly WheelEdgeContact[],
   speedEnvelopeDwellS: number,
 ): FailureEvent | null {
   if (contactId !== null) {
@@ -117,11 +76,14 @@ function firstFailure(
     };
   }
 
-  const curb = colliders.find(
-    (collider) => collider.kind === 'curb'
-      && wheelTouchesCurb(telemetry, profile, collider),
+  const climbedCurb = wheelEdges.find(
+    (wheel) => wheel.kind === 'curb' && (wheel.state === 'climbing' || wheel.state === 'over'),
   );
-  if (curb) return { reason: 'curb-contact', obstacleId: curb.id };
+  if (climbedCurb) return { reason: 'curb-contact', obstacleId: climbedCurb.colliderId };
+  const mountedStop = wheelEdges.find(
+    (wheel) => wheel.kind === 'wheel-stop' && wheel.state === 'over',
+  );
+  if (mountedStop) return { reason: 'wheel-stop-mounted', obstacleId: mountedStop.colliderId };
   if (!insideBounds(scenario, telemetry, profile)) {
     return { reason: 'out-of-bounds', obstacleId: null };
   }
@@ -141,6 +103,7 @@ export function updateFailure(
   telemetry: VehicleTelemetry,
   colliders: readonly ColliderBox[],
   contactId: string | null,
+  wheelEdges: readonly WheelEdgeContact[],
   previousSpeedEnvelopeDwellS: number,
   deltaS: number,
 ): FailureUpdate {
@@ -155,6 +118,7 @@ export function updateFailure(
       telemetry,
       colliders,
       contactId,
+      wheelEdges,
       speedEnvelopeDwellS,
     ),
     speedEnvelopeDwellS,

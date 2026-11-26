@@ -26,6 +26,8 @@ afterEach(() => {
   else Reflect.deleteProperty(document, 'pointerLockElement');
 });
 
+const CURB_TOUCH_X = 3.2;
+
 const settings = {
   version: 1, volume: 0.5, muted: false, driverFovDeg: 60,
   cameraMode: 'driver', overhead: false, trajectory: false,
@@ -422,6 +424,45 @@ describe('preview lifecycle', () => {
     expect(p.resume()).toBe(false);
     p.dispose();
     expect(f.world.bodies).toHaveLength(0);
+  });
+
+  describe('curb tyre touch', () => {
+    function touchCurb(f: ReturnType<typeof fixture>, mode: Parameters<typeof startPreview>[5]) {
+      const p = startPreview(
+        f.canvas, f.container, f.events, { ...options(), environmentId: 'roadside' },
+        f.deps, mode,
+      );
+      f.canvas.focus();
+      void p.requestPointerLock();
+      expect(p.resume()).toBe(true);
+      const body = f.world.bodies.find((candidate) => candidate.mass > 0)!;
+      body.position.x = CURB_TOUCH_X;
+      body.position.z = 0;
+      body.velocity.setZero();
+      f.frame(100);
+      return p;
+    }
+
+    it('warns without pausing in sandbox mode', () => {
+      const f = fixture();
+      const p = touchCurb(f, { kind: 'sandbox' });
+      expect(f.events.onNotice).toHaveBeenCalledWith('curbTouchWarning');
+      expect(f.events.onNotice).not.toHaveBeenCalledWith('contactStop');
+      expect(f.events.onPaused).not.toHaveBeenCalled();
+      p.dispose();
+    });
+
+    it('warns without failing the lesson', () => {
+      const f = fixture();
+      const base = scenarios[3]!;
+      const scenario = {
+        ...base, drivingBounds: { ...base.drivingBounds, halfWidthM: 10 },
+      };
+      const p = touchCurb(f, { kind: 'lesson', scenario });
+      expect(f.events.onNotice).toHaveBeenCalledWith('curbTouchWarning');
+      expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
+      p.dispose();
+    });
   });
 
   it('starts each lesson at its authored vehicle spawn', () => {

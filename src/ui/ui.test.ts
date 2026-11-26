@@ -143,6 +143,7 @@ it('localizes acknowledged steps and obstacle labels in history details', () => 
     closestSampledClearanceM: null,
     peakSpeedMps: 0.2,
     directionChanges: 0,
+    curbTouches: 4,
     acknowledgedStepIds: ['survey-space'],
     usedAids: [],
   };
@@ -157,6 +158,7 @@ it('localizes acknowledged steps and obstacle labels in history details', () => 
 
   expect(element.textContent).toContain(messages.lessonSurveySpace);
   expect(element.textContent).toContain('Xe đỗ bên trái');
+  expect(element.textContent).toContain(`${messages.metricCurbTouches}4`);
   expect(element.textContent).not.toContain('survey-space');
   expect(element.textContent).not.toContain('stage1-parked-left');
 });
@@ -164,7 +166,7 @@ it('localizes acknowledged steps and obstacle labels in history details', () => 
 const recap: AttemptSummary = {
   stageId: 5, vehicleId: 'sedan', outcome: 'success', failureReason: null, obstacleId: null,
   elapsedSimulationS: 40, closestSampledClearanceM: null, peakSpeedMps: 0.4,
-  directionChanges: 2, acknowledgedStepIds: [], usedAids: [],
+  directionChanges: 2, curbTouches: 3, acknowledgedStepIds: [], usedAids: [],
 };
 
 it.each([
@@ -173,6 +175,7 @@ it.each([
   ['out-of-bounds', 'Ra khỏi khu vực lái', 'ranh giới'],
   ['tipped', 'Xe nghiêng quá giới hạn', 'giảm tốc'],
   ['speed-envelope', 'Vượt tốc độ an toàn kéo dài', 'chân phanh'],
+  ['wheel-stop-mounted', 'Bánh xe vượt qua cục chặn', 'cục chặn'],
 ] as const)('offers a specific practice tip for %s without hiding the recorded metrics', (failureReason, reason, tip) => {
   const element = root();
   mountScreen(element, { kind: 'fail', summary: { ...recap, outcome: 'fail', failureReason },
@@ -181,6 +184,7 @@ it.each([
   expect(element.textContent).toContain(reason);
   expect(element.querySelector('details')?.open).toBe(false);
   expect(element.querySelector('details dl')?.textContent).toContain(messages.historyPeakSpeed);
+  expect(element.querySelector('details dl')?.textContent).toContain(`${messages.metricCurbTouches}3`);
   expect(element.querySelector('.primary-action')?.textContent).toBe(messages.retryLesson);
 });
 

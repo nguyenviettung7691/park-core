@@ -57,6 +57,7 @@ describe('attempt tracking', () => {
       closestSampledClearanceM: null,
       peakSpeedMps: 0,
       directionChanges: 0,
+      curbTouches: 0,
       acknowledgedStepIds: [],
       usedAids: [],
       previousDirectionSign: 0,
@@ -135,6 +136,7 @@ describe('attempt tracking', () => {
       closestSampledClearanceM: 0.8,
       peakSpeedMps: 1.5,
       directionChanges: 0,
+      curbTouches: 0,
       acknowledgedStepIds: ['reverse'],
       usedAids: ['360'],
     });
@@ -163,5 +165,14 @@ describe('attempt tracking', () => {
     expect(updated.usedAids).toEqual([]);
     expect(initial.acknowledgedStepIds).toEqual([]);
     expect(snapshot.readings[0].distanceM).toBe(0.4);
+  });
+
+  it('counts curb touch episodes in the finished summary', () => {
+    let tracker = createAttemptTracker(3, 'sedan');
+    for (const began of [true, false, false, true, false]) {
+      tracker = updateAttemptTracker(tracker, telemetry(), null, [], [], runtime(), 0.1, began);
+    }
+    expect(tracker.curbTouches).toBe(2);
+    expect(finishAttempt(tracker, { outcome: 'success' }).curbTouches).toBe(2);
   });
 });

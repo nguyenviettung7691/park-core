@@ -9,6 +9,7 @@ import { createClock } from '../clock';
 import { createInputController } from '../input/controller';
 import { advanceLesson } from '../lessons/checkpoints';
 import { createAttemptTracker, finishAttempt, updateAttemptTracker } from '../lessons/attempt';
+import { curbTouchBegan } from '../lessons/edge-warnings';
 import { updateFailure } from '../lessons/failure';
 import { updateParking } from '../lessons/parking';
 import { createAudio, type AudioOutput } from '../sensors/audio';
@@ -349,6 +350,8 @@ export function createPreview(
           simulationTime += 1 / 120;
           previous = current;
           current = rig.snapshot(simulationTime);
+          const curbBegan = curbTouchBegan(previous.wheelEdges, current.wheelEdges);
+          if (curbBegan) events.onNotice('curbTouchWarning');
           const sample = sensors.sample(simulationTime);
           if (sample !== latestSensors) {
             latestSensors = sample;
@@ -366,6 +369,7 @@ export function createPreview(
               current.telemetry,
               boxes,
               pendingContactId,
+              current.wheelEdges,
               speedEnvelopeDwellS,
               1 / 120,
             );
@@ -379,6 +383,7 @@ export function createPreview(
                 activeAids(currentSettings),
                 lessonRuntime,
                 1 / 120,
+                curbBegan,
               );
               completeAttempt(finishAttempt(attemptTracker, {
                 outcome: 'fail',
@@ -427,6 +432,7 @@ export function createPreview(
               activeAids(currentSettings),
               lessonRuntime,
               1 / 120,
+              curbBegan,
             );
             if (parking.complete) {
               completeAttempt(finishAttempt(attemptTracker, { outcome: 'success' }));
