@@ -20,6 +20,12 @@ describe('curbTouchBegan', () => {
     expect(curbTouchBegan(wheels('touching'), wheels('none'))).toBe(false);
     expect(curbTouchBegan(wheels('none'), wheels('touching'))).toBe(true);
   });
+  it('is true on a transition straight into climbing or over', () => {
+    expect(curbTouchBegan(wheels('none'), wheels('climbing'))).toBe(true);
+    expect(curbTouchBegan(wheels('none'), wheels('over'))).toBe(true);
+    expect(curbTouchBegan(wheels('touching'), wheels('climbing'))).toBe(false);
+    expect(curbTouchBegan(wheels('climbing'), wheels('over'))).toBe(false);
+  });
   it('ignores wheel stops', () => {
     expect(curbTouchBegan(wheels('none'), wheels('touching', 'wheel-stop'))).toBe(false);
   });

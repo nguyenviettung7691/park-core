@@ -352,7 +352,9 @@ export function createPreview(
           previous = current;
           current = rig.snapshot(simulationTime);
           const curbBegan = curbTouchBegan(previous.wheelEdges, current.wheelEdges);
-          if (curbBegan) events.onNotice('curbTouchWarning');
+          const inLesson = mode.kind === 'lesson' && lessonRuntime !== null && attemptTracker !== null;
+          // In a lesson the warning waits for the failure check: a failure takes precedence.
+          if (curbBegan && !inLesson) events.onNotice('curbTouchWarning');
           const sample = sensors.sample(simulationTime);
           if (sample !== latestSensors) {
             latestSensors = sample;
@@ -375,6 +377,7 @@ export function createPreview(
               1 / 120,
             );
             speedEnvelopeDwellS = failure.speedEnvelopeDwellS;
+            if (curbBegan && !failure.event) events.onNotice('curbTouchWarning');
             if (failure.event) {
               attemptTracker = updateAttemptTracker(
                 attemptTracker,
