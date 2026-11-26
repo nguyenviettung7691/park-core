@@ -85,8 +85,16 @@ transform and `anchors.driverEyeLocalM`, so it follows the vehicle and any adjus
 | Mirror | Glass (W x H) | k (convexity) |
 |---|---|---|
 | Rear-view | 0.24 x 0.06 m (was 0.18 x 0.045) | 1.0 flat |
-| Driver (left) | 0.18 x 0.11 m (was 0.18 x 0.10) | 1.0 flat |
-| Passenger (right) | 0.18 x 0.11 m | 1.3 slightly convex |
+| Driver (left) | 0.22 x 0.13 m (was 0.18 x 0.10) | 1.0 flat |
+| Passenger (right) | 0.22 x 0.13 m | 1.3 slightly convex |
+
+Sizes follow typical passenger-car mirror glass. With the contract positions (driver
+glass ~1.0 m from the eye, passenger ~1.55 m) a true reflection gives roughly 11-12°
+horizontal view on the driver side and ~13° on the passenger side with k = 1.3. That's
+close to the legal minimum for a flat driver mirror (FMVSS-111: a 2.4 m lane at 10.7 m
+behind, ~13°), so it's realistic. The earlier "15-25°" estimate was too generous.
+Colliders stay unchanged; the glass already overhangs the 0.12 m mirror box slightly,
+and the asset review checks the housing against the collision envelope.
 
 Vehicles are left-hand drive (driver eye x = −0.36), so left = driver side.
 
@@ -96,10 +104,16 @@ Replace `mirrorYawRad` (camera yaw) with a desired **reflected centre ray** per 
 from which the glass orientation is computed: N = normalize(toEye + reflectedDir)
 (reflection law, bisector), where toEye is the unit vector glass → eye.
 
-- Side mirrors: centre ray points rearward, rotated outward 15° (driver) and 18°
-  (passenger) from the vehicle's rearward (+Z) axis, pitched down 3°. This is the common
-  setting where the inner edge shows a sliver of the car's own flank and the horizon
-  sits near the middle. A unit test asserts the inner frustum edge grazes the body side.
+- Side mirrors: the common "sliver of your own car" setting. The rule, in priority
+  order: (1) the inner (car-side) edge of the horizontal view points 1° inward of the
+  vehicle's rearward axis, so the flank fills a thin strip on the inner edge; (2) the
+  centre ray is pitched so the horizon sits slightly above the middle (about 3° down).
+  The yaw follows from the view width, roughly 5° outward for the driver and 6° for the
+  passenger, which also answers the issue's "turned outward too much". The default
+  rays are computed from this rule in the contract, not hard-coded. A unit test asserts
+  that the body side is visible on the inner edge and absent from the outer 80% of the
+  image. (The wider "blind-spot" setting, about 15° outward, stays reachable by
+  adjustment.)
 - Rear-view: centre ray passes through the middle of the rear window, i.e. straight
   back along the vehicle axis, pitched down ~2°.
 
@@ -155,14 +169,28 @@ The contract exposes, per mirror, the glass pose (position + full quaternion, ya
 - Saved on deselect (not every frame).
 - View settings panel gets a "reset mirrors" button for the current vehicle.
 
+## Delivery order (my call)
+
+Single branch, no PR until the GLBs are approved:
+1. Pure optics, contract, adjustment, controls and persistence, tested against the
+   prototype scene and unit fixtures.
+2. Regenerate candidates outside `public`, run `assets:check`/`assets:review`, and
+   present reference/before/after captures in this conversation. **Stop for developer
+   approval.**
+3. After approval: copy the approved GLBs, tighten `validateVehicleScene` to the full
+   glass quaternion/size, update provenance/catalog evidence, rerun all checks.
+
+The checked-in GLBs are stale between steps 1 and 3, so the full suite is only
+expected green after step 3. No loader compatibility path for the old poses is written.
+
 ## Testing
 
 - Unit (`mirror-optics`): virtual eye symmetry; a world point seen by the eye via the
   glass centre projects to the glass centre UV; a point at a glass corner's reflected
   ray lands at that corner UV (pins axis/flip signs); near plane equals glass plane;
   k scales the visible angle; flat mirror visible angle ≈ glass angular size × 1.
-- Unit (contract): default reflected centre rays match the spec; driver-side inner
-  frustum edge grazes the body; quaternions are finite and normalized.
+- Unit (contract): default reflected centre rays match the spec; the inner edge of both side views
+  shows the body flank (per the alignment rule); quaternions are finite and normalized.
 - Unit (adjust/controller): clamping, rate, P/brake gating, arrow diversion and
   restoration, M cycling, deselect on gear change/pause/Escape.
 - Persistence: round-trip, missing field, malformed values, clamping.
@@ -175,8 +203,8 @@ The contract exposes, per mirror, the glass pose (position + full quaternion, ya
 
 - Exact highlight style and HUD placement.
 - Whether render-target sizing rounds to powers of two.
-- Small numeric tweaks (±3°) to default rays found necessary in the review captures,
-  recorded in the review notes.
+- Small numeric tweaks (±3°) to the pitch or the 1° inward margin found necessary in
+  the review captures, recorded in the review notes.
 
 ## Validation limits
 
