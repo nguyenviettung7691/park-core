@@ -126,7 +126,7 @@ export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline }
     writeFileSync(join(output, 'index.html'), `<!doctype html><meta charset="utf-8">
 <title>${vehicle} asset review</title><h1>${vehicle} asset review</h1>
 <p>Automated: ${report.automated}. Developer visual approval: pending. Hardware and optical validation: unverified.</p>
-<ul>${['garage', 'roadside', 'view-limits'].map((view) =>
+<ul>${['garage', 'roadside', 'view-limits', 'lamps'].map((view) =>
     `<li><a href="${vehicle}-${view}/review.html">${view}</a></li>`).join('')}</ul>
 <p>Links may be unavailable when validation failed; see report.json and browser artifacts.</p><pre>${text}</pre>`);
   }
