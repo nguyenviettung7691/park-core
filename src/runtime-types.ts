@@ -188,6 +188,8 @@ export type ScreenAction =
   | { readonly type: 'update-settings'; readonly settings: SettingsSaveV1 }
   | { readonly type: 'recenter-view' }
   | { readonly type: 'reset-mirrors' }
+  | { readonly type: 'set-seat'; readonly seat: SavedSeatPosition }
+  | { readonly type: 'reset-seat' }
   | { readonly type: 'open-preview' }
   | { readonly type: 'close-preview' }
   | { readonly type: 'pause' }
@@ -215,5 +217,7 @@ export interface ShellView {
   readonly calibrating?: boolean;
   readonly calibrationProfileId?: ControllerProfileId | null;
   readonly pauseReason?: PreviewPauseReason | null;
+  /** Driver seat the settings panel adjusts: the open session's vehicle, movable only while held. */
+  readonly seat?: { readonly vehicleId: VehicleId; readonly adjustable: boolean };
   readonly assetLoadProgress?: AssetLoadProgress | null;
 }

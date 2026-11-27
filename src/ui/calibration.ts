@@ -40,6 +40,23 @@ const MANUAL_STEPS = [
   readonly message: MessageKey; readonly part: CalibrationPart;
   readonly binding: 'steering' | 'throttle' | 'brake' | 'reverse' | 'drive' }[];
 
+type LookButtonKey = 'lookLeftButton' | 'lookRightButton' | 'lookBackButton' | 'recenterButton';
+
+/** Optional steps after the required controls; the stick step is offered on the manual path only. */
+const LOOK_BUTTON_STEPS = [
+  { id: 'look-left', key: 'lookLeftButton', message: 'lookLeftStep' },
+  { id: 'look-right', key: 'lookRightButton', message: 'lookRightStep' },
+  { id: 'look-back', key: 'lookBackButton', message: 'lookBackStep' },
+  { id: 'recenter', key: 'recenterButton', message: 'recenterStep' },
+] as const satisfies readonly { readonly id: string; readonly key: LookButtonKey;
+  readonly message: MessageKey }[];
+const LOOK_STICK_STEP = { id: 'look-stick' } as const;
+type LookStep = typeof LOOK_BUTTON_STEPS[number] | typeof LOOK_STICK_STEP;
+
+const LOOK_BUTTON_PRESSED = 0.5;
+const LOOK_AXIS_MOVED = 0.6;
+const LOOK_AXIS_NEUTRAL = 0.2;
+
 function emptyManualSamples(): ManualSamples {
   return {
     left: null, center: null, right: null,
@@ -122,6 +139,14 @@ export function mountCalibration(
   let awaitingRelease = false;
   let profileReady = false;
   let profileBlocked = false;
+  let lookIndex = 0;
+  let lookButtons: Partial<Record<LookButtonKey, number>> = {};
+  let lookStickX: number | null = null;
+  let lookStick: { xAxis: number; yAxis: number } | null = null;
+  /** Look capture waits for every button (or stick) to be at rest before taking a new press. */
+  let lookArmed = false;
+  let lookAxisBaseline: number[] | null = null;
+  let lookRejection: MessageKey | null = null;
   interface PedalDraft { kind: PedalBinding['kind']; index: number; released: number | null; pressed: number | null }
   const throttle: PedalDraft = {
     kind: template?.throttle.kind ?? 'button', index: template?.throttle.index ?? 7,
@@ -162,7 +187,17 @@ export function mountCalibration(
     }, { signal: listeners.signal });
     return element;
   }
+  function resetLook() {
+    lookIndex = 0;
+    lookButtons = {};
+    lookStickX = null;
+    lookStick = null;
+    lookArmed = false;
+    lookAxisBaseline = null;
+    lookRejection = null;
+  }
   function invalidate() {
+    resetLook();
     manualSamples = emptyManualSamples();
     throttle.released = throttle.pressed = brake.released = brake.pressed = null;
     profileIndex = 0;
@@ -204,6 +239,7 @@ export function mountCalibration(
     issue = null;
   }
   function clearManual() {
+    resetLook();
     manualSamples = emptyManualSamples();
     throttle.released = throttle.pressed = brake.released = brake.pressed = null;
     manualIndex = 0;
@@ -309,7 +345,8 @@ export function mountCalibration(
     renderedStep = null;
     refresh();
     if (manualIndex === MANUAL_STEPS.length) {
-      if (save.disabled) manualCapture.focus();
+      if (currentLookStep()) skip.focus();
+      else if (save.disabled) manualCapture.focus();
       else save.focus();
     }
   }
@@ -335,6 +372,9 @@ export function mountCalibration(
   const manualCapture = button(vi.captureCalibrationStep, captureManualStep);
   manualCapture.dataset.calibrationCapture = '';
   manualCapture.className = 'primary-action';
+  const skip = button(vi.skipLookStep, skipLookStep);
+  skip.dataset.lookSkip = '';
+  skip.className = 'quiet-action';
   if (profile) {
     const fallback = button(vi.useManualCalibration, selectManual);
     fallback.dataset.manualFallback = '';
@@ -401,7 +441,7 @@ export function mountCalibration(
       movementFrames = 0;
     }
   }
-  function calibration(): ControllerCalibration | null {
+  function baseCalibration(): ControllerCalibration | null {
     if (issue || !pad || !deviceId) return null;
     if (!manualMode && profile) {
       if (profileIndex !== PROFILE_STEPS.length || awaitingRelease) return null;
@@ -418,6 +458,90 @@ export function mountCalibration(
       reverseButton, driveButton,
     });
   }
+  function calibration(): ControllerCalibration | null {
+    const base = baseCalibration();
+    if (!base) return null;
+    if (Object.keys(lookButtons).length === 0 && !lookStick) return base;
+    return validateCalibration({ ...base, ...lookButtons, ...(lookStick ? { lookStick } : {}) });
+  }
+  function lookSteps(): readonly LookStep[] {
+    return manualMode ? [...LOOK_BUTTON_STEPS, LOOK_STICK_STEP] : LOOK_BUTTON_STEPS;
+  }
+  /** The optional look step being captured, or null before the required controls are done or after the last one. */
+  function currentLookStep(): LookStep | null {
+    if (!captured() || (!manualMode && awaitingRelease) || baseCalibration() === null) return null;
+    return lookSteps()[lookIndex] ?? null;
+  }
+  function lookComplete() {
+    return captured() && lookIndex >= lookSteps().length;
+  }
+  function advanceLook() {
+    lookIndex++;
+    lookArmed = false;
+    lookAxisBaseline = null;
+    lookRejection = null;
+    if (lookIndex >= lookSteps().length) {
+      refresh();
+      if (!save.disabled) save.focus();
+    }
+  }
+  function skipLookStep() {
+    if (!currentLookStep()) return;
+    lookStickX = null;
+    advanceLook();
+    refresh();
+  }
+  function lookButtonConflict(index: number, base: ControllerCalibration): MessageKey | null {
+    if (index === 0) return 'lookButtonParkingBrake';
+    const used = new Set<number>([base.reverseButton, base.driveButton, ...Object.values(lookButtons)]);
+    for (const pedal of [base.throttle, base.brake]) if (pedal.kind === 'button') used.add(pedal.index);
+    return used.has(index) ? 'lookButtonInUse' : null;
+  }
+  function updateLookCheck() {
+    const step = currentLookStep();
+    const base = baseCalibration();
+    if (!step || !pad || !base) return;
+    if (step.id === 'look-stick') { updateLookStickCheck(pad, base); return; }
+    const pressed = pad.buttons.findIndex((input) => input.value >= LOOK_BUTTON_PRESSED);
+    if (!lookArmed) {
+      if (pressed === -1) lookArmed = true;
+      return;
+    }
+    if (pressed === -1) return;
+    lookArmed = false;
+    lookRejection = lookButtonConflict(pressed, base);
+    if (lookRejection) return;
+    lookButtons = { ...lookButtons, [step.key]: pressed };
+    advanceLook();
+  }
+  function updateLookStickCheck(value: Gamepad, base: ControllerCalibration) {
+    const axes = Array.from({ length: value.axes.length }, (_, index) => value.axes[index] ?? 0);
+    if (!lookAxisBaseline || lookAxisBaseline.length !== axes.length) {
+      lookAxisBaseline = axes;
+      return;
+    }
+    const baseline = lookAxisBaseline;
+    const deltas = axes.map((axis, index) => Math.abs(axis - (baseline[index] ?? 0)));
+    if (!lookArmed) {
+      if (deltas.every((delta) => delta <= LOOK_AXIS_NEUTRAL)) lookArmed = true;
+      return;
+    }
+    let moved = -1;
+    deltas.forEach((delta, index) => {
+      if (index === lookStickX || delta < LOOK_AXIS_MOVED) return;
+      if (moved === -1 || delta > deltas[moved]!) moved = index;
+    });
+    if (moved === -1) return;
+    lookArmed = false;
+    const reserved = new Set<number>([base.steeringAxis]);
+    for (const pedal of [base.throttle, base.brake]) if (pedal.kind === 'axis') reserved.add(pedal.index);
+    if (reserved.has(moved)) { lookRejection = 'lookAxisInUse'; return; }
+    lookRejection = null;
+    if (lookStickX === null) { lookStickX = moved; return; }
+    lookStick = { xAxis: lookStickX, yAxis: moved };
+    lookStickX = null;
+    advanceLook();
+  }
   const save = button(vi.saveCalibration, () => {
     sample();
     const value = calibration();
@@ -432,7 +556,9 @@ export function mountCalibration(
   }
   function refresh() {
     const value = calibration();
-    const message = issue ?? (captured() && value === null ? 'invalidCalibration' : null);
+    const message = issue ?? lookRejection ??
+      (captured() && value === null ? 'invalidCalibration' : null);
+    const lookStep = currentLookStep();
     setText(error, message ? vi[message] : '');
     setText(device, deviceId ?? vi.controllerDisconnected);
     const activeProfile = !manualMode && profile;
@@ -443,8 +569,9 @@ export function mountCalibration(
     help.textContent = manualMode ? vi.calibrationHelp : vi.profileVerificationHelp;
     if (manualMode) {
       const step = MANUAL_STEPS[manualIndex];
-      setText(instruction, step ? vi[step.message] : vi.manualCalibrationComplete);
-      instruction.dataset.calibrationStep = step?.id ?? 'complete';
+      setText(instruction, step ? vi[step.message] : lookInstruction(lookStep)
+        ?? vi.manualCalibrationComplete);
+      instruction.dataset.calibrationStep = step?.id ?? lookStep?.id ?? 'complete';
       const restart = !step && captured() && value === null;
       manualCapture.hidden = !step && !restart;
       manualCapture.textContent = restart ? vi.restartCalibration : vi.captureCalibrationStep;
@@ -456,13 +583,13 @@ export function mountCalibration(
     } else if (activeProfile) {
       const step = PROFILE_STEPS[profileIndex];
       setText(instruction, profileIndex >= PROFILE_STEPS.length
-        ? vi.profileVerificationComplete
+        ? lookInstruction(lookStep) ?? vi.profileVerificationComplete
         : awaitingRelease ? vi.profileRelease : vi[step.message]);
       if (profileIndex < PROFILE_STEPS.length) {
         instruction.dataset.calibrationStep = step.id;
         renderIllustration(profile.kind, step.part);
       } else {
-        instruction.dataset.calibrationStep = 'complete';
+        instruction.dataset.calibrationStep = lookStep?.id ?? 'complete';
         renderIllustration(profile.kind, 'steering');
       }
       manualCapture.hidden = true;
@@ -471,10 +598,18 @@ export function mountCalibration(
     }
     const fallback = screen.querySelector<HTMLButtonElement>('[data-manual-fallback]');
     if (fallback) fallback.hidden = manualMode;
+    skip.hidden = lookStep === null;
+    illustration.hidden = lookStep !== null;
     save.disabled = value === null;
     manualCapture.disabled = manualCapture.disabled || pad === null || issue !== null;
     if (save.disabled && document.activeElement === save) instruction.focus();
     if (manualCapture.disabled && document.activeElement === manualCapture) instruction.focus();
+    if (skip.hidden && document.activeElement === skip) instruction.focus();
+  }
+  function lookInstruction(step: LookStep | null): string | null {
+    if (!step) return lookComplete() && calibration() !== null ? vi.lookSetupComplete : null;
+    if (step.id !== 'look-stick') return vi[step.message];
+    return lookStickX === null ? vi.lookStickHorizontal : vi.lookStickVertical;
   }
   function renderIllustration(kind: 'wheel' | 'gamepad', part: CalibrationPart) {
     const key = `${kind}:${part}`;
@@ -486,6 +621,7 @@ export function mountCalibration(
     if (disposed) return;
     sample();
     updateProfileCheck();
+    updateLookCheck();
     if (diagnostics.open) monitor.textContent = pad ? `${pad.id}\n` +
       pad.axes.map((value, index) => `${vi.axis} ${index}: ${value.toFixed(3)}`).join(' · ') + '\n' +
       pad.buttons.map((value, index) => `${vi.button} ${index}: ${value.value.toFixed(3)}`).join(' · ') : '';
