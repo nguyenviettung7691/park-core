@@ -187,7 +187,8 @@ type MirrorBoxes = readonly [
   { readonly centerLocalM: Vec3Data; readonly halfExtentsM: Vec3Data },
   { readonly centerLocalM: Vec3Data; readonly halfExtentsM: Vec3Data },
 ];
-// Footprints are evaluated every physics step; the aim solve behind the boxes is not.
+// deriveGeometry runs every physics step (lesson curb checks); the aim solve behind the
+// boxes should not, so they are computed once per (frozen) profile.
 const mirrorBoxCache = new WeakMap<VehicleProfile, MirrorBoxes>();
 
 export function mirrorBoxes(profile: VehicleProfile): MirrorBoxes {
