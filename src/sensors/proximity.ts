@@ -91,6 +91,7 @@ export function createSensors(
       if (previousSnapshot && simulationTimeS - lastSampleS < SAMPLE_INTERVAL_S) {
         return previousSnapshot;
       }
+      const boxes = actorBoxes();
       const readings = rays.map(({ id, origin, direction, ray }): SensorReading => {
         const from = new CANNON.Vec3();
         const worldDirection = new CANNON.Vec3();
@@ -112,7 +113,6 @@ export function createSensors(
             obstacleId = String(result.body.id);
           },
         });
-        const boxes = actorBoxes();
         if (boxes.length > 0) {
           const unit: readonly [number, number, number] =
             [worldDirection.x / worldDirection.length(), 0, worldDirection.z / worldDirection.length()];

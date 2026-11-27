@@ -1174,6 +1174,24 @@ it('observes lesson session and initial lesson before telemetry, with per-genera
   expect(seen.at(-1)!.sequence).toBe(seen.length - 1);
 });
 
+it('relays the active actor count for the current preview only', async () => {
+  const f = fixture();
+  const seen: AppObservation[] = [];
+  const app = f.app({ onObservation: (event) => seen.push(event) });
+  f.click('Bắt đầu bài học');
+  await f.flush();
+  f.click('Bắt đầu lái');
+  await f.flush();
+  f.events.onActors!(1);
+  expect(seen.at(-1)).toMatchObject({ kind: 'actors', active: 1 });
+  const old = f.events;
+  f.click('Quay lại menu');
+  const count = seen.length;
+  old.onActors!(0);
+  expect(seen).toHaveLength(count);
+  app.dispose();
+});
+
 it('observes sandbox with null stage and fresh generation per preview', async () => {
   const f = fixture();
   const seen: AppObservation[] = [];

@@ -13,6 +13,7 @@ export type AppObservation = ObservationBase & (
   | { readonly kind: 'session'; readonly stageId: StageId | null; readonly vehicleId: VehicleId }
   | { readonly kind: 'telemetry'; readonly telemetry: VehicleTelemetry }
   | { readonly kind: 'lesson'; readonly lesson: LessonRuntime }
+  | { readonly kind: 'actors'; readonly active: number }
   | { readonly kind: 'outcome'; readonly summary: AttemptSummary }
   | { readonly kind: 'paused'; readonly reason: PreviewPauseReason }
   | { readonly kind: 'resumed' }
