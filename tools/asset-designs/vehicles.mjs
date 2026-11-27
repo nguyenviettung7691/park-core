@@ -422,8 +422,8 @@ function authorClosedShell({ addNode, addMesh }, data, s, shape) {
 // panels sitting 4 mm outboard of the static lamp details; asset-scene.ts shows them from
 // telemetry and parked clones hide them. They parent to Body (details share its frame), so
 // they stay under Exterior. All panels are original geometry, no extra lights.
-// Authored only with the generator's `lamps` option (data.lamps; default off until the developer
-// approves the lamp candidates, see EXTERIOR_LAMPS_DEFAULT in tools/generate-assets.mjs).
+// Authored by default (data.lamps, EXTERIOR_LAMPS_DEFAULT in tools/generate-assets.mjs) since the
+// developer approved them; `{ lamps: false }` leaves them out.
 const litBrake = [1, 0.1, 0.1], litReverse = [1, 1, 0.96], litAmber = [1, 0.62, 0.04];
 function authorLitLamps({ addMesh }, body, part, panels) {
   const build = (list) => mergeGeometry(list.map(([size, center, color]) => part(size, center, color)));

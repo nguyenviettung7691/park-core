@@ -185,9 +185,8 @@ for (const vehicle of vehicles) {
       ? 'ready' : document.querySelector('#failure')?.textContent || 'loading')).toBe('ready');
     const probe = await page.evaluate(() => window.phase8Capture.setLamps('unlit'));
     const hasLamps = Object.values(probe).every((visible) => visible !== null);
-    // The public GLBs gain lamp nodes only when approved candidates are promoted.
-    test.skip(!candidate && !hasLamps, 'served GLB has no exterior lamp nodes (unpromoted)');
-    expect(hasLamps, 'candidate must have all four lit lamp nodes').toBe(true);
+    // The approved lamps are promoted (issue #11): public and candidate GLBs both carry them.
+    expect(hasLamps, 'served GLB must have all four lit lamp nodes').toBe(true);
     const output = process.env.PARK_CORE_REVIEW_OUTPUT
       ? join(resolve(process.env.PARK_CORE_REVIEW_OUTPUT), `${vehicle}-lamps`)
       : info.outputPath('lamps');

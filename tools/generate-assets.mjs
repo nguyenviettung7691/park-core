@@ -2,19 +2,18 @@ import { boxGeometry } from './asset-geometry.mjs';
 import { authorVehicle } from './asset-designs/vehicles.mjs';
 import { authorEnvironment } from './asset-designs/environments.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { profiles } from '../src/vehicle/profiles.ts';
 import { deriveVehicleAssetContract, MIRROR_HOUSING } from '../src/vehicle/asset-contract.ts';
 
 /**
- * Exterior lit-lamp nodes (issue #11) are candidates awaiting developer visual approval, so the
- * default generation reproduces the approved public vehicle GLBs without them. Candidates are
- * generated with `--lamps` (or `{ lamps: true }`); promotion after approval flips this default to
- * true and regenerates public/ (see docs/asset-pipeline.md).
+ * Exterior lit-lamp nodes (issue #11) were approved by the developer (delegated approval,
+ * 2026-11-27, PR #22) and are authored by default, so default generation reproduces the promoted
+ * public vehicle GLBs. `buildGlb(id, { lamps: false })` remains as a programmatic opt-out.
  */
-export const EXTERIOR_LAMPS_DEFAULT = false;
+export const EXTERIOR_LAMPS_DEFAULT = true;
 
 function authoringProfile(id, lamps) {
   const profile = profiles[id];
@@ -26,11 +25,6 @@ function authoringProfile(id, lamps) {
 const vehicleNames = new Set(['sedan', 'cuv']);
 const allAssetIds = ['sedan', 'cuv', 'roadside', 'garage'];
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-export function isInside(root, path) {
-  const rel = relative(root, path);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-}
 
 function createGltf(assetId, dimensionsM, origin, lamps) {
   const binaryParts = [];
@@ -193,7 +187,7 @@ export function writeAssets(outputRoot, assetIds = allAssetIds, options = {}) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { vehicle: { type: 'string' }, out: { type: 'string' }, lamps: { type: 'boolean' } },
+    options: { vehicle: { type: 'string' }, out: { type: 'string' } },
   });
   if (positionals.length > 1 || (positionals.length && values.out)) {
     throw new Error('Use one output root: --out <directory> or the legacy positional directory');
@@ -202,10 +196,5 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     throw new RangeError('--vehicle must be sedan or cuv');
   }
   const outputRoot = resolve(values.out ?? positionals[0] ?? projectRoot);
-  if (values.lamps && (!values.out || isInside(projectRoot, outputRoot))) {
-    throw new Error('--lamps writes unapproved candidates: pass --out <directory> outside the project root (never public/)');
-  }
-  writeAssets(outputRoot,
-    values.vehicle ? [values.vehicle] : allAssetIds,
-    values.lamps === undefined ? {} : { lamps: values.lamps });
+  writeAssets(outputRoot, values.vehicle ? [values.vehicle] : allAssetIds);
 }

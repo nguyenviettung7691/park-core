@@ -177,8 +177,10 @@ describe('phase 5 original GLB generator', () => {
     }
   });
 
-  it.each(['sedan', 'cuv'])('adds batched exterior lit-lamp nodes under Exterior for %s with lamps', (id) => {
-    const glb = readGlbBytes(buildGlb(id, { lamps: true }));
+  it.each(['sedan', 'cuv'])('adds batched exterior lit-lamp nodes under Exterior for %s by default', (id) => {
+    // The lamps were approved and promoted (issue #11), so default generation authors them.
+    expect(EXTERIOR_LAMPS_DEFAULT).toBe(true);
+    const glb = readGlbBytes(buildGlb(id));
     const index = (name) => glb.nodes.findIndex((node) => node.name === name);
     const ancestors = (name) => {
       const chain = [];
@@ -193,44 +195,23 @@ describe('phase 5 original GLB generator', () => {
       expect(glb.nodes[index(name)]?.mesh, name).toBeTypeOf('number');
       expect(ancestors(name), name).toContain('Exterior');
     }
+    expect(buildGlb(id, { lamps: true })).toEqual(buildGlb(id));
   });
 
-  it('refuses --lamps without an --out outside the project root, so public/ never gets candidates', () => {
-    const before = readFileSync(assetPath(projectRoot, 'sedan'));
-    const run = (...args) => spawnSync(process.execPath, [generator, ...args], { encoding: 'utf8' });
-    for (const args of [['--lamps'], ['--lamps', '--vehicle', 'sedan'],
-      ['--lamps', '--out', projectRoot], ['--lamps', '--out', join(projectRoot, 'public')],
-      ['--lamps', projectRoot]]) {
-      const result = run(...args);
-      expect(result.status, args.join(' ')).not.toBe(0);
-      expect(result.stderr).toContain('--lamps');
-    }
-    expect(readFileSync(assetPath(projectRoot, 'sedan')).equals(before)).toBe(true);
-    const root = mkdtempSync(join(tmpdir(), 'park-core-lamps-'));
-    temporaryRoots.push(root);
-    const ok = run('--lamps', '--vehicle', 'sedan', '--out', root);
-    expect(ok.status, ok.stderr).toBe(0);
-    expect(existsSync(assetPath(root, 'sedan'))).toBe(true);
-  });
-
-  it('refuses assets:check --lamps unless --candidate is outside the project root', () => {
-    const workflow = join(projectRoot, 'tools', 'asset-workflow.mjs');
-    for (const extra of [[], ['--candidate', projectRoot]]) {
-      const result = spawnSync(process.execPath,
-        [workflow, 'check', '--vehicle', 'sedan', '--lamps', ...extra], { encoding: 'utf8' });
-      expect(result.status, extra.join(' ')).not.toBe(0);
-      expect(result.stderr).toContain('--lamps');
-    }
-  });
-
-  it.each(['sedan', 'cuv'])('leaves the unapproved lit-lamp nodes out of default %s output', (id) => {
-    // Promotion after developer approval flips EXTERIOR_LAMPS_DEFAULT (docs/asset-pipeline.md).
-    expect(EXTERIOR_LAMPS_DEFAULT).toBe(false);
-    const names = readGlbBytes(buildGlb(id)).nodes.map((node) => node.name);
+  it.each(['sedan', 'cuv'])('leaves the lit-lamp nodes out of %s with the lamps: false opt-out', (id) => {
+    const names = readGlbBytes(buildGlb(id, { lamps: false })).nodes.map((node) => node.name);
     for (const name of ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit']) {
       expect(names).not.toContain(name);
     }
-    expect(buildGlb(id, { lamps: false })).toEqual(buildGlb(id));
+  });
+
+  it('no longer accepts the retired --lamps candidate flag', () => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-lamps-'));
+    temporaryRoots.push(root);
+    const result = spawnSync(process.execPath, [generator, '--lamps', '--vehicle', 'sedan', '--out', root],
+      { encoding: 'utf8' });
+    expect(result.status).not.toBe(0);
+    expect(existsSync(assetPath(root, 'sedan'))).toBe(false);
   });
 
   it.each(['sedan', 'cuv'])('keeps the hood below the driver eye for %s', (assetId) => {
