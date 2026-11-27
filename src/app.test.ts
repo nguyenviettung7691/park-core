@@ -1343,3 +1343,19 @@ it('resets the selected vehicle mirrors from the main menu settings', async () =
   expect(saved.mirrorAdjustments.sedan.left.yawDeg).toBe(0);
   app.dispose();
 });
+
+it('does not claim a mirror save when the settings record could not be saved', async () => {
+  const f = fixture();
+  const persistence = appPersistence({}, true);
+  const app = f.app({ createPersistence: () => persistence.store });
+  await f.openPreview();
+  f.events.onMirrorOffsets!('sedan', {
+    rear: { yawRad: 0, pitchRad: 0 }, left: { yawRad: -0.1, pitchRad: 0 },
+    right: { yawRad: 0, pitchRad: 0 },
+  });
+  const warning = f.root.querySelector('#status-message')?.textContent;
+  expect(warning).toContain('chỉ lưu trong phiên này');
+  f.events.onNotice('mirrorAdjustDone');
+  expect(f.root.querySelector('#status-message')?.textContent).toBe(warning);
+  app.dispose();
+});

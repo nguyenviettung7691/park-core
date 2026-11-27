@@ -14,7 +14,7 @@ import { updateParking } from '../lessons/parking';
 import { createAudio, type AudioOutput } from '../sensors/audio';
 import { createSensors } from '../sensors/proximity';
 import { profiles } from '../vehicle/profiles';
-import { createVehicleRig, SimulationStateError } from '../vehicle/rig';
+import { createVehicleRig, GEAR_SPEED_MPS, SimulationStateError } from '../vehicle/rig';
 import {
   addColliderBoxes,
   collidersForEnvironment,
@@ -355,7 +355,9 @@ export function createPreview(
       frameId = null;
       if (!running || disposed || faulted) return;
       try {
-        input.setMirrorAdjustAllowed(current.telemetry.gear === 'P' || current.telemetry.parkingBrake);
+        // Mirrors are adjusted only in a held, stopped car, never while it is still rolling.
+        input.setMirrorAdjustAllowed(current.telemetry.totalSpeedMps < GEAR_SPEED_MPS &&
+          (current.telemetry.gear === 'P' || current.telemetry.parkingBrake));
         const poll = input.poll();
         if (poll.issue) {
           pause(prototype.source === 'gamepad' ? 'controller' : 'focus');

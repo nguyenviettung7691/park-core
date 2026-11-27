@@ -1215,3 +1215,23 @@ describe('preview mirror adjustment', () => {
     p.dispose();
   });
 });
+
+describe('preview mirror adjustment while rolling', () => {
+  it('refuses mirror selection until the car has stopped, even with the parking brake on', () => {
+    const f = fixture();
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
+    f.key('KeyS'); f.key('Digit4'); f.key('Space');
+    f.frame(20);
+    f.key('KeyS', 'keyup'); f.key('KeyW');
+    for (let i = 1; i <= 120; i++) f.frame(20 + i * 1000 / 60);
+    f.key('KeyW', 'keyup');
+    expect(f.events.onTelemetry.mock.lastCall?.[0].totalSpeedMps).toBeGreaterThan(0.3);
+    f.key('Space');
+    f.frame();
+    f.frame();
+    f.key('KeyM');
+    f.frame();
+    expect(f.events.onNotice).toHaveBeenLastCalledWith('mirrorAdjustBlocked');
+    p.dispose();
+  });
+});
