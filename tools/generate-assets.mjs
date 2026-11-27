@@ -2,7 +2,7 @@ import { boxGeometry } from './asset-geometry.mjs';
 import { authorVehicle } from './asset-designs/vehicles.mjs';
 import { authorEnvironment } from './asset-designs/environments.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { profiles } from '../src/vehicle/profiles.ts';
@@ -26,6 +26,11 @@ function authoringProfile(id, lamps) {
 const vehicleNames = new Set(['sedan', 'cuv']);
 const allAssetIds = ['sedan', 'cuv', 'roadside', 'garage'];
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+export function isInside(root, path) {
+  const rel = relative(root, path);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
 
 function createGltf(assetId, dimensionsM, origin, lamps) {
   const binaryParts = [];
@@ -196,7 +201,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   if (values.vehicle && !vehicleNames.has(values.vehicle)) {
     throw new RangeError('--vehicle must be sedan or cuv');
   }
-  writeAssets(resolve(values.out ?? positionals[0] ?? projectRoot),
+  const outputRoot = resolve(values.out ?? positionals[0] ?? projectRoot);
+  if (values.lamps && (!values.out || isInside(projectRoot, outputRoot))) {
+    throw new Error('--lamps writes unapproved candidates: pass --out <directory> outside the project root (never public/)');
+  }
+  writeAssets(outputRoot,
     values.vehicle ? [values.vehicle] : allAssetIds,
     values.lamps === undefined ? {} : { lamps: values.lamps });
 }

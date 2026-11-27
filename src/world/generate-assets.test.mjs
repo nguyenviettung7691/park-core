@@ -195,6 +195,34 @@ describe('phase 5 original GLB generator', () => {
     }
   });
 
+  it('refuses --lamps without an --out outside the project root, so public/ never gets candidates', () => {
+    const before = readFileSync(assetPath(projectRoot, 'sedan'));
+    const run = (...args) => spawnSync(process.execPath, [generator, ...args], { encoding: 'utf8' });
+    for (const args of [['--lamps'], ['--lamps', '--vehicle', 'sedan'],
+      ['--lamps', '--out', projectRoot], ['--lamps', '--out', join(projectRoot, 'public')],
+      ['--lamps', projectRoot]]) {
+      const result = run(...args);
+      expect(result.status, args.join(' ')).not.toBe(0);
+      expect(result.stderr).toContain('--lamps');
+    }
+    expect(readFileSync(assetPath(projectRoot, 'sedan')).equals(before)).toBe(true);
+    const root = mkdtempSync(join(tmpdir(), 'park-core-lamps-'));
+    temporaryRoots.push(root);
+    const ok = run('--lamps', '--vehicle', 'sedan', '--out', root);
+    expect(ok.status, ok.stderr).toBe(0);
+    expect(existsSync(assetPath(root, 'sedan'))).toBe(true);
+  });
+
+  it('refuses assets:check --lamps unless --candidate is outside the project root', () => {
+    const workflow = join(projectRoot, 'tools', 'asset-workflow.mjs');
+    for (const extra of [[], ['--candidate', projectRoot]]) {
+      const result = spawnSync(process.execPath,
+        [workflow, 'check', '--vehicle', 'sedan', '--lamps', ...extra], { encoding: 'utf8' });
+      expect(result.status, extra.join(' ')).not.toBe(0);
+      expect(result.stderr).toContain('--lamps');
+    }
+  });
+
   it.each(['sedan', 'cuv'])('leaves the unapproved lit-lamp nodes out of default %s output', (id) => {
     // Promotion after developer approval flips EXTERIOR_LAMPS_DEFAULT (docs/asset-pipeline.md).
     expect(EXTERIOR_LAMPS_DEFAULT).toBe(false);

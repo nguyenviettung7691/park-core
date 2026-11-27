@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { buildGlb } from './generate-assets.mjs';
+import { buildGlb, isInside } from './generate-assets.mjs';
 import { profiles } from '../src/vehicle/profiles.ts';
 import { deriveVehicleAssetContract } from '../src/vehicle/asset-contract.ts';
 
@@ -143,6 +143,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   }
   if (values.vehicle && !['sedan', 'cuv'].includes(values.vehicle)) {
     throw new RangeError('--vehicle must be sedan or cuv');
+  }
+  if (values.lamps && (!values.candidate || isInside(projectRoot, resolve(values.candidate)))) {
+    // Lamp candidates are unapproved; validating public/ as one would hide that it holds them.
+    throw new Error('--lamps validates a candidate: pass --candidate <directory> outside the project root');
   }
   if (command === 'check') {
     console.log(JSON.stringify(checkAssets(resolve(values.candidate ?? projectRoot),

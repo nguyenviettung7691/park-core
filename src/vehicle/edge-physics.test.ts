@@ -331,6 +331,51 @@ describe('tyre-edge physics in the rig', () => {
       expect(worst).toBe('none');
     });
 
+  // Curb climb thresholds (docs/phase-8-asset-catalog.md, "Curb climb thresholds"). R20: measured,
+  // not designed. The curb face is rotated `faceDeg` from square to the travel line; the car
+  // coasts (no pedal) at `speed` with the gear's direction, the parking brake off.
+  const rankOf: Record<string, number> = { none: 0, touching: 1, climbing: 2, over: 3 };
+  function coastIntoCurb(id: VehicleId, gear: 'D' | 'R', faceDeg: number, speed: number) {
+    const dirZ = gear === 'D' ? -1 : 1;
+    const curb: ColliderBox = { id: 'test-curb-coast', kind: 'curb',
+      centerM: [0, CURB_HALF[1], dirZ * 4.15], halfExtentsM: [16, CURB_HALF[1], CURB_HALF[0]],
+      yawRad: faceDeg * Math.PI / 180 };
+    const f = setup(id, [curb], { x: 0, z: 0 });
+    shift(f, gear);
+    f.rig.body.velocity.set(0, 0, dirZ * speed);
+    let worst = 'none';
+    for (let i = 0; i < Math.round(5 / H); i++) {
+      for (const w of step(f, idle).wheelEdges) if (rankOf[w.state] > rankOf[worst]) worst = w.state;
+    }
+    return worst;
+  }
+  const THRESHOLD_CASES = IDS.flatMap((id) => (['D', 'R'] as const).map((gear) => ({ id, gear })));
+  it.each(THRESHOLD_CASES)('$id $gear: a square coast at 1.4 m/s only touches the curb; faster '
+    + 'square coasts (1.8 m/s) climb', ({ id, gear }) => {
+    const slow = coastIntoCurb(id, gear, 0, 1.4);
+    const fast = coastIntoCurb(id, gear, 0, 1.8);
+    record(`${id} ${gear} square coast: 1.4 m/s ${slow}, 1.8 m/s ${fast}`);
+    expect(slow).toBe('touching');
+    expect(rankOf[fast]).toBeGreaterThanOrEqual(rankOf.climbing);
+  });
+  it.each(THRESHOLD_CASES.flatMap((c) => [15, 30, 45, 75].map((faceDeg) => ({ ...c, faceDeg }))))(
+    '$id $gear: an angled ($faceDeg deg) coast at 1.5 m/s reaches climbing; at 1.0 m/s it only '
+    + 'touches (45 deg and shallower)', ({ id, gear, faceDeg }) => {
+      const slow = coastIntoCurb(id, gear, faceDeg, 1.0);
+      const fast = coastIntoCurb(id, gear, faceDeg, 1.5);
+      record(`${id} ${gear} angled ${faceDeg} deg coast: 1.0 m/s ${slow}, 1.5 m/s ${fast}`);
+      // Not measured by the review below 1.2 m/s at 75 deg (a 15 deg graze); it is recorded only.
+      if (faceDeg <= 45) expect(slow).toBe('touching');
+      expect(rankOf[fast]).toBeGreaterThanOrEqual(rankOf.climbing);
+    });
+
+  /** Measured peak chassis roll (deg) of the dive cases below, keyed `id gear steering`. */
+  const MEASURED_PEAK_ROLL_DEG: Record<string, number> = {
+    'sedan D 0': 0, 'sedan D 0.4': 0.451, 'sedan D -0.4': 1.192,
+    'sedan R 0': 0, 'sedan R 0.4': 0.814, 'sedan R -0.4': 0.396,
+    'cuv D 0': 0, 'cuv D 0.4': 0.517, 'cuv D -0.4': 1.091,
+    'cuv R 0': 0, 'cuv R 0.4': 0.816, 'cuv R -0.4': 0.449,
+  };
   const DIVE_CASES = IDS.flatMap((id) => (['D', 'R'] as const).flatMap((gear) =>
     [0, 0.4, -0.4].map((steering) => ({ id, gear, steering }))));
   it.each(DIVE_CASES)('$id: hard brake dive in $gear (steering $steering) beside a 0.11 m curb '
@@ -349,8 +394,12 @@ describe('tyre-edge physics in the rig', () => {
     // Corners whose plan position is within half a metre of the curb face (could reach it).
     let minNearCurbY = Infinity;
     const g = deriveGeometry(p);
+    let peakRollDeg = 0;
     for (let i = 0; i < Math.round(2 / H); i++) {
       step(f, frame({ brake: 1, steering }));
+      // Roll about the travel axis: the world-x lean of the chassis up vector (travel is along Z).
+      const up = f.rig.body.quaternion.vmult(new CANNON.Vec3(0, 1, 0));
+      peakRollDeg = Math.max(peakRollDeg, Math.abs(Math.asin(up.x)) * 180 / Math.PI);
       // Lowest chassis-box corner height (world), as a clearance witness.
       const [hx, hy, hz] = g.chassis.halfExtentsM;
       const [cx, cy, cz] = g.chassis.centerLocalM;
@@ -368,8 +417,11 @@ describe('tyre-edge physics in the rig', () => {
     record(`${id} brake-dive ${gear} steer ${steering}: min chassis corner y ${minY.toFixed(5)} m, `
       + `any corner vs curb top ${mm(minY)}, corners within 0.5 m of the face ${mm(minNearCurbY)}, `
       + `above the curb ${mm(minOverCurbY)}, end speed `
-      + `${f.rig.snapshot(f.t).telemetry.totalSpeedMps.toFixed(3)}`);
+      + `${f.rig.snapshot(f.t).telemetry.totalSpeedMps.toFixed(3)}, peak roll ${peakRollDeg.toFixed(3)} deg`);
     expect(contacts).toEqual([]);
+    // R22: peak roll was measured per case (docs/phase-8-asset-catalog.md); +0.2 deg headroom lets
+    // tuning drift without a flake but catches the 2-3x growth sidewall tripping once caused.
+    expect(peakRollDeg).toBeLessThanOrEqual(MEASURED_PEAK_ROLL_DEG[`${id} ${gear} ${steering}`] + 0.2);
     // The simulation is deterministic; 2 mm is a margin, so a tuning change that eats clearance
     // fails here before it shows as a chassis hit.
     expect(minNearCurbY - curbTop).toBeGreaterThanOrEqual(0.002);

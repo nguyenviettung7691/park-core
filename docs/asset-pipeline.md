@@ -119,6 +119,10 @@ npm run assets:check -- --vehicle sedan --candidate C:\asset-work\candidate --la
 npm run assets:review -- --vehicle sedan --candidate C:\asset-work\candidate --out C:\asset-work\review --lamps
 ```
 
+All three commands refuse `--lamps` unless `--out` (generate) or `--candidate`
+(check, review) names a directory outside the project root, so unapproved lamp
+GLBs can never be written into, or validated as, `public/`.
+
 Promotion after the developer approves the candidate hash and captures is one
 reviewed change: flip the option's default (`EXTERIOR_LAMPS_DEFAULT` in
 `tools\generate-assets.mjs`) to on, regenerate with `node tools\generate-assets.mjs`,

@@ -262,7 +262,42 @@ far side: its lowest corner (far rear, about 1.8 m from the curb) dips 5.3 mm
 below curb height there, over open road, so the all-corner figure is no longer a
 clearance. The simulation is deterministic, so the 2 mm bound is not a noise
 allowance: it is a margin, so a tuning change that eats clearance fails the test
-before it shows as a chassis hit (which the test also checks). The roadside GLB's
+before it shows as a chassis hit (which the test also checks). Peak chassis roll in the same cases (degrees, rolling about the travel axis;
+`edge-physics.test.ts` asserts each at most 0.2 degrees above the measured
+value, so a tuning change that grows edge-induced roll fails before it becomes a
+chassis contact):
+
+| Vehicle | D | D, steer +0.4 | D, steer -0.4 | R | R, steer +0.4 | R, steer -0.4 |
+|---|---:|---:|---:|---:|---:|---:|
+| Sedan | 0.000 | 0.451 | 1.192 | 0.000 | 0.814 | 0.396 |
+| CUV | 0.000 | 0.517 | 1.091 | 0.000 | 0.816 | 0.449 |
+
+The larger steered-tyre roll (up to 1.19 degrees, from 0.43 degrees sedan D and
+0.49 degrees CUV D at steer -0.4 before the review-r1 edge fix) is the stiff sidewall holding the tyre at the curb face; the
+state stays `touching` and no chassis contact occurs.
+
+**Curb climb thresholds (measured; the developer is asked to confirm).** A car
+coasting (no pedal, parking brake off) into a 0.11 m curb face climbs only through
+momentum. Measured in D and R for both vehicles (`edge-physics.test.ts`, with a
+small tolerance band so the figures are pinned but not knife-edge):
+
+| Approach | Worst tyre state |
+|---|---|
+| Square to the face, 1.4 m/s (5.0 km/h) | `touching` (a warning). It climbs from about 1.5 m/s (sedan, either gear; CUV in R) or 1.8 m/s (CUV in D), and is `over` by 1.8 m/s |
+| Face angled 15, 30 or 45 degrees from square, 1.0 m/s | `touching` |
+| Face angled 15, 30, 45 or 75 degrees, 1.5 m/s (5.4 km/h) | `climbing` or `over`: a lesson `curb-contact` failure. Climbing starts from about 1.2-1.3 m/s at these angles |
+| Creep (no throttle) at any angle 15-90 degrees | never climbs (R13) |
+
+The threshold does not rise with the approach angle: a shallow graze (about 30
+degrees, into-face speed about 0.6 m/s) can climb at 1.2-1.5 m/s while a square
+hit at the same speed only touches, because one wheel meeting the edge first
+carries the car's momentum and the engagement advances by the rolling distance.
+Creep speed (0.56 m/s reverse) is far below all of these. Whether a shallow graze
+should be more forgiving is a developer product ruling that is not yet made; the
+minimal lever would be to scale the engagement advance (or the impact-damper cap)
+by the into-face fraction. Until then these thresholds are pinned as measured.
+
+The roadside GLB's
 triangle count is unchanged; it is 4 bytes larger (162,800).
 
 ### Parked lesson cars and guidance

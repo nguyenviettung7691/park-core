@@ -106,6 +106,16 @@ are visible from the neutral cockpit POV in review captures, and reuses the
      `curbTouches: 0`; the new failure reason is added to its allow-list.
    - Tyre `climbing`/`over` a curb, or the chassis/body touching it → the
      existing `curb-contact` failure.
+   - **Measured curb climb thresholds (the developer is asked to confirm).**
+     Coasting (no pedal) into a curb face: square to the face, 1.4 m/s (5.0
+     km/h) only `touching` (warning); angled faces (15, 30, 45, 75 degrees from
+     square) at 1.5 m/s (5.4 km/h) reach `climbing` (failure), starting from about
+     1.2-1.3 m/s. The threshold does not rise with the angle, so a shallow
+     graze climbs at a lower into-face speed than a square hit. Creep (no
+     throttle) never climbs at any angle. Pinned in `edge-physics.test.ts`;
+     figures in `docs/phase-8-asset-catalog.md`. If shallow grazes should be
+     gentler, scale the edge engagement advance or impact-damper cap by the
+     into-face fraction (edge-only constants; handling untouched).
    - `wheelTouchesCurb` in `src/lessons/failure.ts` (today: any overlap
      fails) is replaced by the rig's edge state.
 5. **Garage wheel stops.**
