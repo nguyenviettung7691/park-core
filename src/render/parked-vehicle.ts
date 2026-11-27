@@ -34,12 +34,18 @@ export function createParkedVehicle(template: Object3D, collider: ColliderBox): 
   if (glazing) glazing.visible = true;
   const exteriorGlazing = shape.getObjectByName('ExteriorGlazing');
   if (exteriorGlazing) exteriorGlazing.visible = false;
-  // Telemetry-driven lit lamps belong to the driven car only.
+  // Telemetry-driven lit lamps belong to the driven car only: hidden, and left out of the
+  // bounds fit (Box3.setFromObject counts hidden children; outboard panels would rescale the car).
+  const lamps: { lamp: Object3D; parent: Object3D }[] = [];
   for (const name of ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit']) {
     const lamp = shape.getObjectByName(name);
-    if (lamp) lamp.visible = false;
+    if (!lamp?.parent) continue;
+    lamp.visible = false;
+    lamps.push({ lamp, parent: lamp.parent });
+    lamp.removeFromParent();
   }
   const bounds = new Box3().setFromObject(shape);
+  for (const { lamp, parent } of lamps) parent.add(lamp);
   const size = bounds.getSize(new Vector3());
   if ([size.x, size.y, size.z].some((value) => !Number.isFinite(value) || value <= 0)) {
     throw new Error('Invalid parked-car template bounds');

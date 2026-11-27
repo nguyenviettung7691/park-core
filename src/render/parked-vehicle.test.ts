@@ -1,4 +1,4 @@
-import { Box3, Mesh, Object3D, Vector3 } from 'three';
+import { Box3, BoxGeometry, Mesh, MeshBasicMaterial, Object3D, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { ColliderBox } from '../runtime-types';
 import { vehicleTemplate, wheelStopTemplate } from '../test/vehicle-template';
@@ -66,5 +66,22 @@ describe('parked vehicle artwork', () => {
     const car = createParkedVehicle(template, { id: 'parked', kind: 'obstacle', centerM: [0, 0.8, 0],
       halfExtentsM: [0.9, 0.8, 2.2], yawRad: 0 });
     for (const name of names) expect(car.getObjectByName(name)!.visible, name).toBe(false);
+  });
+
+  it('fits parked bounds without the outboard lit-lamp panels', () => {
+    const collider: ColliderBox = { id: 'parked', kind: 'obstacle', centerM: [0, 0.8, 0],
+      halfExtentsM: [0.9, 0.8, 2.2], yawRad: 0 };
+    const plain = createParkedVehicle(vehicleTemplate(), collider);
+    const template = vehicleTemplate();
+    // A lit panel well outside the body (like a side repeater 7 mm outboard, exaggerated).
+    const lamp = new Mesh(new BoxGeometry(0.1, 0.1, 0.1), new MeshBasicMaterial());
+    lamp.name = 'TurnSignalLeftLit';
+    lamp.position.set(-3, 0, 0);
+    template.getObjectByName('Exterior')!.add(lamp);
+    const lit = createParkedVehicle(template, collider);
+    const shape = (car: Object3D) => car.children[0]!;
+    expect(shape(lit).scale.toArray()).toEqual(shape(plain).scale.toArray());
+    expect(shape(lit).position.toArray()).toEqual(shape(plain).position.toArray());
+    expect(lit.getObjectByName('TurnSignalLeftLit')!.visible).toBe(false);
   });
 });
