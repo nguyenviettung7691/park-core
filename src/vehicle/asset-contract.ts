@@ -1,3 +1,4 @@
+import type { HeadClearance } from '../views/head-pose';
 import type { BodyPose, QuatData, Vec3Data, VehicleId, VehicleProfile } from '../contracts';
 
 export type MirrorId = 'rear' | 'left' | 'right';
@@ -24,6 +25,10 @@ interface VehicleViewProfile {
   readonly sideGlassRiseM: number;
   /** Forward (-Z) shift of the side-mirror anchors and colliders from frontAxle + 0.35 m. */
   readonly sideMirrorZOffsetM: number;
+  /** Seat adjustment range from the nominal eye point (+Z rearward, height adds to Y). */
+  readonly seatRangeM: { readonly foreAft: readonly [number, number]; readonly height: readonly [number, number] };
+  /** Head clearance box relative to `driverEyeLocalM`; the contract exposes it absolute. */
+  readonly headClearanceM: HeadClearance;
 }
 
 const DEG = Math.PI / 180;
@@ -45,6 +50,9 @@ const cabinView: VehicleViewProfile = {
   // the whole passenger face above the dashboard from the eye (passing band ~4.0-4.8 cm).
   sideGlassRiseM: 0.044,
   sideMirrorZOffsetM: -0.585,
+  seatRangeM: { foreAft: [-0.1, 0.1], height: [-0.03, 0.05] },
+  // Starting box (issue #23); Task 8 tunes it against the real GLB geometry (>= 0.12 m).
+  headClearanceM: { minM: [-0.2, -0.06, -0.2], maxM: [0.3, 0.08, 0.16] },
 };
 
 export const vehicleViews: Readonly<Record<VehicleId, VehicleViewProfile>> = {
@@ -266,6 +274,16 @@ export function deriveVehicleAssetContract(profile: VehicleProfile) {
     eye[1] + view.rearCameraOffsetM[1],
     eye[2] + view.rearCameraOffsetM[2],
   ];
+  const { minM, maxM } = view.headClearanceM;
+  for (let axis = 0; axis < 3; axis++) {
+    if (!Number.isFinite(minM[axis]) || !Number.isFinite(maxM[axis]) || !(minM[axis]! < maxM[axis]!)) {
+      throw new RangeError(`${profile.id}.headClearanceM: bounds must be finite with min < max`);
+    }
+  }
+  const headClearance: HeadClearance = {
+    minM: [eye[0] + minM[0], eye[1] + minM[1], eye[2] + minM[2]],
+    maxM: [eye[0] + maxM[0], eye[1] + maxM[1], eye[2] + maxM[2]],
+  };
   const mirrors: Readonly<Record<MirrorId, MirrorSpec>> = {
     rear: {
       positionM: rear,
@@ -286,6 +304,8 @@ export function deriveVehicleAssetContract(profile: VehicleProfile) {
   return {
     driverEyeLocalM: profile.driverEyeLocalM,
     mirrors,
+    seatRangeM: view.seatRangeM,
+    headClearance,
     rearDisplayM: rear,
     bodyVisualZ: [-profile.bodySizeM[2] / 2, profile.bodySizeM[2] / 2] as const,
     bodyPhysicalZ: [
