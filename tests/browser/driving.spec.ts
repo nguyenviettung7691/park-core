@@ -582,7 +582,7 @@ test('adjusts, saves and resets a side mirror from the cockpit', async ({ page }
   await page.keyboard.press('Space');
   await page.keyboard.up('s');
   await page.keyboard.press('m');
-  await expect(status).toContainText('Chỉ chỉnh gương khi về số P hoặc kéo phanh tay');
+  await expect(status).toContainText('Chỉ chỉnh gương khi xe đã dừng và ở số P hoặc đã kéo phanh tay');
   expect(errors).toEqual([]);
 });
 

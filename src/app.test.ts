@@ -1359,3 +1359,31 @@ it('does not claim a mirror save when the settings record could not be saved', a
   expect(f.root.querySelector('#status-message')?.textContent).toBe(warning);
   app.dispose();
 });
+
+it('restores another record warning, not the mirror prompt, when adjustment ends', async () => {
+  const f = fixture();
+  const values = new Map<string, string>();
+  const store = createPersistence(() => ({
+    getItem: (key) => values.get(key) ?? null,
+    setItem(key, value) {
+      if (key.includes('progress')) throw new Error('quota');
+      values.set(key, value);
+    },
+    removeItem: (key) => { values.delete(key); },
+  }));
+  const app = f.app({ createPersistence: () => store });
+  const select = f.root.querySelector<HTMLSelectElement>('#vehicle')!;
+  select.value = 'cuv';
+  select.dispatchEvent(new Event('change'));
+  await f.openPreview();
+  const status = () => f.root.querySelector('#status-message')?.textContent ?? '';
+  f.events.onNotice('mirrorAdjustRear');
+  f.events.onMirrorOffsets!('cuv', {
+    rear: { yawRad: 0.01, pitchRad: 0 }, left: { yawRad: 0, pitchRad: 0 },
+    right: { yawRad: 0, pitchRad: 0 },
+  });
+  f.events.onNotice('mirrorAdjustDone');
+  expect(status()).not.toContain('Đang chỉnh gương');
+  expect(status()).toContain('Tiến trình');
+  app.dispose();
+});

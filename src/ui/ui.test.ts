@@ -1172,3 +1172,8 @@ it('lists the mirror adjustment key in the paused controls help', () => {
   expect(element.textContent).toContain('M: chọn gương');
   expect(messages.keyboardExtra).toContain('M: chọn gương');
 });
+
+it('tells the driver the car must be stopped before adjusting a mirror', () => {
+  expect(messages.mirrorAdjustBlocked).toContain('dừng');
+  expect(messages.controlsHelp).toContain('khi xe đã dừng');
+});

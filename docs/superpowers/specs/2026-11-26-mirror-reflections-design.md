@@ -151,7 +151,8 @@ The contract exposes, per mirror, the glass pose (position + full quaternion, ya
 - **M** cycles the selected mirror: off → left → right → rear → off.
 - While a mirror is selected, **arrow keys** tilt it (left/right = yaw, up/down = pitch)
   and do not drive. WASD keeps driving behaviour unchanged.
-- Selection only works while the gear is P or the parking brake is on. Selecting
+- Selection only works while the car is stopped (below 0.1 m/s, the gear-change threshold)
+  and the gear is P or the parking brake is on (added in PR review). Selecting
   otherwise shows a status notice; leaving P/releasing the brake, pausing, or Escape
   deselects.
 - The selected mirror's glass gets a thin highlight outline (on the mirror-excluded

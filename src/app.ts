@@ -125,8 +125,12 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
 
   function notice(key: MessageKey) {
     if (key === 'gearRejected' && (audioUnavailable || persistenceNotice)) return;
-    // Never claim a mirror save over a warning that settings are not being saved.
-    if (key === 'mirrorAdjustDone' && persistenceNotice) return;
+    // Never claim a mirror save over a persistence warning; show that warning instead of
+    // leaving the (untimed) mirror selection prompt on screen.
+    if (key === 'mirrorAdjustDone' && persistenceNotice) {
+      clearStatus();
+      return;
+    }
     clearTimeout(noticeTimer);
     if (key === 'audioUnavailable') audioUnavailable = true;
     status.setAttribute('aria-live', key === 'gearRejected' ? 'off' : 'polite');
