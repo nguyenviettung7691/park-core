@@ -199,7 +199,7 @@ const scenarios: Readonly<Record<StageId, ScenarioDefinition>> = Object.freeze({
     guidance: 'full',
     actors: [{
       actor: car('car-stage3-behind', [[-2.35, 18.5], [-2.35, -18.5]], ROADSIDE_CAR_MPS,
-        offsetDetour(0.7)),
+        offsetDetour(0.5)),
       trigger: 'indicator-right', delayS: 0, checkMoment: 'signal-right', side: 'left',
     }],
     obstacles: [
@@ -266,8 +266,8 @@ const scenarios: Readonly<Record<StageId, ScenarioDefinition>> = Object.freeze({
     ],
     guidance: 'on-request',
     actors: [{
-      actor: car('car-stage5-behind', [[-3.45, 18.5], [-3.45, -18.5]], ROADSIDE_CAR_MPS,
-        offsetDetour(0.7)),
+      actor: car('car-stage5-behind', [[-2.6, 18.5], [-2.6, -18.5]], ROADSIDE_CAR_MPS,
+        turnBackDetour),
       trigger: 'reverse-selected', delayS: 0, checkMoment: 'reverse', side: 'left',
     }, {
       actor: pedestrian('ped-stage5-sidewalk', [[6, 9], [6, -9]], turnBackDetour),

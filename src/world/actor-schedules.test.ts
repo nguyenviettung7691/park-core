@@ -10,6 +10,7 @@ import {
   actorPoses,
   createActorWorld,
   stepActors,
+  BLOCKED_WAIT_S,
   type ActorWorldState,
   type LearnerState,
 } from './actors';
@@ -17,6 +18,11 @@ import { collidersForEnvironment, collidersForScenario, prototypeSpawn } from '.
 import { orientedRectangle, polygonsOverlap } from './footprint';
 
 const DT = 1 / 120;
+/** Kerb checks use the wheel footprint of a car, not its body box (bodies overhang a kerb). */
+const CAR_WHEEL_HALF_WIDTH_M = 0.78;
+const CAR_WHEEL_HALF_LENGTH_M = 1.7;
+const DETOUR_MIN_TRANSITION_M = 2;
+const DETOUR_MAX_YAW_RAD = Math.PI / 9;
 const stages: readonly StageId[] = [1, 2, 3, 4, 5];
 const vehicles = Object.values(profiles);
 
@@ -198,21 +204,117 @@ describe('actor schedules', () => {
     }
   });
 
-  it('actors never overlap static colliders or parked lesson cars', () => {
+  type Collider = ReturnType<typeof collidersForEnvironment>[number];
+  const colliderPolygon = (collider: Collider) =>
+    orientedRectangle(collider.centerM, collider.halfExtentsM[0], collider.halfExtentsM[2],
+      collider.yawRad);
+  /** True when the actor's body hits an obstacle or (cars: wheels only) a kerb. */
+  const hitsStatic = (
+    colliders: readonly Collider[],
+    kind: 'pedestrian' | 'car',
+    centerM: readonly [number, number, number],
+    halfExtentsM: readonly [number, number, number],
+    yawRad: number,
+  ): string | null => {
+    const body = orientedRectangle(centerM, halfExtentsM[0], halfExtentsM[2], yawRad);
+    const wheels = orientedRectangle(centerM, CAR_WHEEL_HALF_WIDTH_M, CAR_WHEEL_HALF_LENGTH_M,
+      yawRad);
+    for (const collider of colliders) {
+      if (collider.kind === 'obstacle' && polygonsOverlap(body, colliderPolygon(collider))) {
+        return collider.id;
+      }
+      if (kind === 'car' && collider.kind === 'curb'
+        && polygonsOverlap(wheels, colliderPolygon(collider))) return collider.id;
+    }
+    return null;
+  };
+
+  it('actors never overlap static colliders or parked lesson cars (cars also avoid kerbs)', () => {
     for (const stageId of stages) {
-      // Kerbs are 0.11 m stones that vehicles run alongside; ground is not an obstacle.
-      const statics = collidersForScenario(scenarios[stageId])
-        .filter(({ kind }) => kind !== 'ground' && kind !== 'curb' && kind !== 'wheel-stop');
-      simulate(lessonWorld(stageId), vehicles[0], stageId, 20, (state) => {
-        for (const box of actorBoxes(state)) {
-          for (const collider of statics) {
-            expect(polygonsOverlap(boxPolygon(box),
-              orientedRectangle(collider.centerM, collider.halfExtentsM[0],
-                collider.halfExtentsM[2], collider.yawRad)),
-            `stage ${stageId} ${box.id} vs ${collider.id}`).toBe(false);
+      const colliders = collidersForScenario(scenarios[stageId]);
+      for (const profile of vehicles) {
+        simulate(lessonWorld(stageId), profile, stageId, 20, (state) => {
+          const kinds = new Map(scenarios[stageId].actors.map(({ actor }) => [actor.id, actor.kind]));
+          for (const box of actorBoxes(state)) {
+            expect(hitsStatic(colliders, kinds.get(box.id)!, box.centerM, box.halfExtentsM,
+              box.yawRad), `stage ${stageId}/${profile.id} ${box.id}`).toBeNull();
+          }
+        });
+      }
+    }
+  });
+
+  it('detour paths never overlap static colliders (cars also avoid kerbs)', () => {
+    const yawOf = (from: readonly [number, number], to: readonly [number, number]) =>
+      Math.atan2(0 - (to[0] - from[0]), 0 - (to[1] - from[1]));
+    const entries = [
+      ...stages.flatMap((stageId) => scenarios[stageId].actors.map((entry) => ({
+        actor: entry.actor, environmentId: scenarios[stageId].environmentId,
+        colliders: collidersForScenario(scenarios[stageId]),
+      }))),
+      ...(['garage', 'roadside'] as const).flatMap((environmentId) =>
+        ambientSchedules[environmentId].map(({ actor }) => ({
+          actor, environmentId, colliders: collidersForEnvironment(environmentId),
+        }))),
+    ];
+    for (const { actor, colliders } of entries) {
+      if (actor.id === 'car-stage5-behind') continue;
+      const check = (centre: readonly [number, number], yawRad: number, label: string) => {
+        expect(hitsStatic(colliders, actor.kind, [centre[0], 0, centre[1]], actor.halfExtentsM,
+          yawRad), `${actor.id} ${label}`).toBeNull();
+      };
+      if (actor.detour.kind === 'turn-back') {
+        // The reversed path covers the same ground as the scheduled path (the actor's box is symmetric).
+        for (let i = 1; i < actor.path.length; i += 1) {
+          const yaw = yawOf(actor.path[i - 1], actor.path[i]);
+          for (let t = 0; t <= 1; t += 0.05) {
+            check([actor.path[i - 1][0] + (actor.path[i][0] - actor.path[i - 1][0]) * t,
+              actor.path[i - 1][1] + (actor.path[i][1] - actor.path[i - 1][1]) * t], yaw, 'turn-back');
           }
         }
+        continue;
+      }
+      // Offset detour: blocked at any distance d, it moves to the left of travel (lateralM),
+      // joining the shifted path after a max(2, |lateral| / tan 20 deg) transition (as in actors.ts).
+      const [[x0, z0], [x1, z1]] = [actor.path[0], actor.path[actor.path.length - 1]];
+      const length = Math.hypot(x1 - x0, z1 - z0);
+      const yaw = yawOf([x0, z0], [x1, z1]);
+      const dir = [(x1 - x0) / length, (z1 - z0) / length] as const;
+      const left = [dir[1], -dir[0]] as const;
+      const lateral = actor.detour.lateralM;
+      const at = (d: number, side: number): [number, number] =>
+        [x0 + dir[0] * d + left[0] * side, z0 + dir[1] * d + left[1] * side];
+      for (let d = 0; d <= length; d += 0.5) {
+        const transitionM = Math.max(DETOUR_MIN_TRANSITION_M,
+          Math.abs(lateral) / Math.tan(DETOUR_MAX_YAW_RAD));
+        const join = Math.min(d + transitionM, length);
+        const from = at(d, 0);
+        const to = at(join, lateral);
+        const transitionYaw = yawOf(from, to);
+        for (let t = 0; t <= 1; t += 0.05) {
+          check([from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t],
+            transitionYaw, `offset transition from d=${d}`);
+        }
+        for (let e = join; e <= length; e += 0.5) check(at(e, lateral), yaw, `offset d=${e}`);
+      }
+    }
+  });
+
+  it('the stage 5 car yields behind the learner, waits, then leaves without contact', () => {
+    for (const profile of vehicles) {
+      let blockedS = 0;
+      let lastActiveS = 0;
+      let timeS = 0;
+      simulate(lessonWorld(5), profile, 5, 20, (state, contactId) => {
+        timeS += DT;
+        expect(contactId).toBeNull();
+        const box = actorBoxes(state).find(({ id }) => id === 'car-stage5-behind');
+        if (!box) return;
+        lastActiveS = timeS;
+        if (state.cursors[0].speedMps === 0 && state.cursors[0].detour === null) blockedS += DT;
       });
+      expect(blockedS, `${profile.id} yields`).toBeGreaterThanOrEqual(BLOCKED_WAIT_S - 0.1);
+      expect(lastActiveS, `${profile.id} gone in time`).toBeLessThanOrEqual(15);
     }
   });
 
