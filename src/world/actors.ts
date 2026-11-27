@@ -17,7 +17,9 @@ const FIRST_STOP_DWELL_S = 0.5;
 const TIME_EPSILON_S = 1e-9;
 const SWEEP_STEP_M = 0.05;
 const STOPPED_SPEED_MPS = 0.05;
-const DETOUR_TRANSITION_M = 2;
+const DETOUR_MIN_TRANSITION_M = 2;
+/** Side-steps never yaw the actor more than this. */
+const DETOUR_MAX_YAW_RAD = Math.PI / 9;
 
 export const PEDESTRIAN_STOP_DISTANCE_M = 0.5;
 export const CAR_DECEL_MPS2 = 6;
@@ -293,7 +295,9 @@ function offsetPath(path: PathGeometry, distanceM: number, lateralM: number): Pa
     return [p.x - Math.cos(p.yawRad) * lateralM, p.z + Math.sin(p.yawRad) * lateralM];
   };
   const here = pointAlong(path, distanceM);
-  const joinM = Math.min(distanceM + DETOUR_TRANSITION_M, path.lengthM);
+  const transitionM = Math.max(DETOUR_MIN_TRANSITION_M,
+    Math.abs(lateralM) / Math.tan(DETOUR_MAX_YAW_RAD));
+  const joinM = Math.min(distanceM + transitionM, path.lengthM);
   const points: GroundPoint[] = [[here.x, here.z], shifted(joinM)];
   for (let i = 0; i < path.points.length; i += 1) {
     if (path.cumulativeM[i] > joinM + 1e-9) points.push(shifted(path.cumulativeM[i]));

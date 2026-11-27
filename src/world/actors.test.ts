@@ -363,8 +363,8 @@ describe('scripted actors', () => {
       ['offset', { kind: 'offset', lateralM: 4 }],
     ];
     it.each(detours)('stationary blocker → 3 s wait → %s detour', (name, detour) => {
-      let world = start({ ...actor('ped-1', [[0, 0], [10, 0]]), detour }, 'realistic');
-      const blocker = rectangle(4, 5, -0.3, 0.3);
+      let world = start({ ...actor('ped-1', [[0, 0], [30, 0]], 2), detour }, 'realistic');
+      const blocker = rectangle(4, 5, 0.2, 0.6);
       let stoppedStep = -1;
       let switchStep = -1;
       const after: Vec3Data[] = [];
@@ -390,14 +390,39 @@ describe('scripted actors', () => {
         const minZ = Math.min(...after.map((p) => p[2]));
         expect(minZ).toBeCloseTo(-4, 1);
         expect(after.every((p) => p[2] <= 1e-9)).toBe(true);
-        // Ramps over a 2 m transition, not an instant jump.
-        const ramp = after.filter((p) => p[0] < startX + 2 - 1e-6);
+        // Ramps over 4 / tan(20 deg) = 10.99 m, never yawing more than 20 degrees.
+        const transitionM = 4 / Math.tan(Math.PI / 9);
+        const ramp = after.filter((p) => p[0] < startX + transitionM - 1e-6);
         expect(ramp.some((p) => p[2] < -0.5 && p[2] > -3.5)).toBe(true);
         expect(ramp.every((p) => p[2] > -4 + 1e-6)).toBe(true);
-        const settled = after.filter((p) => p[0] > startX + 2 + 1e-6);
+        const settled = after.filter((p) => p[0] > startX + transitionM + 1e-6);
         expect(settled.length).toBeGreaterThan(5);
         for (const p of settled) expect(p[2]).toBeCloseTo(-4, 6);
+        for (let i = 1; i < after.length; i += 1) {
+          const dx = after[i][0] - after[i - 1][0];
+          const dz = after[i][2] - after[i - 1][2];
+          if (Math.hypot(dx, dz) > 1e-9) {
+            expect(Math.abs(Math.atan2(dz, dx))).toBeLessThanOrEqual(Math.PI / 9 + 1e-6);
+          }
+        }
       }
+    });
+
+    it('a small offset still side-steps over the 2 m minimum transition', () => {
+      const detour = { kind: 'offset', lateralM: 0.5 } as const;
+      let world = start({ ...actor('ped-1', [[0, 0], [30, 0]], 2), detour }, 'realistic');
+      const blocker = rectangle(4, 5, 0.2, 0.6);
+      const after: Vec3Data[] = [];
+      for (let step = 1; step <= 1800 && activeActorCount(world) === 1; step += 1) {
+        world = stepActors(world, blocker, DT).state;
+        if (world.cursors[0].detour !== null && activeActorCount(world) === 1) {
+          after.push(actorPoses(world)[0].positionM);
+        }
+      }
+      const startX = after[0][0];
+      expect(Math.min(...after.map((p) => p[2]))).toBeCloseTo(-0.5, 6);
+      for (const p of after.filter((q) => q[0] > startX + 2 + 1e-6)) expect(p[2]).toBeCloseTo(-0.5, 6);
+      expect(after.some((p) => p[0] < startX + 2 - 0.1 && p[2] < -0.1 && p[2] > -0.45)).toBe(true);
     });
 
     it('blocking both path and detour finishes the actor through the detour-blocked rule', () => {
