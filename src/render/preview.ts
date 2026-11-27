@@ -13,7 +13,7 @@ import { curbTouchBegan } from '../lessons/edge-warnings';
 import { updateFailure } from '../lessons/failure';
 import { updateParking } from '../lessons/parking';
 import { createAudio, type AudioOutput } from '../sensors/audio';
-import { createSensors } from '../sensors/proximity';
+import { createSensors, wheelStopBodies } from '../sensors/proximity';
 import { profiles } from '../vehicle/profiles';
 import { createVehicleRig, SimulationStateError } from '../vehicle/rig';
 import {
@@ -208,7 +208,7 @@ export function createPreview(
     const profile = profiles[prototype.vehicleId];
     const rig = createVehicleRig(world, profile, colliderCleanup.idForBody,
       colliderCleanup.edges);
-    const sensors = createSensors(world, rig.body, profile);
+    const sensors = createSensors(world, rig.body, profile, wheelStopBodies(colliderCleanup.edges));
     cleanups.push(() => rig.dispose());
     rig.settle(mode.kind === 'lesson'
       ? mode.scenario.spawnByVehicle[prototype.vehicleId]

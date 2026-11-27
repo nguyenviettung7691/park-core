@@ -1,5 +1,6 @@
 import * as CANNON from 'cannon-es';
 import type { SensorBand, SensorId, SensorReading, SensorSnapshot, VehicleProfile } from '../contracts';
+import type { ColliderEdge } from '../world/colliders';
 
 const MAX_DISTANCE_M = 2.5;
 const RAY_DISTANCE_M = 2.55;
@@ -38,8 +39,19 @@ export function classifyDistance(distanceM: number | null, previous: SensorBand)
   return exitDistance !== undefined && distanceM <= exitDistance ? previous : raw;
 }
 
+/** The wheel-stop bodies among the edge colliders (for createSensors' `ignored`). */
+export function wheelStopBodies(edges: readonly ColliderEdge[]): ReadonlySet<CANNON.Body> {
+  return new Set(edges.filter(({ box }) => box.kind === 'wheel-stop').map(({ body }) => body));
+}
+
+/**
+ * `ignored`: bodies the sensors never report, whatever the ray height or pitch. Wheel stops are
+ * passed here (spec: the parking sensors exclude them, a stop is a tool, not an obstacle); the
+ * 0.45 m rays would also pass over a 0.11 m stop, but that is geometry, not a rule.
+ */
 export function createSensors(
   world: CANNON.World, body: CANNON.Body, profile: VehicleProfile,
+  ignored: ReadonlySet<CANNON.Body> = new Set(),
 ): ProximitySensors {
   const halfWidth = profile.bodySizeM[0] / 2;
   const frontZ = -((1 - profile.frontWeightFraction) * profile.wheelbaseM +
@@ -92,7 +104,7 @@ export function createSensors(
           to,
           callback(result) {
             if (!result.body || result.body === body || !result.body.collisionResponse ||
-                result.distance >= closestDistance) return;
+                ignored.has(result.body) || result.distance >= closestDistance) return;
             closestDistance = result.distance;
             obstacleId = String(result.body.id);
           },
