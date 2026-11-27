@@ -198,6 +198,12 @@ function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
         return;
       }
       settled = true;
+      // Let a newer schema (another tab, a later deploy) upgrade instead of being blocked by this
+      // connection: close on versionchange; an operation in flight then fails as storage-
+      // unavailable and that attempt is kept for the session only. Rollback note: v2 cannot be
+      // opened by v1 code (VersionError), which then offers a history reset; nothing is deleted
+      // unless the learner confirms it.
+      request.result.onversionchange = () => request.result.close();
       resolve(request.result);
     };
     request.onerror = () => {

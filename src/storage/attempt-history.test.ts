@@ -83,6 +83,23 @@ describe('completed attempt history', () => {
     expect(listed.records).toEqual([{ ...record, summary: { ...v1Summary, curbTouches: 0 } }]);
   });
 
+  it('closes its connection on versionchange so a newer schema is not blocked', async () => {
+    const factory = new IDBFactory();
+    const opened: IDBDatabase[] = [];
+    const open = factory.open.bind(factory);
+    factory.open = (name: string, version?: number) => {
+      const request = open(name, version);
+      request.addEventListener('success', () => opened.push(request.result));
+      return request;
+    };
+    await createStore(factory).list();
+    const database = opened[0]!;
+    expect(database.onversionchange).toBeTypeOf('function');
+    const close = vi.spyOn(database, 'close');
+    database.onversionchange!(new Event('versionchange') as IDBVersionChangeEvent);
+    expect(close).toHaveBeenCalled();
+  });
+
   it('accepts wheel-stop-mounted failures and records curb touches', async () => {
     const store = createStore(new IDBFactory(), ['mounted']);
     const result = await store.append({
