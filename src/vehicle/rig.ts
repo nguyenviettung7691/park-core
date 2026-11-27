@@ -61,7 +61,8 @@ const SETTLE_STEP_S = 1 / 120;
 const SETTLE_MAX_STEPS = 360;
 const SETTLE_MIN_STEPS = 60;
 const SETTLE_SPEED_MPS = 0.01;
-const GEAR_SPEED_MPS = 0.1;
+/** Below this speed the car counts as stopped (gear changes, mirror adjustment). */
+export const GEAR_SPEED_MPS = 0.1;
 const GEAR_BRAKE = 0.2;
 const BRAKE_INHIBIT = 0.02;
 const SERVICE_DECEL_MPS2 = 5;

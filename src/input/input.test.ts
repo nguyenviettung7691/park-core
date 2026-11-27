@@ -596,3 +596,89 @@ describe('dispose', () => {
     expect(controller.checkNeutral()).toBe('controllerUnavailable');
   });
 });
+
+describe('mirror adjustment mode', () => {
+  function allowed() {
+    const ctx = setup();
+    ctx.controller.setMirrorAdjustAllowed(true);
+    return ctx;
+  }
+
+  it('cycles left, right, rear and off with KeyM', () => {
+    const { target, controller } = allowed();
+    const seen: (string | null)[] = [];
+    for (let i = 0; i < 4; i++) {
+      expect(key(target, 'keydown', 'KeyM').defaultPrevented).toBe(true);
+      seen.push(controller.mirrorInput().selected);
+    }
+    expect(seen).toEqual(['left', 'right', 'rear', null]);
+  });
+
+  it('turns arrows into mirror intent instead of steering while selected', () => {
+    const { target, controller } = allowed();
+    key(target, 'keydown', 'KeyM');
+    key(target, 'keydown', 'ArrowLeft');
+    key(target, 'keydown', 'ArrowUp');
+    expect(controller.poll().frame).toEqual(
+      { source: 'keyboard', throttle: 0, brake: 0, steering: 0 });
+    expect(controller.mirrorInput()).toEqual(
+      { selected: 'left', intent: { yaw: -1, pitch: 1 }, blocked: false });
+    key(target, 'keyup', 'ArrowLeft');
+    key(target, 'keyup', 'ArrowUp');
+    key(target, 'keydown', 'ArrowRight');
+    key(target, 'keydown', 'ArrowDown');
+    expect(controller.mirrorInput().intent).toEqual({ yaw: 1, pitch: -1 });
+  });
+
+  it('keeps WASD driving while a mirror is selected', () => {
+    const { target, controller } = allowed();
+    key(target, 'keydown', 'KeyM');
+    key(target, 'keydown', 'KeyW');
+    key(target, 'keydown', 'KeyA');
+    expect(controller.poll().frame).toEqual(
+      { source: 'keyboard', throttle: 1, brake: 0, steering: 1 });
+  });
+
+  it('reports a blocked selection once when adjustment is not allowed', () => {
+    const { target, controller } = setup();
+    key(target, 'keydown', 'KeyM');
+    expect(controller.mirrorInput()).toEqual(
+      { selected: null, intent: { yaw: 0, pitch: 0 }, blocked: true });
+    expect(controller.mirrorInput().blocked).toBe(false);
+    key(target, 'keydown', 'ArrowLeft');
+    expect(controller.poll().frame.steering).toBe(1);
+  });
+
+  it('deselects when disallowed and a still-held arrow does not steer until re-pressed', () => {
+    const { target, controller } = allowed();
+    key(target, 'keydown', 'KeyM');
+    key(target, 'keydown', 'ArrowLeft');
+    controller.setMirrorAdjustAllowed(false);
+    expect(controller.mirrorInput().selected).toBeNull();
+    key(target, 'keydown', 'ArrowLeft', { repeat: true });
+    expect(controller.poll().frame.steering).toBe(0);
+    expect(controller.checkNeutral()).toBe('keysNotReleased');
+    key(target, 'keyup', 'ArrowLeft');
+    key(target, 'keydown', 'ArrowLeft');
+    expect(controller.poll().frame.steering).toBe(1);
+  });
+
+  it('stops steering from an arrow already held when a mirror is selected', () => {
+    const { target, controller } = allowed();
+    key(target, 'keydown', 'ArrowLeft');
+    key(target, 'keydown', 'KeyM');
+    expect(controller.poll().frame.steering).toBe(0);
+    expect(controller.mirrorInput().intent).toEqual({ yaw: 0, pitch: 0 });
+  });
+
+  it('deselects on blur and clear', () => {
+    const { target, controller } = allowed();
+    key(target, 'keydown', 'KeyM');
+    target.dispatchEvent(new Event('blur'));
+    expect(controller.mirrorInput().selected).toBeNull();
+    target.focus();
+    key(target, 'keydown', 'KeyM');
+    controller.clear();
+    expect(controller.mirrorInput().selected).toBeNull();
+  });
+});

@@ -45,9 +45,9 @@ it('composes loaded groups, converts wheel world poses into vehicle space, and r
     anchors: {
       driverEyeLocalM: [0, 1, 0],
       mirrors: {
-        rear: { positionM: [0, 1, 0], rotation: [0, 0, 0, 1] },
-        left: { positionM: [0, 1, 0], rotation: [0, 0, 0, 1] },
-        right: { positionM: [0, 1, 0], rotation: [0, 0, 0, 1] },
+        rear: { positionM: [0, 1, 0], rotation: [0, 0, 0, 1], halfSizeM: [0.1, 0.05], convexity: 1 },
+        left: { positionM: [0, 1, 0], rotation: [0, 0, 0, 1], halfSizeM: [0.1, 0.05], convexity: 1 },
+        right: { positionM: [0, 1, 0], rotation: [0, 0, 0, 1], halfSizeM: [0.1, 0.05], convexity: 1 },
       },
     },
     dispose: disposeAssets,
@@ -89,7 +89,7 @@ function cockpitAssets() {
   }
   const wheels = [new Object3D(), new Object3D(), new Object3D(), new Object3D()] as const;
   vehicle.add(...wheels);
-  const pose = { positionM: [0, 1, 0], rotation: [0, 0, 0, 1] } as const;
+  const pose = { positionM: [0, 1, 0], rotation: [0, 0, 0, 1], halfSizeM: [0.1, 0.05], convexity: 1 } as const;
   const assets: SceneAssets = { environment: new Group(), vehicle, wheelNodes: wheels,
     anchors: { driverEyeLocalM: [0, 1, 0], mirrors: { rear: pose, left: pose, right: pose } },
     dispose: () => {} };

@@ -223,11 +223,14 @@ with open interior sightlines. That glazing is excluded from mirror passes.
 Planar mirror surfaces have UV coordinates for the existing capped-rate
 RenderTargets. Intentional anchor updates must change the shared view contract
 (`vehicleViews` in `src\vehicle\asset-contract.ts`) and pass loader/render checks.
-Both vehicles share one cabin view: it moves the side mirrors (anchors, cameras and
-colliders) forward via `sideMirrorZOffsetM` and places the rearview camera and display
-at one point under the windshield header. Mirror faces follow the reflection law
-between the eye and their camera. Exact anchors and the manual-validation limitation are recorded in
-the catalog.
+Both vehicles share one cabin view: it moves the side mirrors (glass and colliders)
+forward via `sideMirrorZOffsetM` and places the rearview glass under the windshield
+header. Each `Mirror*` node is the glass pivot and shares its `MirrorSurface*` pose,
+size and default aim from the contract (`glass`, `sideInnerEdgeInwardRad`,
+`sideGlassRiseM`). The renderer reflects the driver eye in the live glass plane and
+renders through the glass rectangle, so there is no separate mirror camera anchor; the
+loader rejects glass off its pivot or off the contract size. Exact anchors and the
+manual-validation limitation are recorded in the catalog.
 
 The environment floor contract and named Ground/ParkingMarkings/WallsAndCurbs
 groups remain. Garage pipes and fixtures belong to Ceiling, whose rendering

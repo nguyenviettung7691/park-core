@@ -1,7 +1,7 @@
 import {
   Box3, Box3Helper, BufferGeometry, Color, Group, LineBasicMaterial, LineLoop,
   Mesh, MeshBasicMaterial, OrthographicCamera,
-  PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene,
+  PerspectiveCamera, PlaneGeometry, Raycaster, Scene,
   Vector3, WebGLRenderer, type Object3D, type WebGLRenderTarget,
 } from 'three';
 import type { ScenarioDefinition, SpawnPose, StageId, VehicleProfile } from '../../../src/contracts';
@@ -145,13 +145,17 @@ async function setup() {
   const frames: Pass[][] = [];
   let recording = true, passes: Pass[] = [], mirrorIndex = 0;
   const mirrorTargets = new Map<string, WebGLRenderTarget>();
+  const mirrorCameras = new Map<string, PerspectiveCamera>();
   const render = renderer.render.bind(renderer);
   renderer.info.autoReset = false;
   renderer.render = (scene, camera) => {
     renderer.info.reset();
     render(scene, camera);
     const target = renderer.getRenderTarget();
-    if (target && camera.name.startsWith('mirror-')) mirrorTargets.set(camera.name, target);
+    if (target && camera.name.startsWith('mirror-')) {
+      mirrorTargets.set(camera.name, target);
+      if (camera instanceof PerspectiveCamera) mirrorCameras.set(camera.name, camera);
+    }
     if (recording) {
       const name = target ? camera.name === 'overhead-camera' ? 'overhead' : `mirror-${mirrorIndex++}`
         : scene === content.scene ? 'main' : 'inset-composite';
@@ -282,16 +286,19 @@ async function setup() {
     },
     checkMirror(id, flipFault = false) {
       const markers = new Group();
-      const pose = contract.mirrors[id];
-      const rotation = assets.vehicle.quaternion.clone().multiply(new Quaternion(...pose.rotation));
-      const origin = new Vector3(...pose.positionM).applyMatrix4(assets.vehicle.matrixWorld);
-      const halfHeight = 1.5 * Math.tan((id === 'rear' ? 50 : 75) * Math.PI / 360);
-      const halfWidth = halfHeight * (id === 'rear' ? 4 : 1);
+      // Markers sit in the reflected view: placed through the live mirror camera (virtual eye
+      // and off-axis frustum), red on the camera's left and yellow on its right.
+      views.render(frame, time += 100);
+      const mirrorView = mirrorCameras.get(`mirror-${id}-camera`);
+      if (!mirrorView) throw new Error(`Missing mirror camera ${id}`);
+      const at = (x: number, y: number) => new Vector3(x, y, 0.5).unproject(mirrorView);
+      const halfWidth = at(1, 0).distanceTo(at(-1, 0)) / 2;
+      const halfHeight = at(0, 1).distanceTo(at(0, -1)) / 2;
       for (const [side, color] of [[-1, 0xff0000], [1, 0xffff00]]) {
         const marker = new Mesh(new PlaneGeometry(halfWidth * 0.3, halfHeight * 0.3),
           new MeshBasicMaterial({ color }));
-        marker.position.set(side! * halfWidth * 0.4, 0, -1.5).applyQuaternion(rotation).add(origin);
-        marker.quaternion.copy(rotation);
+        marker.position.copy(at(side! * 0.4, 0));
+        marker.quaternion.copy(mirrorView.quaternion);
         markers.add(marker);
       }
       const environmentVisible = assets.environment.visible;

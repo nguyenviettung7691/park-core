@@ -6,7 +6,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { profiles } from '../src/vehicle/profiles.ts';
-import { deriveVehicleAssetContract } from '../src/vehicle/asset-contract.ts';
+import { deriveVehicleAssetContract, MIRROR_HOUSING } from '../src/vehicle/asset-contract.ts';
 
 /**
  * Exterior lit-lamp nodes (issue #11) are candidates awaiting developer visual approval, so the
@@ -20,7 +20,7 @@ function authoringProfile(id, lamps) {
   const profile = profiles[id];
   return { ...profile, clearanceM: profile.groundClearanceM,
     comHeightM: profile.centerOfMassHeightM,
-    contract: deriveVehicleAssetContract(profile), lamps };
+    contract: deriveVehicleAssetContract(profile), mirrorHousing: MIRROR_HOUSING, lamps };
 }
 
 const vehicleNames = new Set(['sedan', 'cuv']);

@@ -168,6 +168,16 @@ function nodeRotationMatches(
   return dot >= 1 - 1e-5;
 }
 
+/** True when two rotations differ by at most `maxAngleRad`. */
+function quaternionClose(actual: QuatData, expected: QuatData, maxAngleRad = 0.5 * Math.PI / 180): boolean {
+  if (!actual.every(Number.isFinite)) return false;
+  const length = Math.hypot(...actual) * Math.hypot(...expected);
+  if (length === 0) return false;
+  const dot = Math.abs(actual.reduce((sum, component, index) =>
+    sum + component * expected[index]!, 0) / length);
+  return dot >= Math.cos(maxAngleRad / 2);
+}
+
 function validateVehicle(
   document: GlbDocument,
   vehicle: VehicleId,
@@ -238,15 +248,25 @@ function validateVehicleScene(root: Group, vehicle: VehicleId) {
     const node = requiredObject(root, name, 'vehicle');
     if (!hasUnitWorldScale(node) ||
         !closeVector(vectorTuple(node.getWorldPosition(new Vector3())), pose.positionM) ||
-        !nodeRotationMatches(quaternionTuple(node.getWorldQuaternion(new Quaternion())),
-          2 * Math.atan2(pose.rotation[1], pose.rotation[3]))) {
+        !quaternionClose(quaternionTuple(node.getWorldQuaternion(new Quaternion())), pose.rotation)) {
       throw failure('vehicle', 'invalid-contract', new Error(`${name} transform differs from view contract`));
     }
   }
-  for (const name of ['MirrorSurfaceRear', 'MirrorSurfaceLeft', 'MirrorSurfaceRight']) {
+  for (const [id, spec] of Object.entries(contract.mirrors)) {
+    const name = `MirrorSurface${id[0]!.toUpperCase()}${id.slice(1)}`;
     const surface = requiredObject(root, name, 'vehicle');
     if (!(surface instanceof Mesh) || !(surface.material instanceof MeshBasicMaterial)) {
       throw failure('vehicle', 'invalid-contract', new Error(`${name} needs a single unlit mesh material`));
+    }
+    // The glass is the reflecting plane: it must sit on its pivot with the contract size.
+    surface.geometry.computeBoundingBox();
+    const size = surface.geometry.boundingBox?.getSize(new Vector3());
+    if (!hasUnitWorldScale(surface) || !size ||
+        !closeVector(vectorTuple(surface.getWorldPosition(new Vector3())), spec.positionM, 0.002) ||
+        !quaternionClose(quaternionTuple(surface.getWorldQuaternion(new Quaternion())), spec.rotation) ||
+        Math.abs(size.x / 2 - spec.halfSizeM[0]) > 0.002 || Math.abs(size.y / 2 - spec.halfSizeM[1]) > 0.002 ||
+        size.z > 0.002) {
+      throw failure('vehicle', 'invalid-contract', new Error(`${name} differs from the mirror glass contract`));
     }
     const position = surface.geometry.getAttribute('position');
     const uv = surface.geometry.getAttribute('uv');
@@ -501,12 +521,18 @@ export async function loadSceneAssets(
   }
   const eye = requiredObject(vehicleRoot, 'DriverEye', 'vehicle');
   vehicleRoot.updateMatrixWorld(true);
+  const glass = deriveVehicleAssetContract(profiles[vehicle]).mirrors;
+  const mirror = (id: 'rear' | 'left' | 'right', node: string) => ({
+    ...pose(requiredObject(vehicleRoot!, node, 'vehicle'), vehicleRoot!),
+    halfSizeM: glass[id].halfSizeM,
+    convexity: glass[id].convexity,
+  });
   const anchors: VehicleAnchors = {
     driverEyeLocalM: tuple3(eye, vehicleRoot),
     mirrors: {
-      rear: pose(requiredObject(vehicleRoot, 'MirrorRear', 'vehicle'), vehicleRoot),
-      left: pose(requiredObject(vehicleRoot, 'MirrorLeft', 'vehicle'), vehicleRoot),
-      right: pose(requiredObject(vehicleRoot, 'MirrorRight', 'vehicle'), vehicleRoot),
+      rear: mirror('rear', 'MirrorRear'),
+      left: mirror('left', 'MirrorLeft'),
+      right: mirror('right', 'MirrorRight'),
     },
   };
   const wheelNodes = [

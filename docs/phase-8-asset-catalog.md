@@ -23,8 +23,8 @@ unbranded.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 4,976 | 38 / 27 | 367,744 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,650 | 39 / 28 | 413,648 |
+| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 4,976 | 38 / 27 | 368,048 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,650 | 39 / 28 | 413,952 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden. Both are below the 10,000-triangle vehicle gate.
@@ -154,21 +154,28 @@ dimensions and chassis colliders are unchanged:
 
 | Vehicle | COM height (m) | `DriverEye` local (m) | `MirrorRear` local (m) | Left/right mirror local (m) |
 |---|---:|---|---|---|
-| Sedan | 0.52 | (-0.36, 0.60, -0.665) | (0, 0.74, -1.225) | (+/-0.96, 0.43, -1.45) |
-| CUV | 0.62 | (-0.36, 0.68, -0.5462) | (0, 0.82, -1.1062) | (+/-0.965, 0.48, -1.3312) |
+| Sedan | 0.52 | (-0.36, 0.60, -0.665) | (0, 0.74, -1.225) | (+/-0.96, 0.474, -1.45) |
+| CUV | 0.62 | (-0.36, 0.68, -0.5462) | (0, 0.82, -1.1062) | (+/-0.965, 0.524, -1.3312) |
 
-Mirror anchor yaw remains rear 180 degrees, left +105 degrees and right
--105 degrees.
+Issue #9 (2026-11-26) made the mirrors true planar reflections. Each `Mirror*` node is
+now the glass pivot and shares the `MirrorSurface*` pose: the renderer reflects the
+driver eye in the live glass plane and renders through the glass rectangle with an
+off-axis frustum, so the image scale follows glass size and distance. Glass is 0.24 x
+0.06 m (rearview) and 0.22 x 0.13 m (sides, passenger 1.3x convex). Side mirrors aim at
+the common setting: the inner view edge shows a sliver of the car's flank (about 5
+degrees outward for the driver, 4 for the passenger), centre ray 3 degrees down; the
+rearview looks straight back, 2 degrees down. Side glass sits 0.044 m above its
+mount centre so the passenger face clears the dashboard from the eye. Each side-mirror
+collider is that mount box grown to cover the whole visible housing (shell, arm and
+foot, dimensions shared through `MIRROR_HOUSING`), so contact matches what the driver
+sees; the ground footprint used for driving bounds and curb gaps keeps the mount width
+(`mirrorWidthM`), since mirrors ride above curbs and markings. Drivers can tilt each
+glass +/-12 degrees when stopped in P or with the parking brake on (M selects, arrows
+tilt). The cockpit captures above predate these changes.
 
-Both vehicles: the rearview display (0.18 x 0.045 m, the 4:1 aspect of its
-RenderTarget) coincides with its camera and hangs from the headliner on a stem.
-Each mirror face bisects the directions to the eye and to its camera's view,
-like a real mirror. Its housing sits behind it, so no camera sees its own
-housing; this also cleared the CUV left mirror, which previously showed mostly
-its own housing.
-
-The displays are view proxies, not calibrated optical mirrors. Planar mirror
-surfaces have UVs, and updates keep the existing 15 FPS cap.
+Both vehicles: the rearview glass hangs from the headliner on a stem and each housing
+sits behind its glass, so no reflection sees its own housing. Updates keep the existing
+15 FPS cap; the reflections follow real optics but are not calibrated on hardware.
 Loaded-mesh 9 x 9 ray grids verify both side faces are unobstructed from
 each fixed eye; this does not establish optical calibration.
 

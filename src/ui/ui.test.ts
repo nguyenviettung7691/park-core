@@ -572,6 +572,8 @@ it('keeps moved settings labeled and preserves edits across view and audio tabs'
 
   element.querySelector<HTMLButtonElement>('#recenter-view')!.click();
   expect(action).toHaveBeenLastCalledWith({ type: 'recenter-view' });
+  element.querySelector<HTMLButtonElement>('#reset-mirrors')!.click();
+  expect(action).toHaveBeenLastCalledWith({ type: 'reset-mirrors' });
   unmountView.dispose();
   const unmountAudio = mountViewSettings(element, { ...context.settings, cameraMode: 'chase',
     overhead: true, trajectory: true, driverFovDeg: 75 }, 'audio', action);
@@ -1185,4 +1187,18 @@ it('offers reload rather than in-place retry after context loss', () => {
   }, context, vi.fn());
   expect([...element.querySelectorAll('button')].map((node) => node.textContent))
     .toEqual(['Tải lại trang', 'Quay lại menu']);
+});
+
+it('lists the mirror adjustment key in the paused controls help', () => {
+  const element = root();
+  const lesson = { stageId: 1 as const, stepIndex: 0, stepDwellS: 0, parkingDwellS: 0,
+    acknowledgedStepIds: [] };
+  mountScreen(element, { kind: 'paused', lesson, reason: 'user' }, context, vi.fn());
+  expect(element.textContent).toContain('M: chọn gương');
+  expect(messages.keyboardExtra).toContain('M: chọn gương');
+});
+
+it('tells the driver the car must be stopped before adjusting a mirror', () => {
+  expect(messages.mirrorAdjustBlocked).toContain('dừng');
+  expect(messages.controlsHelp).toContain('khi xe đã dừng');
 });

@@ -53,6 +53,8 @@ function fixture() {
       requestPointerLock: vi.fn(() => lockRequest()),
       updateSettings: vi.fn(),
       recenterView: vi.fn(),
+      setMirrorOffsets: vi.fn(),
+      resetMirrors: vi.fn(),
       selectSource: vi.fn(),
       setCalibration: vi.fn(),
       dispose: vi.fn(() => {
@@ -1234,5 +1236,154 @@ it('turns observer failures into the standard runtime fault', async () => {
   await f.flush();
   expect(f.root.querySelector('[role="alert"]')).not.toBeNull();
   expect(f.live).toBe(0);
+  app.dispose();
+});
+
+it('saves mirror adjustments per vehicle and applies them to the next preview', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  const sedanOffsets = {
+    rear: { yawRad: 0, pitchRad: 0 },
+    left: { yawRad: -4 * Math.PI / 180, pitchRad: 0 },
+    right: { yawRad: 0, pitchRad: 0 },
+  };
+  f.events.onMirrorOffsets!('sedan', sedanOffsets);
+  const saved = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(saved.mirrorAdjustments.sedan.left.yawDeg).toBeCloseTo(-4, 9);
+  expect(saved.mirrorAdjustments.cuv).toBeUndefined();
+  f.click('Quay lại menu');
+  await f.openPreview();
+  const applied = vi.mocked(f.previews[1]!.setMirrorOffsets).mock.lastCall![0];
+  expect(applied.left.yawRad).toBeCloseTo(-4 * Math.PI / 180, 9);
+
+  f.click('Quay lại menu');
+  const select = f.root.querySelector<HTMLSelectElement>('#vehicle')!;
+  select.value = 'cuv';
+  select.dispatchEvent(new Event('change'));
+  await f.openPreview();
+  expect(vi.mocked(f.previews[2]!.setMirrorOffsets).mock.lastCall![0].left.yawRad).toBe(0);
+  f.events.onMirrorOffsets!('cuv', { ...sedanOffsets, left: { yawRad: 0, pitchRad: 0.05 } });
+  const both = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(both.mirrorAdjustments.sedan.left.yawDeg).toBeCloseTo(-4, 9);
+  expect(both.mirrorAdjustments.cuv.left.pitchDeg).toBeCloseTo(0.05 * 180 / Math.PI, 9);
+  app.dispose();
+});
+
+it('resets mirrors through the open preview', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
+  const reset = f.root.querySelector<HTMLButtonElement>('#reset-mirrors');
+  expect(reset).not.toBeNull();
+  reset!.click();
+  expect(f.previews[0]!.resetMirrors).toHaveBeenCalledTimes(1);
+  app.dispose();
+});
+
+it('clears transient mirror notices after five seconds', async () => {
+  vi.useFakeTimers();
+  try {
+    const f = fixture();
+    const app = f.app();
+    await f.openPreview();
+    for (const key of ['mirrorAdjustBlocked', 'mirrorAdjustDone'] as const) {
+      f.events.onNotice(key);
+      expect(f.root.querySelector('#status-message')?.textContent).not.toBe('');
+      vi.advanceTimersByTime(5000);
+      expect(f.root.querySelector('#status-message')?.textContent).toBe('');
+    }
+    app.dispose();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('keeps a mirror reset when another view setting changes afterwards', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  const events = f.events;
+  vi.mocked(f.previews[0]!.resetMirrors).mockImplementation(() => {
+    events.onMirrorOffsets!('sedan', {
+      rear: { yawRad: 0, pitchRad: 0 }, left: { yawRad: 0, pitchRad: 0 },
+      right: { yawRad: 0, pitchRad: 0 },
+    });
+  });
+  events.onMirrorOffsets!('sedan', {
+    rear: { yawRad: 0, pitchRad: 0 }, left: { yawRad: -0.1, pitchRad: 0 },
+    right: { yawRad: 0, pitchRad: 0 },
+  });
+  events.onPaused('focus');
+  f.click('Cài đặt');
+  f.root.querySelector<HTMLButtonElement>('#reset-mirrors')!.click();
+  const fov = f.root.querySelector<HTMLInputElement>('#driver-fov')!;
+  fov.value = '70';
+  fov.dispatchEvent(new Event('change'));
+  const saved = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(saved.driverFovDeg).toBe(70);
+  expect(saved.mirrorAdjustments.sedan.left.yawDeg).toBe(0);
+  app.dispose();
+});
+
+it('resets the selected vehicle mirrors from the main menu settings', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  f.events.onMirrorOffsets!('sedan', {
+    rear: { yawRad: 0, pitchRad: 0 }, left: { yawRad: -0.1, pitchRad: 0 },
+    right: { yawRad: 0, pitchRad: 0 },
+  });
+  f.click('Quay lại menu');
+  f.click('Cài đặt');
+  f.root.querySelector<HTMLButtonElement>('#reset-mirrors')!.click();
+  const saved = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(saved.mirrorAdjustments.sedan.left.yawDeg).toBe(0);
+  app.dispose();
+});
+
+it('does not claim a mirror save when the settings record could not be saved', async () => {
+  const f = fixture();
+  const persistence = appPersistence({}, true);
+  const app = f.app({ createPersistence: () => persistence.store });
+  await f.openPreview();
+  f.events.onMirrorOffsets!('sedan', {
+    rear: { yawRad: 0, pitchRad: 0 }, left: { yawRad: -0.1, pitchRad: 0 },
+    right: { yawRad: 0, pitchRad: 0 },
+  });
+  const warning = f.root.querySelector('#status-message')?.textContent;
+  expect(warning).toContain('chỉ lưu trong phiên này');
+  f.events.onNotice('mirrorAdjustDone');
+  expect(f.root.querySelector('#status-message')?.textContent).toBe(warning);
+  app.dispose();
+});
+
+it('restores another record warning, not the mirror prompt, when adjustment ends', async () => {
+  const f = fixture();
+  const values = new Map<string, string>();
+  const store = createPersistence(() => ({
+    getItem: (key) => values.get(key) ?? null,
+    setItem(key, value) {
+      if (key.includes('progress')) throw new Error('quota');
+      values.set(key, value);
+    },
+    removeItem: (key) => { values.delete(key); },
+  }));
+  const app = f.app({ createPersistence: () => store });
+  const select = f.root.querySelector<HTMLSelectElement>('#vehicle')!;
+  select.value = 'cuv';
+  select.dispatchEvent(new Event('change'));
+  await f.openPreview();
+  const status = () => f.root.querySelector('#status-message')?.textContent ?? '';
+  f.events.onNotice('mirrorAdjustRear');
+  f.events.onMirrorOffsets!('cuv', {
+    rear: { yawRad: 0.01, pitchRad: 0 }, left: { yawRad: 0, pitchRad: 0 },
+    right: { yawRad: 0, pitchRad: 0 },
+  });
+  f.events.onNotice('mirrorAdjustDone');
+  expect(status()).not.toContain('Đang chỉnh gương');
+  expect(status()).toContain('Tiến trình');
   app.dispose();
 });
