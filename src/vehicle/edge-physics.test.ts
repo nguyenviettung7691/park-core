@@ -234,6 +234,70 @@ describe('tyre-edge physics in the rig', () => {
       expect(worst).toBe('none');
     });
 
+  /*
+   * Roadside parallel parking: stopped (brake held) or creeping (no throttle) with the curb-side
+   * tyres' outer face `gap` m from the 0.11 m curb face, parallel to it, the learner turns the wheel
+   * to full lock toward the curb (right, steering -1). Turning toward a curb only ever rubs it.
+   */
+  const STEER_GAPS = [0.02, 0.05, 0.1, 0.15] as const;
+  const STEER_CASES = IDS.flatMap((id) => (['D', 'R'] as const).flatMap((gear) =>
+    (['brake', 'creep'] as const).flatMap((mode) => (['gamepad', 'keyboard'] as const).flatMap(
+      (source) => STEER_GAPS.map((gap) => ({ id, gear, mode, source, gap }))))));
+  it.each(STEER_CASES)('$id: $mode in $gear, $source steer to lock toward the curb from $gap m '
+    + 'only rubs it', ({ id, gear, mode, source, gap }) => {
+    const p = profiles[id];
+    const faceX = 4.05;
+    const x = faceX - gap - TYRE_HALF_WIDTH_M - p.trackM / 2;
+    const f = setup(id, [curbAt(faceX + CURB_HALF[0])], { x, z: 0 });
+    const contacts: (string | null)[] = [];
+    f.rig.onContact((c) => contacts.push(c));
+    shift(f, gear);
+    const curbH = 2 * CURB_HALF[1];
+    // Plan half-length of the tyre at curb-top height (ground-to-corner first-touch distance).
+    const reach = Math.sqrt(2 * p.tireRadiusM * curbH - curbH * curbH);
+    const input = frame({ source, steering: -1, brake: mode === 'brake' ? 1 : 0 });
+    let prev = f.rig.snapshot(f.t);
+    let worst = '';
+    let maxRise = 0;
+    let touched = false;
+    let reachedFace = false;
+    let missedTouch = '';
+    for (let i = 0; i < Math.round(3 / H); i++) {
+      const snap = step(f, input);
+      for (let w = 0; w < 4; w++) {
+        const st = snap.wheelEdges[w].state;
+        if ((st === 'climbing' || st === 'over') && !worst) {
+          worst = `${w}:${st} at ${f.t.toFixed(3)} s`;
+        }
+        if (st === 'touching') touched = true;
+        maxRise = Math.max(maxRise, snap.wheelPoses[w].positionM[1] - prev.wheelPoses[w].positionM[1]);
+      }
+      // Curb-side wheels (1, 3): plan footprint at curb height clearly past the face => touching.
+      for (const w of [1, 3]) {
+        const { positionM: c, rotation: q } = snap.wheelPoses[w];
+        const axle = new CANNON.Quaternion(...q).vmult(new CANNON.Vec3(1, 0, 0));
+        const len = Math.hypot(axle.x, axle.z);
+        const extent = reach * Math.abs(axle.z / len) + TYRE_HALF_WIDTH_M * Math.abs(axle.x / len);
+        if (c[0] + extent >= faceX + 0.005) {
+          reachedFace = true;
+          if (snap.wheelEdges[w].state !== 'touching' && !missedTouch) {
+            missedTouch = `${w}:${snap.wheelEdges[w].state} at ${f.t.toFixed(3)} s`;
+          }
+        }
+      }
+      prev = snap;
+    }
+    const end = f.rig.snapshot(f.t);
+    record(`${id} ${mode} ${gear} ${source} steer-to-curb gap ${gap}: worst ${worst || 'none'}, `
+      + `max wheel rise/step ${maxRise.toFixed(4)} m, touched ${touched}, reached face ${reachedFace}, `
+      + `missed ${missedTouch || '-'}, end speed ${end.telemetry.totalSpeedMps.toFixed(3)}`);
+    expect(worst).toBe('');
+    expect(maxRise).toBeLessThanOrEqual(0.01);
+    expect(missedTouch).toBe('');
+    expect(contacts).toEqual([]);
+    if (reachedFace) expect(touched).toBe(true);
+  });
+
   const ANGLE_CASES = IDS.flatMap((id) => (['D', 'R'] as const).flatMap((gear) =>
     [15, 30, 45, 60, 75, 90].map((angleDeg) => ({ id, gear, angleDeg }))));
   it.each(ANGLE_CASES)('$id: creeping straight in $gear at $angleDeg deg to the curb never climbs it',

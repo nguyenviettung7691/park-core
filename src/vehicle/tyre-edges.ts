@@ -25,6 +25,14 @@ export interface TyreEdgeResult {
   readonly lateralNormal: Vec3Data | null;
   /** The box the lateral penetration is against (null without one). */
   readonly lateralColliderId: string | null;
+  /**
+   * Nearest box with a slice within first-touch reach (or overlapping it) across a face classed
+   * lateral, and no rolling contact from that box this call: the wheel is alongside it, not rolling
+   * into it. The rig latches it as `lateralOnlyId` (null without one).
+   */
+  readonly lateralReachColliderId: string | null;
+  /** The `lateralOnlyId` box has a slice within first-touch reach (or overlapping it). */
+  readonly lateralOnlyInReach: boolean;
 }
 
 const NONE_CONTACT: WheelEdgeContact = Object.freeze({
@@ -33,14 +41,17 @@ const NONE_CONTACT: WheelEdgeContact = Object.freeze({
 const NO_EDGE: TyreEdgeResult = Object.freeze({
   contact: NONE_CONTACT, supportY: null, normal: null, hitPointM: null,
   lateralPenetrationM: 0, lateralNormal: null, lateralColliderId: null,
+  lateralReachColliderId: null, lateralOnlyInReach: false,
 });
 const SLICE_OFFSETS = [-TYRE_HALF_WIDTH_M, 0, TYRE_HALF_WIDTH_M] as const;
 const EPS = 1e-9;
 
 /**
  * `lateralOnlyId`: a box whose faces count as lateral (sidewall push, no lift) at any angle. The rig
- * passes the box a wheel is already side-rubbing, so turning while pressed against its face cannot
- * reclassify the overlap as a deep rolling contact and lift the tyre in one step.
+ * passes the box a wheel is already alongside (see lateralReachColliderId), so steering or yawing
+ * toward its face cannot reclassify it as a deep rolling contact and lift the tyre in one step.
+ * Against that box a slice reports 'touching' (no support, no force) once the tyre's plan footprint
+ * at the box's height reaches the face: d <= (first touch + margin) * |n . rollDir|.
  */
 export function tyreEdge(
   tyre: TyreFrame,
@@ -68,6 +79,9 @@ export function tyreEdge(
   let penNz = 0;
   let nearBox: ColliderBox | null = null;
   let nearGap = Infinity;
+  let latBox: ColliderBox | null = null;
+  let latD = Infinity;
+  let lateralOnlyInReach = false;
 
   for (const box of edges) {
     if (box.kind !== 'curb' && box.kind !== 'wheel-stop') continue;
@@ -86,6 +100,11 @@ export function tyreEdge(
     const clx = cwx * cos - cwz * sin;
     const clz = cwx * sin + cwz * cos;
     const centreIn = Math.abs(clx) <= hx && Math.abs(clz) <= hz;
+    // First-touch distance: where the tyre circle reaches the edge corner from the ground.
+    const firstTouch = Math.sqrt(Math.max(0, 2 * r * h - h * h));
+    let boxRolling = false;
+    let boxLatD = Infinity;
+    let boxInReach = false;
 
     for (let i = 0; i < 3; i += 1) {
       const off = SLICE_OFFSETS[i];
@@ -102,9 +121,11 @@ export function tyreEdge(
       const inside = d === 0;
 
       if (inside) {
+        boxInReach = true;
         if (i === 1) {
           // Centre slice over the box: it carries the wheel.
           over = true;
+          boxRolling = true;
           if (top > bestSupport) {
             bestSupport = top;
             bestBox = box;
@@ -128,35 +149,50 @@ export function tyreEdge(
         const wnx = lnx * cos + lnz * sin;
         const wnz = -lnx * sin + lnz * cos;
         if (lateralOnly || Math.abs(wnx * rx + wnz * rz) < 0.5) {
+          boxLatD = 0;
           if (!centreIn && depth > bestPen) {
             bestPen = depth;
             penBox = box;
             penNx = wnx;
             penNz = wnz;
           }
-        } else if (top > bestSupport) {
-          bestSupport = top;
-          bestBox = box;
-          bestH = h;
-          nx = 0;
-          nz = 0;
-          ny = 1;
-          hitX = cx + ax * off;
-          hitZ = cz + az * off;
-          hitY = top;
+        } else {
+          boxRolling = true;
+          if (top > bestSupport) {
+            bestSupport = top;
+            bestBox = box;
+            bestH = h;
+            nx = 0;
+            nz = 0;
+            ny = 1;
+            hitX = cx + ax * off;
+            hitZ = cz + az * off;
+            hitY = top;
+          }
         }
         continue;
       }
 
-      // First-touch distance: where the tyre circle reaches the edge corner from the ground.
-      const firstTouch = Math.sqrt(Math.max(0, 2 * r * h - h * h));
-      if (d >= r && d > firstTouch + TOUCH_MARGIN_M) continue;
+      if (d > firstTouch + TOUCH_MARGIN_M) continue;
+      boxInReach = true;
       // Outward face normal (world) from the rectangle point to the slice centre.
       const wnx = (dlx * cos + dlz * sin) / d;
       const wnz = (-dlx * sin + dlz * cos) / d;
-      if (lateralOnly || Math.abs(wnx * rx + wnz * rz) < 0.5) continue; // lateral: no lift
+      const along = Math.abs(wnx * rx + wnz * rz);
+      if (lateralOnly || along < 0.5) {
+        // Lateral: no lift. Alongside the face, within reach of rolling onto it.
+        boxLatD = Math.min(boxLatD, d);
+        const reach = (firstTouch + TOUCH_MARGIN_M) * along;
+        if (lateralOnly && d <= reach && d - reach < nearGap) {
+          // Steered/yawed tyre footprint against the face: rubbing it, no support or force.
+          nearGap = d - reach;
+          nearBox = box;
+        }
+        continue;
+      }
+      boxRolling = true;
       if (d > firstTouch) {
-        if (d - firstTouch <= TOUCH_MARGIN_M && d - firstTouch < nearGap) {
+        if (d - firstTouch < nearGap) {
           nearGap = d - firstTouch;
           nearBox = box;
         }
@@ -177,10 +213,20 @@ export function tyreEdge(
       hitZ = cz + az * off - wnz * d;
       hitY = top;
     }
+    if (lateralOnly && boxInReach) lateralOnlyInReach = true;
+    if (!boxRolling && boxLatD < latD) {
+      latD = boxLatD;
+      latBox = box;
+    }
   }
 
   const hasSupport = bestBox !== null;
-  if (!hasSupport && penBox === null && nearBox === null) return NO_EDGE;
+  if (!hasSupport && penBox === null && nearBox === null) {
+    if (latBox === null && !lateralOnlyInReach) return NO_EDGE;
+    return {
+      ...NO_EDGE, lateralReachColliderId: latBox?.id ?? null, lateralOnlyInReach,
+    };
+  }
 
   let state: WheelEdgeContact['state'] = 'touching';
   if (over) state = 'over';
@@ -200,5 +246,7 @@ export function tyreEdge(
     lateralPenetrationM: penBox ? bestPen : 0,
     lateralNormal: penBox ? [penNx, 0, penNz] : null,
     lateralColliderId: penBox ? penBox.id : null,
+    lateralReachColliderId: latBox?.id ?? null,
+    lateralOnlyInReach,
   };
 }

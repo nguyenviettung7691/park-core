@@ -124,7 +124,11 @@ interface WheelEdgeStep {
   readonly pushPoint: CANNON.Vec3;
   /** Edge this wheel has been 'over' since it last reported 'none': a support from it is a descent. */
   descendingFrom: string | null;
-  /** Edge this wheel has side-rubbed since it last reported 'none': its faces stay lateral. */
+  /**
+   * Edge this wheel came alongside (side-rubbed, or within first-touch reach across a lateral face)
+   * and has stayed within reach of since: its faces stay lateral, so steering or yawing toward it
+   * only rubs it. Cleared once the wheel leaves its reach.
+   */
   rubbing: string | null;
 }
 
@@ -223,8 +227,9 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
     step.contact = result.contact;
     if (result.contact.state === 'over') step.descendingFrom = result.contact.colliderId;
     else if (result.contact.state === 'none') step.descendingFrom = null;
-    if (result.contact.state === 'none') step.rubbing = null;
-    else if (result.lateralColliderId) step.rubbing = result.lateralColliderId;
+    if (!step.rubbing || !result.lateralOnlyInReach) {
+      step.rubbing = result.lateralColliderId ?? result.lateralReachColliderId;
+    }
     if (result.lateralNormal) {
       step.lateralPenetrationM = result.lateralPenetrationM;
       step.lateralNormal.set(...result.lateralNormal);
@@ -271,6 +276,17 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
       wheel.clippedInvContactDotSuspension = inv;
     }
     return distance;
+  }
+
+  /** Forget per-wheel edge history (latches and the latest outcome), e.g. before a settle. */
+  resetEdgeState(): void {
+    for (const step of this.edgeSteps) {
+      step.contact = NO_WHEEL_EDGE;
+      step.lateralPenetrationM = 0;
+      step.supported = false;
+      step.descendingFrom = null;
+      step.rubbing = null;
+    }
   }
 
   /** Edge forces from the latest castRay: sidewall-against-face push, then rebound damping. */
@@ -532,6 +548,7 @@ export function createVehicleRig(
       body.position.set(x, y, z);
       body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), spawn.yawRad);
       clearMotion();
+      vehicle.resetEdgeState();
       applySteering();
       let converged = false;
       for (let i = 0; i < SETTLE_MAX_STEPS && !converged; i++) {
