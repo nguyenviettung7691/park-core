@@ -146,10 +146,24 @@ describe.each(['sedan', 'cuv'] as const)('%s seat range and head clearance contr
   const yawsRad: number[] = [];
   for (let deg = -160; deg <= 110; deg += 2) yawsRad.push(deg * Math.PI / 180);
 
-  it('seat range matches spec', () => {
-    // Not narrowed by Task 8 evidence yet.
+  it('seat range matches spec, narrowed only where the exported cockpit requires it', () => {
     expect(contract.seatRangeM.foreAft).toEqual([-0.1, 0.1]);
-    expect(contract.seatRangeM.height).toEqual([-0.03, 0.05]);
+    // CUV: +5 cm brought the looking-back eye within 0.11 m of the headliner (head-clearance.test.ts).
+    expect(contract.seatRangeM.height).toEqual(id === 'cuv' ? [-0.03, 0.03] : [-0.03, 0.05]);
+  });
+
+  it('keeps >= 1 cm between every raw eye and the clearance box', () => {
+    const { minM, maxM } = contract.headClearance;
+    const base = profile.driverEyeLocalM;
+    for (const seat of corners) for (const yaw of yawsRad) {
+      const o = headOffsetLocal(yaw);
+      const raw = [base[0] + o[0], base[1] + seat.heightM + o[1], base[2] + seat.foreAftM + o[2]];
+      for (let axis = 0; axis < 3; axis++) {
+        expect(raw[axis]! - minM[axis]!, `axis ${axis} min`).toBeGreaterThanOrEqual(0.01 - 1e-9);
+        expect(maxM[axis]! - raw[axis]!, `axis ${axis} max seat ${JSON.stringify(seat)} yaw ${yaw}`)
+          .toBeGreaterThanOrEqual(0.01 - 1e-9);
+      }
+    }
   });
 
   it('eye stays in front of every mirror glass', () => {

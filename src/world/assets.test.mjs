@@ -109,6 +109,28 @@ describe('phase 5 scene asset loading', () => {
       .rejects.toMatchObject({ reason: 'invalid-contract', cause: { message: expect.stringContaining(name) } });
   });
 
+  it.each(['sedan', 'cuv'])('loads %s with or without the optional DriverSeat node', async (id) => {
+    mockedFetch();
+    const plain = await loadSceneAssets('garage', id, new AbortController().signal);
+    try { expect(plain.vehicle.getObjectByName('DriverSeat')).toBeUndefined(); } finally { plain.dispose(); }
+    mockedFetch({ ...assetBytes, [`/assets/vehicles/${id}.glb`]: buildGlb(id, { driverSeat: true }) });
+    const seated = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      const seat = seated.vehicle.getObjectByName('DriverSeat');
+      expect(seat?.parent?.name).toBe('Cockpit');
+      expect(seat?.getObjectByName('DriverSeatParts')).toBeInstanceOf(Mesh);
+    } finally { seated.dispose(); }
+  });
+
+  it('rejects a rotated DriverSeat, whose seat offset would not follow the vehicle axes', async () => {
+    const bytes = rewriteJson(buildGlb('sedan', { driverSeat: true }), (json) => {
+      json.nodes.find((node) => node.name === 'DriverSeat').rotation = [0, Math.SQRT1_2, 0, Math.SQRT1_2];
+    });
+    mockedFetch({ ...assetBytes, '/assets/vehicles/sedan.glb': bytes });
+    await expect(loadSceneAssets('garage', 'sedan', new AbortController().signal))
+      .rejects.toMatchObject({ reason: 'invalid-contract', cause: { message: expect.stringContaining('DriverSeat') } });
+  });
+
   it('rejects a mirror without UVs before rendering starts', async () => {
     const records = { ...assetBytes,
       '/assets/vehicles/sedan.glb': rewriteJson(assetBytes['/assets/vehicles/sedan.glb'], (json) => {

@@ -213,21 +213,30 @@ function authorCabin({ root, addNode, addMesh }, data, { roofFront: roofFrontZ, 
         part([1.42, 0.71, 0.02], [0, floorY + 0.355, 0.76], floorColor)]),
   ];
   // Front seats: cushion under the hip just behind the eye, backrest reclined 15 degrees.
+  // With data.driverSeat (issue #23 candidate, DRIVER_SEAT_DEFAULT in tools/generate-assets.mjs)
+  // the driver seat is its own mesh under `DriverSeat`, whose origin is the cushion-top centre,
+  // so asset-scene.ts moves it by the seat offset; otherwise it stays in SeatsAndInterior.
   const cushionZ = eyeZ + 0.045, backZ = cushionZ + 0.25, recline = 0.26;
   const along = (base, distance, angle) => [0.5 + distance * Math.cos(angle), base + distance * Math.sin(angle)];
-  for (const x of [-0.31, 0.31]) {
-    cabin.push(part([0.3, 0.16, 0.36], [x, 0.32, cushionZ], floorColor));
-    cabin.push(part([0.38, 0.1, 0.5], [x, 0.45, cushionZ], seat));
+  const driverX = -0.31, seatOrigin = [driverX, 0.5, cushionZ], driverSeat = [];
+  for (const x of [driverX, 0.31]) {
+    const movable = data.driverSeat && x === driverX;
+    const parts = movable ? driverSeat : cabin;
+    const [ox, oy, oz] = movable ? seatOrigin : [0, 0, 0];
+    const seatPart = (size, [cx, cy, cz], color, rotation) =>
+      parts.push(part(size, [cx - ox, cy - oy, cz - oz], color, rotation));
+    seatPart([0.3, 0.16, 0.36], [x, 0.32, cushionZ], floorColor);
+    seatPart([0.38, 0.1, 0.5], [x, 0.45, cushionZ], seat);
     for (const side of [-1, 1]) {
-      cabin.push(part([0.06, 0.06, 0.48], [x + side * 0.17, 0.52, cushionZ], seatDark));
+      seatPart([0.06, 0.06, 0.48], [x + side * 0.17, 0.52, cushionZ], seatDark);
       const [y, z] = along(backZ + 0.02, 0.27, recline);
-      cabin.push(part([0.06, 0.5, 0.12], [x + side * 0.17, y, z], seatDark, [recline, 0, 0]));
+      seatPart([0.06, 0.5, 0.12], [x + side * 0.17, y, z], seatDark, [recline, 0, 0]);
     }
     const [backY, backCenterZ] = along(backZ, 0.3, recline);
-    cabin.push(part([0.38, 0.6, 0.1], [x, backY, backCenterZ], seat, [recline, 0, 0]));
+    seatPart([0.38, 0.6, 0.1], [x, backY, backCenterZ], seat, [recline, 0, 0]);
     const [topY, topZ] = along(backZ, 0.6, recline);
-    cabin.push(part([0.03, 0.08, 0.03], [x, topY - 0.02, topZ], panel));
-    cabin.push(part([0.24, 0.16, 0.09], [x, topY + 0.08, topZ + 0.03], seat, [recline, 0, 0]));
+    seatPart([0.03, 0.08, 0.03], [x, topY - 0.02, topZ], panel);
+    seatPart([0.24, 0.16, 0.09], [x, topY + 0.08, topZ + 0.03], seat, [recline, 0, 0]);
   }
   // Rear bench with two headrests; knee room behind the reclined front backrests.
   const benchZ = 0.28, benchBackZ = benchZ + 0.25, benchRecline = 0.3;
@@ -251,6 +260,10 @@ function authorCabin({ root, addNode, addMesh }, data, { roofFront: roofFrontZ, 
     for (const z of layout.pillarTrims) cabin.push(part([0.035, 0.55, 0.012], [s * (trimX - 0.005), 0.55, z], dashDark));
   }
   addMesh('SeatsAndInterior', cockpit, mergeGeometry(cabin), seat);
+  if (data.driverSeat) {
+    const seatNode = addNode('DriverSeat', cockpit, { translation: seatOrigin });
+    addMesh('DriverSeatParts', seatNode, mergeGeometry(driverSeat), seat);
+  }
 }
 
 function authorWheels({ root, addMesh }, data, { frontZ, rearZ, part }) {

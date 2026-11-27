@@ -15,18 +15,26 @@ import { deriveVehicleAssetContract, MIRROR_HOUSING } from '../src/vehicle/asset
  */
 export const EXTERIOR_LAMPS_DEFAULT = true;
 
-function authoringProfile(id, lamps) {
+/**
+ * The movable `DriverSeat` node (issue #23) is a candidate awaiting developer visual approval, so
+ * default generation leaves the driver seat in `SeatsAndInterior` and reproduces the public GLBs.
+ * Candidates are generated with `--driver-seat` (or `{ driverSeat: true }`); promotion after
+ * approval flips this default to true and regenerates public/ (see docs/asset-pipeline.md).
+ */
+export const DRIVER_SEAT_DEFAULT = false;
+
+function authoringProfile(id, { lamps, driverSeat }) {
   const profile = profiles[id];
   return { ...profile, clearanceM: profile.groundClearanceM,
     comHeightM: profile.centerOfMassHeightM,
-    contract: deriveVehicleAssetContract(profile), mirrorHousing: MIRROR_HOUSING, lamps };
+    contract: deriveVehicleAssetContract(profile), mirrorHousing: MIRROR_HOUSING, lamps, driverSeat };
 }
 
 const vehicleNames = new Set(['sedan', 'cuv']);
 const allAssetIds = ['sedan', 'cuv', 'roadside', 'garage'];
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-function createGltf(assetId, dimensionsM, origin, lamps) {
+function createGltf(assetId, dimensionsM, origin, options) {
   const binaryParts = [];
   const nodes = [];
   const meshes = [];
@@ -119,7 +127,7 @@ function createGltf(assetId, dimensionsM, origin, lamps) {
 
   const root = addNode(`${assetId} asset`, null, { extras: { dimensionsM, origin } });
   const writer = { root, addNode, addMesh, box };
-  if (vehicleNames.has(assetId)) authorVehicle(writer, assetId, authoringProfile(assetId, lamps));
+  if (vehicleNames.has(assetId)) authorVehicle(writer, assetId, authoringProfile(assetId, options));
   else authorEnvironment(writer, assetId);
 
   const binary = Buffer.concat(binaryParts);
@@ -159,21 +167,23 @@ function createGltf(assetId, dimensionsM, origin, lamps) {
 
 /**
  * @param {'sedan' | 'cuv' | 'roadside' | 'garage'} assetId
- * @param {{ lamps?: boolean }} [options] lamps: author the exterior lit-lamp nodes (vehicles only)
+ * @param {{ lamps?: boolean, driverSeat?: boolean }} [options] lamps: author the exterior lit-lamp
+ *   nodes; driverSeat: author the movable DriverSeat node (vehicles only)
  * @returns {Uint8Array}
  */
-export function buildGlb(assetId, { lamps = EXTERIOR_LAMPS_DEFAULT } = {}) {
+export function buildGlb(assetId,
+  { lamps = EXTERIOR_LAMPS_DEFAULT, driverSeat = DRIVER_SEAT_DEFAULT } = {}) {
   if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);
   const dimensionsM = vehicleNames.has(assetId)
     ? profiles[assetId].bodySizeM
     : assetId === 'garage' ? [30, 6, 30] : [50, 3, 32];
   return createGltf(assetId, dimensionsM,
-    vehicleNames.has(assetId) ? 'center-of-mass' : 'world-ground', lamps);
+    vehicleNames.has(assetId) ? 'center-of-mass' : 'world-ground', { lamps, driverSeat });
 }
 
 /** @param {string} outputRoot
  * @param {readonly string[]} assetIds
- * @param {{ lamps?: boolean }} [options] */
+ * @param {{ lamps?: boolean, driverSeat?: boolean }} [options] */
 export function writeAssets(outputRoot, assetIds = allAssetIds, options = {}) {
   for (const assetId of assetIds) {
     if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);
@@ -187,7 +197,8 @@ export function writeAssets(outputRoot, assetIds = allAssetIds, options = {}) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { vehicle: { type: 'string' }, out: { type: 'string' } },
+    options: { vehicle: { type: 'string' }, out: { type: 'string' },
+      'driver-seat': { type: 'boolean' } },
   });
   if (positionals.length > 1 || (positionals.length && values.out)) {
     throw new Error('Use one output root: --out <directory> or the legacy positional directory');
@@ -196,5 +207,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     throw new RangeError('--vehicle must be sedan or cuv');
   }
   const outputRoot = resolve(values.out ?? positionals[0] ?? projectRoot);
-  writeAssets(outputRoot, values.vehicle ? [values.vehicle] : allAssetIds);
+  writeAssets(outputRoot, values.vehicle ? [values.vehicle] : allAssetIds,
+    values['driver-seat'] === undefined ? {} : { driverSeat: values['driver-seat'] });
 }

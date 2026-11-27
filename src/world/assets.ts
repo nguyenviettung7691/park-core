@@ -189,6 +189,9 @@ function validateVehicle(
       throw failure('vehicle', 'invalid-contract', new Error(`Expected exactly one ${name}`));
     }
   }
+  if ((names.get('DriverSeat')?.length ?? 0) > 1) {
+    throw failure('vehicle', 'invalid-contract', new Error('Expected at most one DriverSeat'));
+  }
   const dimensions = profiles[vehicle].bodySizeM;
   validateDimensions(root, dimensions, 'vehicle');
   if (root.extras?.origin !== 'center-of-mass') {
@@ -274,6 +277,13 @@ function validateVehicleScene(root: Group, vehicle: VehicleId) {
         !Array.from(uv.array).every(Number.isFinite)) {
       throw failure('vehicle', 'invalid-contract', new Error(`${name} needs finite per-vertex UVs`));
     }
+  }
+  // Optional: asset-scene offsets DriverSeat in its parent frame along the vehicle axes.
+  const driverSeat = root.getObjectByName('DriverSeat');
+  const unrotated = (node: Object3D | null) => !node ||
+    nodeRotationMatches(quaternionTuple(node.getWorldQuaternion(new Quaternion())), 0);
+  if (driverSeat && (!hasUnitWorldScale(driverSeat) || !unrotated(driverSeat) || !unrotated(driverSeat.parent))) {
+    throw failure('vehicle', 'invalid-contract', new Error('DriverSeat must be unrotated and unscaled'));
   }
   const frontZ = -(1 - profile.frontWeightFraction) * profile.wheelbaseM;
   const rearZ = profile.frontWeightFraction * profile.wheelbaseM;
