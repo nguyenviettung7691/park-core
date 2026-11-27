@@ -6,13 +6,13 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { profiles } from '../src/vehicle/profiles.ts';
-import { deriveVehicleAssetContract } from '../src/vehicle/asset-contract.ts';
+import { deriveVehicleAssetContract, MIRROR_HOUSING } from '../src/vehicle/asset-contract.ts';
 
 function authoringProfile(id) {
   const profile = profiles[id];
   return { ...profile, clearanceM: profile.groundClearanceM,
     comHeightM: profile.centerOfMassHeightM,
-    contract: deriveVehicleAssetContract(profile) };
+    contract: deriveVehicleAssetContract(profile), mirrorHousing: MIRROR_HOUSING };
 }
 
 const vehicleNames = new Set(['sedan', 'cuv']);

@@ -12,17 +12,24 @@ describe('shared vehicle asset contract', () => {
     const contract = deriveVehicleAssetContract(profile);
     const geometry = deriveGeometry(profile);
     expect(contract.driverEyeLocalM).toEqual(profile.driverEyeLocalM);
-    // Side glass sits 4.4 cm above the mirror collider centre, inside its housing.
+    // Side glass sits 4.4 cm above the mirror mount centre ((2.2 + 1.9) / 4, 1.05 - 0.52,
+    // frontAxle + 0.35 - 0.585), inside its housing; the collider covers the glass.
     expect(contract.mirrors.left.positionM).toEqual([
-      geometry.mirrors[0].centerLocalM[0], expect.closeTo(geometry.mirrors[0].centerLocalM[1] + 0.044, 9),
-      geometry.mirrors[0].centerLocalM[2]]);
+      expect.closeTo(-1.025, 9), expect.closeTo(0.53 + 0.044, 9), expect.closeTo(-1.495, 9)]);
+    const collider = geometry.mirrors[0];
+    for (let axis = 0; axis < 3; axis++) {
+      expect(Math.abs(contract.mirrors.left.positionM[axis]! - collider.centerLocalM[axis]!))
+        .toBeLessThanOrEqual(collider.halfExtentsM[axis]!);
+    }
     expect(contract.mirrors.rear.positionM[2]).toBeCloseTo(-1.56);
     expect(contract.rearDisplayM).toEqual(contract.mirrors.rear.positionM);
     expect(contract.bodyPhysicalZ[1] - contract.bodyPhysicalZ[0]).toBeCloseTo(4.8);
     const footprint = vehicleFootprint({ positionM: [0, 0, 0], rotation: [0, 0, 0, 1] }, profile);
     expect(footprint[0][0]).toBe(-1.1);
     expect(footprint[0][2]).toBeCloseTo(contract.bodyPhysicalZ[0]);
-    expect(mirrorBoxes(profile)[0].centerLocalM[1]).toBeCloseTo(0.53);
+    const [box] = mirrorBoxes(profile);
+    expect(box.centerLocalM[1] - box.halfExtentsM[1]).toBeLessThanOrEqual(0.53 - 0.05 + 1e-9);
+    expect(box.centerLocalM[1] + box.halfExtentsM[1]).toBeGreaterThanOrEqual(0.53 + 0.05 - 1e-9);
   });
 
   it('places sedan and CUV mirrors ahead of the driver', () => {

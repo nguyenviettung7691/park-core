@@ -589,10 +589,12 @@ function authorMirrors({ root, addNode, addMesh }, data, exterior, roofY) {
     const [qx, qy, qz, qw] = pose.rotation;
     const normal = [2 * (qx * qz + qw * qy), 2 * (qy * qz - qw * qx), 1 - 2 * (qx * qx + qy * qy)];
     const glassEuler = [-Math.asin(normal[1]), Math.atan2(normal[0], normal[2]), 0];
-    const shellDepth = name === 'Rear' ? 0.035 : 0.05;
+    // Shared with the collider (mirrorBoxes) so physics covers the visible housing.
+    const H = data.mirrorHousing;
+    const shellDepth = name === 'Rear' ? H.rearShellDepthM : H.sideShellDepthM;
     const shell = transformGeometry(transformGeometry(
-      boxGeometry([size[0] + 0.025, size[1] + 0.025, shellDepth], palette.trim),
-      [0, 0, -(shellDepth / 2 + 0.008)]), [0, 0, 0], glassEuler);
+      boxGeometry([size[0] + 2 * H.rimM, size[1] + 2 * H.rimM, shellDepth], palette.trim),
+      [0, 0, -(shellDepth / 2 + H.gapM)]), [0, 0, 0], glassEuler);
     if (name === 'Rear') {
       // Display hangs from the headliner on a short stem; shell sits ahead of the face.
       const headlinerY = roofY - 0.065 - data.comHeightM;
@@ -607,12 +609,12 @@ function authorMirrors({ root, addNode, addMesh }, data, exterior, roofY) {
     }
     // Side housings sit behind the face with an arm and foot down to the door belt.
     const side = Math.sign(position[0]);
-    const doorX = data.bodySizeM[0] / 2 - 0.02;
+    const doorX = data.bodySizeM[0] / 2 - H.doorInsetM;
     const armLength = Math.abs(position[0]) - doorX;
-    const arm = transformGeometry(boxGeometry([armLength, 0.035, 0.05], palette.trim),
-      [-side * armLength / 2, -0.08, 0]);
-    const foot = transformGeometry(boxGeometry([0.05, 0.05, 0.07], palette.trim),
-      [-side * armLength, -0.105, 0]);
+    const arm = transformGeometry(boxGeometry([armLength, H.arm.heightM, H.arm.depthM], palette.trim),
+      [-side * armLength / 2, -H.arm.dropM, 0]);
+    const foot = transformGeometry(boxGeometry([...H.foot.sizeM], palette.trim),
+      [-side * armLength, -H.foot.dropM, 0]);
     addMesh(`MirrorHousing${name}`, exterior, mergeGeometry([shell, arm, foot]), palette.trim, position);
   }
 }

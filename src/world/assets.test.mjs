@@ -1,6 +1,7 @@
 import { Box3, BufferGeometry, Mesh, Quaternion, Raycaster, Vector3 } from 'three';
 import { profiles } from '../vehicle/profiles.ts';
 import { deriveVehicleAssetContract } from '../vehicle/asset-contract.ts';
+import { deriveGeometry } from '../vehicle/geometry.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildGlb } from '../../tools/generate-assets.mjs';
 import { AssetLoadError, loadSceneAssets } from './assets.ts';
@@ -237,6 +238,33 @@ describe('phase 5 scene asset loading', () => {
       const rear = assets.vehicle.getObjectByName('MirrorSurfaceRear').getWorldPosition(new Vector3());
       expect(rear.y).toBeGreaterThan(eye.y + 0.1);
       expect(rear.z).toBeLessThan(eye.z - 0.15);
+    } finally { assets.dispose(); }
+  });
+
+  it.each(['sedan', 'cuv'])('keeps every visible %s side-mirror part inside its collider box', async (id) => {
+    mockedFetch();
+    const assets = await loadSceneAssets('garage', id, new AbortController().signal);
+    try {
+      assets.vehicle.updateMatrixWorld(true);
+      const toLocal = assets.vehicle.matrixWorld.clone().invert();
+      const boxes = deriveGeometry(profiles[id]).mirrors;
+      for (const [side, index] of [['Left', 0], ['Right', 1]]) {
+        const box = boxes[index];
+        const min = new Vector3(...box.centerLocalM).sub(new Vector3(...box.halfExtentsM));
+        const max = new Vector3(...box.centerLocalM).add(new Vector3(...box.halfExtentsM));
+        for (const name of [`MirrorHousing${side}`, `MirrorSurface${side}`]) {
+          const mesh = assets.vehicle.getObjectByName(name);
+          const position = mesh.geometry.getAttribute('position');
+          const point = new Vector3();
+          for (let i = 0; i < position.count; i++) {
+            point.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld).applyMatrix4(toLocal);
+            for (const axis of ['x', 'y', 'z']) {
+              expect(point[axis], `${name} vertex ${i} ${axis}`).toBeGreaterThanOrEqual(min[axis] - 0.001);
+              expect(point[axis], `${name} vertex ${i} ${axis}`).toBeLessThanOrEqual(max[axis] + 0.001);
+            }
+          }
+        }
+      }
     } finally { assets.dispose(); }
   });
 

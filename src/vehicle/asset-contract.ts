@@ -144,7 +144,8 @@ function sideMirrorSpec(
   };
 }
 
-export function mirrorBoxes(profile: VehicleProfile) {
+/** Mirror mount (door base) boxes: they anchor the side glass and bound the mount itself. */
+function mirrorMountBoxes(profile: VehicleProfile) {
   const width = profile.bodySizeM[0];
   const x = (profile.mirrorWidthM + width) / 4;
   const y = profile.mirrorHeightM - profile.centerOfMassHeightM;
@@ -155,6 +156,87 @@ export function mirrorBoxes(profile: VehicleProfile) {
     halfExtentsM: [(profile.mirrorWidthM - width) / 4, 0.05, 0.1] as Vec3Data,
   });
   return [box(-1), box(1)] as const;
+}
+
+/**
+ * Housing dimensions shared by the GLB generator and the collider, so the physics box
+ * always covers what the driver sees. The shell sits behind the glass, framed by `rimM`.
+ */
+export const MIRROR_HOUSING = Object.freeze({
+  rimM: 0.0125,
+  gapM: 0.008,
+  sideShellDepthM: 0.05,
+  rearShellDepthM: 0.035,
+  doorInsetM: 0.02,
+  arm: Object.freeze({ heightM: 0.035, depthM: 0.05, dropM: 0.08 }),
+  foot: Object.freeze({ sizeM: [0.05, 0.05, 0.07] as const, dropM: 0.105 }),
+});
+
+function rotateByQuaternion(q: QuatData, v: readonly number[]): V3 {
+  const [x, y, z, w] = q;
+  const t = cross([x, y, z], v).map((c) => 2 * c);
+  const u = cross([x, y, z], t);
+  return [v[0]! + w * t[0]! + u[0]!, v[1]! + w * t[1]! + u[1]!, v[2]! + w * t[2]! + u[2]!];
+}
+
+/**
+ * Side-mirror colliders: the mount box grown to cover the housing shell (oriented with
+ * the default glass), its arm and its foot, as authored in tools/asset-designs/vehicles.mjs.
+ */
+type MirrorBoxes = readonly [
+  { readonly centerLocalM: Vec3Data; readonly halfExtentsM: Vec3Data },
+  { readonly centerLocalM: Vec3Data; readonly halfExtentsM: Vec3Data },
+];
+// Footprints are evaluated every physics step; the aim solve behind the boxes is not.
+const mirrorBoxCache = new WeakMap<VehicleProfile, MirrorBoxes>();
+
+export function mirrorBoxes(profile: VehicleProfile): MirrorBoxes {
+  const cached = mirrorBoxCache.get(profile);
+  if (cached) return cached;
+  const boxes = computeMirrorBoxes(profile);
+  mirrorBoxCache.set(profile, boxes);
+  return boxes;
+}
+
+function computeMirrorBoxes(profile: VehicleProfile): MirrorBoxes {
+  const contract = deriveVehicleAssetContract(profile);
+  const mounts = mirrorMountBoxes(profile);
+  const doorX = profile.bodySizeM[0] / 2 - MIRROR_HOUSING.doorInsetM;
+  const box = (index: 0 | 1, spec: MirrorSpec) => {
+    const mount = mounts[index];
+    const min = sub(mount.centerLocalM, mount.halfExtentsM);
+    const max = add(mount.centerLocalM, mount.halfExtentsM);
+    const include = (point: readonly number[]) => {
+      for (let axis = 0; axis < 3; axis++) {
+        min[axis] = Math.min(min[axis]!, point[axis]!);
+        max[axis] = Math.max(max[axis]!, point[axis]!);
+      }
+    };
+    const glass = spec.positionM;
+    const depth = MIRROR_HOUSING.sideShellDepthM;
+    const half = [spec.halfSizeM[0] + MIRROR_HOUSING.rimM, spec.halfSizeM[1] + MIRROR_HOUSING.rimM, depth / 2];
+    const back = -(depth / 2 + MIRROR_HOUSING.gapM);
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+      include(add(glass, rotateByQuaternion(spec.rotation, [sx * half[0]!, sy * half[1]!, back + sz * half[2]!])));
+    }
+    const side = Math.sign(glass[0]);
+    const { arm, foot } = MIRROR_HOUSING;
+    for (const y of [-arm.dropM - arm.heightM / 2, -arm.dropM + arm.heightM / 2]) {
+      for (const z of [-arm.depthM / 2, arm.depthM / 2]) {
+        include([glass[0], glass[1] + y, glass[2] + z]);
+        include([side * doorX, glass[1] + y, glass[2] + z]);
+      }
+    }
+    for (const dx of [-1, 1]) for (const dy of [-1, 1]) for (const dz of [-1, 1]) {
+      include([side * doorX + dx * foot.sizeM[0] / 2, glass[1] - foot.dropM + dy * foot.sizeM[1] / 2,
+        glass[2] + dz * foot.sizeM[2] / 2]);
+    }
+    return {
+      centerLocalM: [(min[0]! + max[0]!) / 2, (min[1]! + max[1]!) / 2, (min[2]! + max[2]!) / 2] as Vec3Data,
+      halfExtentsM: [(max[0]! - min[0]!) / 2, (max[1]! - min[1]!) / 2, (max[2]! - min[2]!) / 2] as Vec3Data,
+    };
+  };
+  return [box(0, contract.mirrors.left), box(1, contract.mirrors.right)] as const;
 }
 
 export function deriveVehicleAssetContract(profile: VehicleProfile) {
@@ -176,7 +258,7 @@ export function deriveVehicleAssetContract(profile: VehicleProfile) {
     throw new RangeError(`${profile.id}: inconsistent dimensions, eye or axle/overhang contract`);
   }
   const view = vehicleViews[profile.id];
-  const boxes = mirrorBoxes(profile);
+  const boxes = mirrorMountBoxes(profile);
   const eye = profile.driverEyeLocalM;
   const rear: Vec3Data = [
     eye[0] + view.rearCameraOffsetM[0],
