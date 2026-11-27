@@ -93,16 +93,19 @@ describe('scripted actors', () => {
     const quick = { path: [[0, 0], [0.5, 0]] as ActorDefinition['path'], cruiseMps: 5 };
     const check = (trigger: LessonActorEntry['trigger'], on: LearnerState, off: LearnerState) => {
       let world = createActorWorld(lesson(entry(trigger, quick)), 'coach');
-      let peak = 0;
-      const sequence = [on, off, on];
-      for (const input of sequence) {
+      let seenActive = false;
+      let finished = false;
+      for (const input of [on, off, on]) {
         for (let i = 0; i < 60; i += 1) {
           world = stepActors(world, input, DT).state;
-          peak = Math.max(peak, activeActorCount(world));
+          const count = activeActorCount(world);
+          if (finished) expect(count, `${trigger} re-fired`).toBe(0);
+          else if (count === 1) seenActive = true;
+          else if (seenActive) finished = true;
         }
       }
-      expect(peak).toBe(1);
-      expect(activeActorCount(world)).toBe(0);
+      expect(seenActive).toBe(true);
+      expect(finished).toBe(true);
     };
     check('reverse-selected', learner({ gear: 'R' }), learner({ gear: 'D' }));
     check('indicator-right', learner({ indicator: 'right' }), learner());
