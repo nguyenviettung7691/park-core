@@ -28,7 +28,7 @@ Vietnamese.
 - **Vehicle physics:** Tyres meet 0.11 m roadside curbs and 0.11 m garage wheel
   stops through tyre-edge contact; touching a curb is a lesson warning and
   climbing one fails. Telemetry-driven exterior brake, reverse and indicator lamps
-  are prepared but their vehicle GLBs await developer approval.
+  are in the vehicle GLBs (developer-approved, PR #22).
 - **Driving views:** Driver and chase cameras, mirrors, an overhead view, and
   trajectory guidance.
 - **Graphics settings:** High, Balanced and Performance presets, plus render

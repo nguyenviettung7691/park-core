@@ -110,24 +110,19 @@ npm run assets:review -- --vehicle sedan --candidate C:\asset-work\candidate --o
 
 A candidate feature that is not yet approved sits behind an opt-in generator
 option, off by default, so plain generation always reproduces the approved
-public GLBs (and `assets:check` and the sync test stay green). The issue #11
-exterior lamps use `--lamps`; pass it to all three commands for a lamp candidate:
-
-```powershell
-npm run assets:generate -- --vehicle sedan --out C:\asset-work\candidate --lamps
-npm run assets:check -- --vehicle sedan --candidate C:\asset-work\candidate --lamps
-npm run assets:review -- --vehicle sedan --candidate C:\asset-work\candidate --out C:\asset-work\review --lamps
-```
-
-All three commands refuse `--lamps` unless `--out` (generate) or `--candidate`
-(check, review) names a directory outside the project root, so unapproved lamp
-GLBs can never be written into, or validated as, `public/`.
-
-Promotion after the developer approves the candidate hash and captures is one
-reviewed change: flip the option's default (`EXTERIOR_LAMPS_DEFAULT` in
-`tools\generate-assets.mjs`) to on, regenerate with `node tools\generate-assets.mjs`,
-confirm the public GLB hashes equal the approved candidate hashes, then run
+public GLBs (and `assets:check` and the sync test stay green). Promotion after
+the developer approves the candidate hash and captures is one reviewed change:
+author the feature by default, regenerate with `node tools\generate-assets.mjs`,
+confirm the public GLBs match the approved candidate, then run
 `npm run assets:check` and the full suites.
+
+The issue #11 exterior lamps went through this gate and are promoted: the
+developer approved them (delegated approval on 2026-11-27, PR #22), so
+`EXTERIOR_LAMPS_DEFAULT` in `tools\generate-assets.mjs` is on and the former
+opt-in `--lamps` flag is retired. `buildGlb(id, { lamps: false })` remains as a
+programmatic opt-out. Promoted vehicle GLB SHA-256: sedan
+`e409a8961635fad8fea9a355979baf46e9546d45f774177a0ea5a9ff624d9a5b`, CUV
+`7cb934d717dc51da168959d9a3876324bec6a8e21b48eed1917b39ea3133276b`.
 
 Use your session workspace in place of `C:\asset-work`. Choose an empty output
 directory for each review: existing evidence is never overwritten or mixed with
@@ -140,8 +135,8 @@ existing local server. It fails on stale candidate bytes, test failures or missi
 browser tooling. It does not copy candidates into public assets or approve them.
 Install the project's locked dependencies and Playwright Chromium when missing.
 The focused unit run includes the "checked-in GLBs in sync" test: it compares
-the public GLBs with default generation, which keeps unapproved options off, so it
-passes before and after promotion. After promotion, run `npm run assets:check` and
+the public GLBs with default generation, which keeps unapproved options off and
+authors promoted ones, so it passes before and after promotion. After promotion, run `npm run assets:check` and
 the full suites.
 (The sedan and CUV redesigns for issue #12 predate this and ran the browser spec
 directly with the `PARK_CORE_REVIEW_*` variables.)
@@ -209,14 +204,14 @@ Exterior lamp nodes (issue #11) are hidden by default and shown from telemetry:
 `BrakeLampsLit` (brake above 0.05), `ReverseLampsLit` (gear R) and
 `TurnSignalLeftLit`/`TurnSignalRightLit` (the indicator flash). They sit under
 `Body`, are one batched unlit mesh each, and parked clones hide them (parked
-clones also fit their bounds without the `*Lit` nodes). They are authored only
-with the generator's `--lamps` option (off by default) while the candidates
-await developer approval; the public GLBs lack them until promotion flips that
-default, as described above.
+clones also fit their bounds without the `*Lit` nodes). They are authored by
+default and present in the public GLBs: the developer approved them (delegated
+approval on 2026-11-27, PR #22).
 Environment changes for issue #11 (0.11 m curbs, the garage wheel-stop
-template) are promoted on the branch because the art must match the colliders,
-but their visual approval is **pending the developer**, and merging the issue #11
-PR is gated on that approval (recorded with the capture hashes).
+template) were approved by the developer in the same delegated approval
+(2026-11-27, PR #22). Environment GLB SHA-256: roadside
+`bfa62e02433f425ff100b75f3a38d1622cb90063d17d74e7ea7108a1fc755360`, garage
+`bf7adefc4a4844f160048a6a176fc983648657148323e6cff1148ac62860778d`.
 The driven exterior uses outward-only opaque glazing: no transparency sorting,
 with open interior sightlines. That glazing is excluded from mirror passes.
 `ParkedGlazing` is hidden on the driven car and enabled on parked clones.

@@ -23,17 +23,16 @@ unbranded.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 4,976 | 38 / 27 | 368,048 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,650 | 39 / 28 | 413,952 |
+| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 5,108 | 42 / 31 | 382,376 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,758 | 43 / 32 | 426,388 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
-even when one is hidden. Both are below the 10,000-triangle vehicle gate.
-The figures above describe the **current public GLBs**, which do not yet have
-exterior lamps (see the next section).
+even when one is hidden, and the four hidden exterior lit-lamp meshes (next
+section). Both are below the 10,000-triangle vehicle gate.
 
-### Exterior lamps (issue #11): candidates pending developer approval
+### Exterior lamps (issue #11): approved and promoted
 
-Candidate vehicle GLBs add four hidden lit-lamp nodes under `Body` (so under
+The vehicle GLBs have four hidden lit-lamp nodes under `Body` (so under
 `Exterior`): `BrakeLampsLit`, `ReverseLampsLit`, `TurnSignalLeftLit` and
 `TurnSignalRightLit`. Each is one batched mesh of thin (6 mm) bright vertex-color
 panels placed 4 mm outboard of the static lamps. `exteriorLampState` and
@@ -42,21 +41,15 @@ brake above 0.05, reverse in R, and the indicators from the same 1.5 Hz flash as
 the cockpit arrows. Parked lesson cars hide them. Placements of the sedan high
 mount and the reverse/side-repeater lamps are inferred, not measured.
 
-**These GLBs are not promoted.** The lamps are authored only with the
-generator's `--lamps` option (default off), so the checked-in
-`public/assets/vehicles/*.glb` files and default generation stay in sync while
-the lamp captures await developer approval. Promotion flips the default after
-approval (see `docs/asset-pipeline.md`). Candidate figures (pending, not yet
-catalog values; candidate sha256 sedan `84eaccc0…`, CUV `d4626703…`):
-
-| Candidate | Stored triangles | GLB bytes |
-|---|---:|---:|
-| Sedan | 5,108 | 382,072 |
-| CUV | 5,758 | 426,084 |
-
-Both stay below the 10,000-triangle and 5,000,000-byte gates. Candidate SHA-256:
-sedan `84eaccc02a7b54f7781b22724dcf0c5d9854660aad328a8cd9b7a153615d2745`, CUV
-`d4626703e79e238bbb3edf43340918725dc5b19f9f33e3ea6f37548e7129b64b`.
+The lamps were **approved by the developer** (delegated approval on 2026-11-27,
+PR #22) and are promoted: default generation authors them and the public GLBs
+carry them. Promoted SHA-256: sedan
+`e409a8961635fad8fea9a355979baf46e9546d45f774177a0ea5a9ff624d9a5b`, CUV
+`7cb934d717dc51da168959d9a3876324bec6a8e21b48eed1917b39ea3133276b`. They add
+132 (sedan) and 108 (CUV) stored triangles and no main-pass draw calls while
+hidden. These hashes differ from the pre-merge candidates (`84eaccc0…`,
+`d4626703…`) only because the PR #21 mirror glass and housings were merged in
+before promotion; the lamp geometry is unchanged.
 
 ### Sedan: front and rear
 
@@ -220,10 +213,11 @@ at first touch from 2.5 m/s still mounts it in stages 2 and 4. Creep
 (0.56 m/s reverse, 0.83 m/s forward) never does. `edge-physics.test.ts` pins these
 speeds (`coasting into the stop`).
 The stop is a simple box collider, not per-polygon contact. The environment
-GLBs (0.11 m curbs, this template) are promoted on the branch because the art has
-to match the colliders, but their **visual approval is pending the developer**:
-merging the issue #11 PR is gated on that approval, and the garage capture images
-under `images/phase-8` were not refreshed.
+GLBs (0.11 m curbs, this template) were **approved by the developer** (delegated
+approval on 2026-11-27, PR #22). Environment SHA-256: roadside
+`bfa62e02433f425ff100b75f3a38d1622cb90063d17d74e7ea7108a1fc755360`, garage
+`bf7adefc4a4844f160048a6a176fc983648657148323e6cff1148ac62860778d`. The garage
+capture images under `images/phase-8` were not refreshed.
 
 The cockpit pictures above also show ceiling fixtures and pipe runs.
 All overhead details remain in `Ceiling`, excluded from the overhead camera
@@ -283,7 +277,7 @@ The larger steered-tyre roll (up to 1.19 degrees, from 0.43 degrees sedan D and
 0.49 degrees CUV D at steer -0.4 before the review-r1 edge fix) is the stiff sidewall holding the tyre at the curb face; the
 state stays `touching` and no chassis contact occurs.
 
-**Curb climb thresholds (measured; the developer is asked to confirm).** A car
+**Curb climb thresholds (measured; approved by the developer on 2026-11-27, PR #22).** A car
 coasting (no pedal, parking brake off) into a 0.11 m curb face climbs only through
 momentum. Measured in D and R for both vehicles (`edge-physics.test.ts`, with a
 small tolerance band so the figures are pinned but not knife-edge):
@@ -333,10 +327,10 @@ All GLBs are self-contained and use no external image/buffer resources.
 
 | Selected pair | Uncompressed bytes |
 |---|---:|
-| Sedan + garage | 556,540 |
-| Sedan + roadside | 530,544 |
-| CUV + garage | 602,444 |
-| CUV + roadside | 576,448 |
+| Sedan + garage | 571,172 |
+| Sedan + roadside | 545,176 |
+| CUV + garage | 615,184 |
+| CUV + roadside | 589,188 |
 
 All pairs are below the 5,000,000-byte gate.
 
@@ -347,24 +341,23 @@ The table reports an auxiliary-update frame at 80 ms:
 
 | Scene | Main calls / triangles | Three mirror calls | Overhead calls | Composite calls | Full-frame calls |
 |---|---:|---|---:|---:|---:|
-| Sedan + garage | 34 / 6,166 | 24 + 15 + 15 | 35 | 1 | 124 |
-| Sedan + roadside | 30 / 5,986 | 22 + 15 + 15 | 35 | 1 | 118 |
-| CUV + garage | 32 / 5,952 | 24 + 15 + 15 | 36 | 1 | 123 |
-| CUV + roadside | 28 / 5,772 | 22 + 15 + 15 | 36 | 1 | 117 |
-| Stage 1, CUV | 63 / 11,844 | 24 + 17 + 17 | 36 | 1 | 158 |
-| Stage 2, CUV | 28 / 5,788 | 59 + 17 + 17 | 36 | 1 | 158 |
-| Stage 3, CUV | 39 / 7,498 | 40 + 16 + 25 | 53 | 1 | 174 |
-| Stage 4, CUV | 29 / 5,800 | 44 + 17 + 20 | 37 | 1 | 148 |
-| Stage 5, CUV | 33 / 6,538 | 40 + 15 + 25 | 52 | 1 | 166 |
+| Sedan + garage | 34 / 6,166 | 20 + 19 + 21 | 35 | 1 | 130 |
+| Sedan + roadside | 30 / 5,986 | 20 + 20 + 21 | 35 | 1 | 127 |
+| CUV + garage | 32 / 5,952 | 20 + 19 + 20 | 36 | 1 | 128 |
+| CUV + roadside | 28 / 5,772 | 20 + 20 + 20 | 36 | 1 | 125 |
+| Stage 1, CUV | 64 / 11,912 | 20 + 21 + 21 | 36 | 1 | 163 |
+| Stage 2, CUV | 28 / 5,788 | 49 + 39 + 38 | 36 | 1 | 191 |
+| Stage 3, CUV | 39 / 7,498 | 35 + 23 + 37 | 53 | 1 | 188 |
+| Stage 4, CUV | 29 / 5,800 | 38 + 27 + 38 | 37 | 1 | 170 |
+| Stage 5, CUV | 33 / 6,538 | 29 + 21 + 33 | 52 | 1 | 169 |
 
-Measured 2026-11-26 after the issue #12 redesign. The sedan's lesson stages peak
-at 65 main-pass calls (Stage 1). With the issue #11 garage wheel stops, CUV Stage 1
-is 64 / 11,912 main calls / triangles (full frame 159 calls) and stages 2 and 4
-are unchanged in the main pass (28 / 5,788 and 29 / 5,800) because the stop is
-culled from the spawn camera; their full-frame count is one higher (159 and 149).
-Every touching-pose frame stayed at or below the 140 main-pass gate. The vehicle
-candidates with lamps (pending, above) add under 140 triangles each and no draw
-calls while the lamps are hidden.
+Measured 2026-11-27 with the promoted lamp GLBs (issue #11), the garage wheel
+stops and the PR #21 planar mirrors. The sedan's lesson stages peak at 66
+main-pass calls (Stage 1, 11,714 triangles). At the wheel-stop touching poses
+(stages 1, 2, 4) the main pass peaks at 39 calls (sedan) and 35 (CUV). Every
+sampled frame stayed at or below the 100 sandbox / 140 lesson main-pass gates.
+Parked clones are 2,790 (sedan) and 2,996 (CUV) triangles, below the 4,000 gate.
+The hidden lit-lamp meshes add no draw calls; each is one batched mesh, so a lit node adds one call where it is in view.
 
 The gates are <=100 **main-pass** calls in sandbox and <=140 in lessons,
 not limits on the sum of all camera passes. These sampled poses pass; their
@@ -390,14 +383,14 @@ npx vitest run src\world\generate-assets.test.mjs src\world\assets.test.mjs
 npx playwright test phase-8-assets.spec.ts
 ```
 
-Plain generation reproduces the approved public GLBs; unapproved issue #11 lamp
-candidates need `--lamps` (with `--vehicle` and `--out`, see
-`docs/asset-pipeline.md`).
+Plain generation reproduces the approved public GLBs, including the promoted
+issue #11 exterior lamps.
 
 Exterior lamp captures (unlit, brake, reverse, left, right and all-lit, from the
-rear and front quarter) come from `asset-review.spec.ts` and load candidate bytes
-through `PARK_CORE_REVIEW_VEHICLE` and `PARK_CORE_REVIEW_CANDIDATE` (the
-`assets:review ... --lamps` command sets both and links them as `<vehicle>-lamps`):
+rear and front quarter) come from `asset-review.spec.ts`. It loads the public GLB,
+or candidate bytes through `PARK_CORE_REVIEW_VEHICLE` and
+`PARK_CORE_REVIEW_CANDIDATE` (the `assets:review` command sets both and links
+them as `<vehicle>-lamps`):
 
 ```powershell
 $env:PARK_CORE_REVIEW_VEHICLE='sedan'
@@ -405,7 +398,7 @@ $env:PARK_CORE_REVIEW_CANDIDATE='<candidate root containing public\assets\vehicl
 npx playwright test asset-review.spec.ts -g "exterior lamp"
 ```
 
-Without a candidate the lamp test is skipped while the public GLB has no lamp nodes.
+The lamp test fails if the served GLB lacks any of the four lit-lamp nodes.
 `phase-8-assets.spec.ts` also captures the wheel-stop rest poses (stages 1, 2, 4)
 and a right-tyre touch on the roadside curb.
 

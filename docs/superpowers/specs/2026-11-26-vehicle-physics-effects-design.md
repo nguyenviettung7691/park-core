@@ -106,7 +106,7 @@ are visible from the neutral cockpit POV in review captures, and reuses the
      `curbTouches: 0`; the new failure reason is added to its allow-list.
    - Tyre `climbing`/`over` a curb, or the chassis/body touching it → the
      existing `curb-contact` failure.
-   - **Measured curb climb thresholds (the developer is asked to confirm).**
+   - **Measured curb climb thresholds (approved by the developer, 2026-11-27).**
      Coasting (no pedal) into a curb face: square to the face, 1.4 m/s (5.0
      km/h) only `touching` (warning); angled faces (15, 30, 45, 75 degrees from
      square) at 1.5 m/s (5.4 km/h) reach `climbing` (failure), starting from about
@@ -205,6 +205,15 @@ The developer picked option 1.
 - Wheel stops are a tool: touching is fine.
 - Roadside: touch = warning, climbing = fail.
 - Option 1 physics approach.
+- Developer approval (delegated approval on 2026-11-27, PR #22): the developer
+  approved the exterior lamps (promoted vehicle GLBs: sedan
+  `e409a8961635fad8fea9a355979baf46e9546d45f774177a0ea5a9ff624d9a5b`, CUV
+  `7cb934d717dc51da168959d9a3876324bec6a8e21b48eed1917b39ea3133276b`), the
+  0.11 m curb and garage wheel-stop visuals (environment GLBs: roadside
+  `bfa62e02433f425ff100b75f3a38d1622cb90063d17d74e7ea7108a1fc755360`, garage
+  `bf7adefc4a4844f160048a6a176fc983648657148323e6cff1148ac62860778d`), and the
+  documented angled-approach curb climb thresholds (a shallow graze climbs from
+  about 1.2-1.3 m/s; kept as measured, no softening).
 
 ## Calls made in this design (check while reading)
 
