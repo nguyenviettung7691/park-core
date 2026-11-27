@@ -499,3 +499,25 @@ export function activeActorCount(state: ActorWorldState): number {
 export function actorTimeS(state: ActorWorldState): number {
   return state.timeS;
 }
+
+const SENSOR_PARALLEL_RAD = Math.PI / 9;
+const SENSOR_LATERAL_MARGIN_M = 1.0;
+
+/**
+ * The boxes the parking sensors may report: every active actor except those moving parallel to
+ * the learner (heading within 20 degrees, either direction) whose centre lies more than 1.0 m
+ * laterally outside the learner's mirror-width footprint.
+ */
+export function sensorBoxes(state: ActorWorldState, learner: LearnerState): readonly ActorBox[] {
+  const rightX = Math.cos(learner.headingRad), rightZ = -Math.sin(learner.headingRad);
+  const lateral = learner.footprint.map(([x, , z]) => x * rightX + z * rightZ);
+  const minM = Math.min(...lateral), maxM = Math.max(...lateral);
+  return actorBoxes(state).filter((box) => {
+    const diff = Math.abs(box.yawRad - learner.headingRad) % Math.PI;
+    const parallel = Math.min(diff, Math.PI - diff) <= SENSOR_PARALLEL_RAD;
+    if (!parallel) return true;
+    const centre = box.centerM[0] * rightX + box.centerM[2] * rightZ;
+    const outsideM = Math.max(minM - centre, centre - maxM, 0);
+    return outsideM <= SENSOR_LATERAL_MARGIN_M;
+  });
+}

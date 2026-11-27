@@ -7,6 +7,11 @@ import { scenarios } from '../lessons/scenarios';
 import { wheelStops, wheelStopTouchingPose } from '../lessons/scenario-test-utils';
 import { addColliderBoxes, collidersForScenario, createWorld } from '../world/colliders';
 import { createVehicleRig } from '../vehicle/rig';
+import { rayBoxDistance } from './actor-rays';
+import type { ActorBox, LearnerState } from '../world/actors';
+import { createActorWorld, sensorBoxes } from '../world/actors';
+import { vehicleFootprint } from '../vehicle/geometry';
+import type { ActorSchedule } from '../contracts';
 
 const profile = profiles.sedan;
 const frontIds: readonly SensorId[] = [
@@ -222,4 +227,86 @@ describe('garage wheel stops and the parking sensors', () => {
       expect(hits).toBeGreaterThan(0);
       cleanup();
     });
+});
+
+describe('actor rays', () => {
+  const box: ActorBox = { id: 'ped-1', centerM: [0, 0.9, -3], halfExtentsM: [0.3, 0.9, 0.2], yawRad: 0 };
+
+  it('hits the near face at the right distance', () => {
+    expect(rayBoxDistance([0, 0.45, -0.5], [0, 0, -1], 2.55, box)).toBeCloseTo(2.3, 6);
+    expect(rayBoxDistance([0, 0.45, -1], [0, 0, -1], 2.55, box)).toBeCloseTo(1.8, 6);
+  });
+  it('misses beside the box, beyond maxM, and above the box', () => {
+    expect(rayBoxDistance([0.5, 0.45, -1], [0, 0, -1], 2.55, box)).toBeNull();
+    expect(rayBoxDistance([0, 0.45, 0], [0, 0, -1], 2.55, box)).toBeNull();
+    expect(rayBoxDistance([0, 1.9, -1], [0, 0, -1], 2.55, box)).toBeNull();
+  });
+  it('handles a yawed box', () => {
+    const turned: ActorBox = { ...box, yawRad: Math.PI / 2 };
+    expect(rayBoxDistance([0, 0.45, -1], [0, 0, -1], 2.55, turned)).toBeCloseTo(1.7, 6);
+  });
+});
+
+describe('sensors and actors', () => {
+  function boxesAt(box: ActorBox) { return () => [box] as const; }
+
+  it('pedestrian crossing behind triggers the rear sensors', () => {
+    const world = makeWorld();
+    const learner = addLearner(world);
+    const rearBumperZ = 2.485;
+    const ped: ActorBox = {
+      id: 'ped-1', centerM: [0, 0.9, rearBumperZ + 1.0 + 0.2], halfExtentsM: [0.3, 0.9, 0.2], yawRad: 0,
+    };
+    const rear = createSensors(world, learner, profile, new Set(), boxesAt(ped)).sample(0)
+      .readings.find(({ id }) => id === 'rear-center')!;
+    expect(rear.distanceM).toBeCloseTo(1.0, 2);
+    expect(rear.band).toBe('yellow');
+    expect(rear.obstacleId).toBe('ped-1');
+  });
+
+  const carEntry = (x: number, z: number, toZ: number) => ({
+    actor: {
+      id: 'car-1', kind: 'car' as const, halfExtentsM: [0.9, 0.7, 2.2] as const,
+      path: [[x, z], [x, toZ]] as const, cruiseMps: 2.78,
+      detour: { kind: 'turn-back' as const },
+    },
+    trigger: 'moving-off' as const, delayS: 0,
+  });
+  const learnerAt = (x: number): LearnerState => ({
+    footprint: vehicleFootprint(
+      { positionM: [x, 0, 0], rotation: [0, 0, 0, 1] }, profile,
+    ),
+    headingRad: 0, signedSpeedMps: 0, gear: 'P', parkingBrake: true, indicator: 'off',
+  });
+  const worldWith = (x: number, z: number, toZ: number) => {
+    const schedule = { kind: 'lesson', entries: [carEntry(x, z, toZ)] } as unknown as ActorSchedule;
+    return createActorWorld(schedule, 'realistic', { forceTriggersAtS: 0 });
+  };
+
+  it('car passing in the next lane stays clear', () => {
+    const state = worldWith(-2.35, 8, -8);
+    const learner = learnerAt(0);
+    expect(sensorBoxes(state, learner)).toHaveLength(0);
+    const world = makeWorld();
+    const body = addLearner(world);
+    const snap = createSensors(world, body, profile, new Set(), () => sensorBoxes(state, learner))
+      .sample(0);
+    expect(snap.readings.every(({ band }) => band === 'clear')).toBe(true);
+  });
+
+  it('car approaching in the same lane is reported', () => {
+    const state = worldWith(0.3, 2, -8);
+    expect(sensorBoxes(state, learnerAt(0)).map(({ id }) => id)).toEqual(['car-1']);
+  });
+
+  it('car approaching from behind at x = -2.6 beside a learner at x = -1.5 is reported', () => {
+    const state = worldWith(-2.6, 8, -8);
+    expect(sensorBoxes(state, learnerAt(-1.5)).map(({ id }) => id)).toEqual(['car-1']);
+  });
+
+  it('a crossing (non-parallel) actor is always reported', () => {
+    const state = worldWith(-2.35, 8, -8);
+    const learner = { ...learnerAt(0), headingRad: Math.PI / 2 };
+    expect(sensorBoxes(state, learner)).toHaveLength(1);
+  });
 });
