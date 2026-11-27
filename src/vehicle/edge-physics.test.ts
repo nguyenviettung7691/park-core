@@ -10,6 +10,7 @@ import { TYRE_HALF_WIDTH_M } from './tyre-edges';
 import type { StageId } from '../contracts';
 import { scenarios } from '../lessons/scenarios';
 import { updateFailure, type FailureEvent } from '../lessons/failure';
+import { curbTouchBegan } from '../lessons/edge-warnings';
 import {
   footprint,
   footprintInsideRegion,
@@ -345,6 +346,8 @@ describe('tyre-edge physics in the rig', () => {
     f.rig.body.velocity.set(0, 0, gear === 'D' ? -2 : 2);
     let minY = Infinity;
     let minOverCurbY = Infinity;
+    // Corners whose plan position is within half a metre of the curb face (could reach it).
+    let minNearCurbY = Infinity;
     const g = deriveGeometry(p);
     for (let i = 0; i < Math.round(2 / H); i++) {
       step(f, frame({ brake: 1, steering }));
@@ -355,16 +358,21 @@ describe('tyre-edge physics in the rig', () => {
         const v = f.rig.body.pointToWorldFrame(new CANNON.Vec3(cx + sx * hx, cy - hy, cz + sz * hz));
         minY = Math.min(minY, v.y);
         if (v.x >= faceX) minOverCurbY = Math.min(minOverCurbY, v.y);
+        if (v.x >= faceX - 0.5) minNearCurbY = Math.min(minNearCurbY, v.y);
       }
     }
     const curbTop = 2 * CURB_HALF[1];
-    const mm = (y: number) => (Number.isFinite(y) ? `${((y - curbTop) * 1000).toFixed(2)} mm` : 'n/a');
-    // minY is conservative (any corner); minOverCurbY only corners above the curb in plan.
-    record(`${id} brake-dive ${gear} steer ${steering}: min chassis corner y ${minY.toFixed(4)} m, `
-      + `clearance over curb top ${mm(minY)} (corners above the curb ${mm(minOverCurbY)}), end speed `
+    const mm = (y: number) => (Number.isFinite(y) ? `${((y - curbTop) * 1000).toFixed(3)} mm` : 'n/a');
+    // minY is the most conservative (any corner, even across the car from the curb); minNearCurbY
+    // counts corners within 0.5 m of the face in plan, minOverCurbY only corners above the curb.
+    record(`${id} brake-dive ${gear} steer ${steering}: min chassis corner y ${minY.toFixed(5)} m, `
+      + `any corner vs curb top ${mm(minY)}, corners within 0.5 m of the face ${mm(minNearCurbY)}, `
+      + `above the curb ${mm(minOverCurbY)}, end speed `
       + `${f.rig.snapshot(f.t).telemetry.totalSpeedMps.toFixed(3)}`);
     expect(contacts).toEqual([]);
-    expect(minY - curbTop).toBeGreaterThanOrEqual(0.002);
+    // 2 mm: a margin above solver noise (corner heights vary < 0.1 mm between runs of a profile),
+    // so a real loss of clearance from a tuning change fails here rather than as a chassis hit.
+    expect(minNearCurbY - curbTop).toBeGreaterThanOrEqual(0.002);
   });
 
   /** Curb square across the path 4 m ahead (-Z), like driving over the roadside curb. */
@@ -428,6 +436,203 @@ describe('tyre-edge physics in the rig', () => {
       expect(r.snap.wheelEdges[2].state).not.toBe('over');
       expect(r.snap.wheelEdges[3].state).not.toBe('over');
     });
+
+  /*
+   * No single-step pop onto or off an edge (spec anti-goal; ruling R6): coasting through a 0.11 m
+   * curb or stop forward and in reverse, square and at 20 and 30 deg, over the whole crossing
+   * (climb, top and far-side descent). Each wheel's height may change per step by at most 0.01 m
+   * for approaches up to 1 m/s and 35% of the edge height otherwise, up or down.
+   */
+  const POP_CASES = IDS.flatMap((id) => (['D', 'R'] as const).flatMap((gear) =>
+    (['curb', 'wheel-stop'] as const).flatMap((kind) => [0, 20, 30].flatMap((angleDeg) =>
+      [1, 1.5, 2.5, 3, 4].map((speed) => ({ id, gear, kind, angleDeg, speed }))))));
+  it.each(POP_CASES)('$id: coasting in $gear at $speed m/s, $angleDeg deg through a $kind, no pop',
+    ({ id, gear, kind, angleDeg, speed }) => {
+      const a = angleDeg * Math.PI / 180;
+      // Travel direction in world xz (forward is (-sin yaw, -cos yaw); in R the car moves backward).
+      const yaw = gear === 'D' ? a : -a;
+      const sign = gear === 'D' ? 1 : -1;
+      const dir = [-Math.sin(yaw) * sign, -Math.cos(yaw) * sign] as const;
+      const half = kind === 'curb' ? [16, CURB_HALF[1], CURB_HALF[0]] as const : STOP_HALF;
+      const edge: ColliderBox = {
+        id: 'pop-edge', kind, centerM: [dir[0] * 4, half[1], dir[1] * 4], halfExtentsM: half, yawRad: 0,
+      };
+      const world = createWorld();
+      const cleanup = addColliderBoxes(world, [ground, edge]);
+      const rig = createVehicleRig(world, profiles[id], cleanup.idForBody, cleanup.edges);
+      rig.settle({ positionM: [0, profiles[id].centerOfMassHeightM, 0], yawRad: yaw });
+      const f: Fixture = { world, rig, cleanup, t: 0 };
+      shift(f, gear);
+      rig.body.velocity.set(dir[0] * speed, 0, dir[1] * speed);
+      let prev = rig.snapshot(f.t);
+      let maxRise = 0;
+      let maxDrop = 0;
+      let touched = false;
+      for (let i = 0; i < Math.round(5 / H); i++) {
+        const snap = step(f, idle);
+        for (let w = 0; w < 4; w++) {
+          const dy = snap.wheelPoses[w].positionM[1] - prev.wheelPoses[w].positionM[1];
+          maxRise = Math.max(maxRise, dy);
+          maxDrop = Math.min(maxDrop, dy);
+          if (snap.wheelEdges[w].state !== 'none') touched = true;
+        }
+        prev = snap;
+      }
+      const limit = speed <= 1 ? 0.01 : 0.35 * 2 * half[1];
+      record(`${id} pop ${gear} ${kind} ${angleDeg} deg ${speed} m/s: max wheel rise/step `
+        + `${maxRise.toFixed(4)} m, drop ${(-maxDrop).toFixed(4)} m (limit ${limit.toFixed(4)})`);
+      expect(touched).toBe(true);
+      expect(maxRise).toBeLessThanOrEqual(limit + 1e-12);
+      expect(-maxDrop).toBeLessThanOrEqual(limit + 1e-12);
+    });
+
+  /** Max plan overlap of a curb-side tyre (1, 3) with the curb face while not up on the curb. */
+  function curbOverlap(snap: PhysicsSnapshot, id: VehicleId, faceX: number): number {
+    let worst = 0;
+    for (const w of [1, 3]) {
+      const { positionM: c, rotation: q } = snap.wheelPoses[w];
+      if (c[1] - profiles[id].tireRadiusM >= 2 * CURB_HALF[1] - 0.01) continue;
+      const axle = new CANNON.Quaternion(...q).vmult(new CANNON.Vec3(1, 0, 0));
+      const len = Math.hypot(axle.x, axle.z);
+      const outer = c[0] + TYRE_HALF_WIDTH_M * Math.abs(axle.x / len);
+      // Only while the outer edge is over the curb's own footprint (not past its far face).
+      if (c[0] - TYRE_HALF_WIDTH_M * Math.abs(axle.x / len) > faceX + 2 * CURB_HALF[0]) continue;
+      worst = Math.max(worst, outer - faceX);
+    }
+    return worst;
+  }
+
+  /*
+   * Independent review I1: reversing briskly into a roadside space at a shallow angle (the usual
+   * parallel-parking mistake). The tyre that brushes the curb first must then ride up it gradually
+   * (climbing before over) and come down the far side gradually, never in one step.
+   */
+  const SHALLOW_CASES = IDS.flatMap((id) => [10, 20, 30].flatMap((angleDeg) =>
+    [1.5, 2.5, 4].map((speed) => ({ id, angleDeg, speed }))));
+  it.each(SHALLOW_CASES)('$id: reversing at $speed m/s, $angleDeg deg into the curb rides it gradually',
+    ({ id, angleDeg, speed }) => {
+      const a = angleDeg * Math.PI / 180;
+      const faceX = 4.05;
+      const x0 = faceX - (2.5 * Math.sin(a) + 1.0 * Math.cos(a)) - 0.6;
+      const world = createWorld();
+      const cleanup = addColliderBoxes(world, [ground, curbAt(faceX + CURB_HALF[0])]);
+      const rig = createVehicleRig(world, profiles[id], cleanup.idForBody, cleanup.edges);
+      rig.settle({ positionM: [x0, profiles[id].centerOfMassHeightM, 0], yawRad: a });
+      const f: Fixture = { world, rig, cleanup, t: 0 };
+      shift(f, 'R');
+      rig.body.velocity.set(speed * Math.sin(a), 0, speed * Math.cos(a));
+      let prev = rig.snapshot(f.t);
+      let maxStep = 0;
+      let skipped = '';
+      let overlap = 0;
+      for (let i = 0; i < Math.round(3 / H); i++) {
+        const snap = step(f, idle);
+        for (let w = 0; w < 4; w++) {
+          maxStep = Math.max(maxStep,
+            Math.abs(snap.wheelPoses[w].positionM[1] - prev.wheelPoses[w].positionM[1]));
+          const from = prev.wheelEdges[w].state;
+          if (snap.wheelEdges[w].state === 'over' && (from === 'none' || from === 'touching')) {
+            skipped ||= `${w}:${from}->over at ${f.t.toFixed(3)} s`;
+          }
+        }
+        overlap = Math.max(overlap, curbOverlap(snap, id, faceX));
+        prev = snap;
+      }
+      record(`${id} shallow R ${angleDeg} deg ${speed} m/s: max wheel dy/step ${maxStep.toFixed(4)} m, `
+        + `max tyre overlap with the face ${overlap.toFixed(4)} m, skipped ${skipped || '-'}`);
+      expect(maxStep).toBeLessThanOrEqual(0.35 * 2 * CURB_HALF[1]);
+      expect(skipped).toBe('');
+      expect(overlap).toBeLessThanOrEqual(0.02);
+    });
+
+  /*
+   * Independent review I2: pinned against the curb after a side-rub, the learner turns to lock
+   * toward it and floors the throttle. The tyre must not sink into the curb (overlap <= 2 cm) or
+   * flicker vertically; it may climb, gradually.
+   */
+  const THROTTLE_CASES = IDS.flatMap((id) => (['D', 'R'] as const).map((gear) => ({ id, gear })));
+  it.each(THROTTLE_CASES)('$id: full throttle in $gear at lock into a rubbed curb never buries the tyre',
+    ({ id, gear }) => {
+      const p = profiles[id];
+      const faceX = 4.05;
+      const x = faceX - 0.05 - TYRE_HALF_WIDTH_M - p.trackM / 2;
+      const f = setup(id, [curbAt(faceX + CURB_HALF[0])], { x, z: 0 });
+      shift(f, gear);
+      let prev = f.rig.snapshot(f.t);
+      let maxStep = 0;
+      let overlap = 0;
+      let skipped = '';
+      for (let i = 0; i < Math.round(7.5 / H); i++) {
+        // Reverse/creep alongside steering slightly in for 1 s (the brush), then lock + throttle.
+        const brush = i < Math.round(1 / H);
+        const snap = step(f, frame({ steering: brush ? 0.15 : -1, throttle: brush ? 0 : 1 }));
+        for (let w = 0; w < 4; w++) {
+          maxStep = Math.max(maxStep,
+            Math.abs(snap.wheelPoses[w].positionM[1] - prev.wheelPoses[w].positionM[1]));
+          const from = prev.wheelEdges[w].state;
+          if (snap.wheelEdges[w].state === 'over' && (from === 'none' || from === 'touching')) {
+            skipped ||= `${w}:${from}->over at ${f.t.toFixed(3)} s`;
+          }
+        }
+        overlap = Math.max(overlap, curbOverlap(snap, id, faceX));
+        prev = snap;
+      }
+      record(`${id} throttle-at-lock ${gear}: max wheel dy/step ${maxStep.toFixed(4)} m, max tyre `
+        + `overlap with the face ${overlap.toFixed(4)} m, skipped ${skipped || '-'}`);
+      expect(overlap).toBeLessThanOrEqual(0.02);
+      expect(maxStep).toBeLessThanOrEqual(0.35 * 2 * CURB_HALF[1]);
+      expect(skipped).toBe('');
+    });
+
+  /*
+   * Review M9: a curb rest or rub must not chatter between touching and none, which would repeat
+   * the curb warning and inflate curbTouches: each wheel touches in one episode, and there is one
+   * curbTouchBegan per manoeuvre (reversing at lock, the front tyre that starts against the curb
+   * swings off it a second before the rear one arrives: two contacts, two warnings).
+   */
+  const CHATTER_CASES = IDS.flatMap((id) => [
+    { id, name: 'side-rub reversing with steering 0.15', gear: 'R' as const, steering: 0.15,
+      angleDeg: 0 },
+    { id, name: 'reversing at lock toward the curb', gear: 'R' as const, steering: -1, angleDeg: 0,
+      warnings: 2 },
+    { id, name: 'creeping in R at 10 deg until at rest', gear: 'R' as const, steering: 0, angleDeg: 10 },
+    { id, name: 'creeping in R at 20 deg until at rest', gear: 'R' as const, steering: 0, angleDeg: 20 },
+  ]);
+  it.each(CHATTER_CASES)('$id: $name warns once per contact', ({ id, gear, steering, angleDeg,
+    warnings = 1 }: { id: VehicleId; gear: 'R'; steering: number; angleDeg: number;
+    warnings?: number }) => {
+    const p = profiles[id];
+    const faceX = 4.05;
+    const a = angleDeg * Math.PI / 180;
+    const x = angleDeg === 0 ? faceX - 0.05 - TYRE_HALF_WIDTH_M - p.trackM / 2
+      : faceX - (2.5 * Math.sin(a) + 1.0 * Math.cos(a)) - 0.3;
+    const world = createWorld();
+    const cleanup = addColliderBoxes(world, [ground, curbAt(faceX + CURB_HALF[0])]);
+    const rig = createVehicleRig(world, p, cleanup.idForBody, cleanup.edges);
+    rig.settle({ positionM: [x, p.centerOfMassHeightM, 0], yawRad: a });
+    const f: Fixture = { world, rig, cleanup, t: 0 };
+    shift(f, gear);
+    let prev = rig.snapshot(f.t);
+    let begins = 0;
+    let worst = 'none';
+    const episodes = [0, 0, 0, 0];
+    for (let i = 0; i < Math.round(8 / H); i++) {
+      const snap = step(f, frame({ steering }));
+      if (curbTouchBegan(prev.wheelEdges, snap.wheelEdges)) begins += 1;
+      snap.wheelEdges.forEach((w, k) => {
+        if (w.state !== 'none' && prev.wheelEdges[k].state === 'none') episodes[k] += 1;
+      });
+      for (const w of snap.wheelEdges) {
+        if (w.state === 'climbing' || w.state === 'over') worst = w.state;
+      }
+      prev = snap;
+    }
+    record(`${id} chatter ${gear} steer ${steering} at ${angleDeg} deg: ${begins} curb warning(s), `
+      + `per-wheel episodes ${episodes.join('/')}, worst ${worst}`);
+    expect(worst).toBe('none');
+    expect(begins).toBe(warnings);
+    for (const n of episodes) expect(n).toBeLessThanOrEqual(1);
+  });
 
   it.each(IDS)('%s: a far stop leaves flat-ground creep bit-identical', (id) => {
     const far: ColliderBox = {

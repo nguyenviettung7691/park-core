@@ -89,7 +89,7 @@ const axleWS = [0, 1, 2, 3].map(() => new CANNON.Vec3());
 const RIGHT = new CANNON.Vec3(1, 0, 0);
 
 /** Lateral (sidewall) curb push: spring per metre of tyre overlap and damper per m/s into the face. */
-const LATERAL_STIFFNESS_N_PER_M = 150000;
+const LATERAL_STIFFNESS_N_PER_M = 400000;
 const LATERAL_DAMPING_N_PER_MPS = 8000;
 /**
  * Edge-only tyre compliance: while a raised edge supports a wheel, a damper opposes the chassis
@@ -122,15 +122,22 @@ interface WheelEdgeStep {
   supported: boolean;
   readonly pushDir: CANNON.Vec3;
   readonly pushPoint: CANNON.Vec3;
+  /** Oblique-edge face reaction (see TyreEdgeResult.faceReactionRatio): direction and ratio. */
+  readonly faceNormal: CANNON.Vec3;
+  faceRatio: number;
+  /** Vertical part of the support normal (scales the suspension force to the vertical load). */
+  normalY: number;
   /** Edge this wheel has been 'over' since it last reported 'none': a support from it is a descent. */
   descendingFrom: string | null;
   /**
-   * Edge this wheel came alongside (side-rubbed, or within first-touch reach across a lateral face)
-   * and has stayed within reach of since: its faces stay lateral, so steering or yawing toward it
-   * only rubs it. Cleared once the wheel leaves its reach.
+   * Rolling engagement per nearby edge (see TyreEdgeHistory): steering, yaw or sliding toward an
+   * edge only rubs it; rolling into it with speed rides up it gradually.
    */
-  rubbing: string | null;
+  engagement: ReadonlyMap<string, number>;
+  /** Tyre centre at the previous castRay (travel estimate for the engagement). */
+  lastCenter: CANNON.Vec3 | null;
 }
+const NO_ENGAGEMENT: ReadonlyMap<string, number> = new Map();
 
 const edgeTmp = {
   axle: new CANNON.Vec3(), velocity: new CANNON.Vec3(), rel: new CANNON.Vec3(),
@@ -168,7 +175,8 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
     contact: NO_WHEEL_EDGE, lateralPenetrationM: 0,
     lateralNormal: new CANNON.Vec3(), lateralPoint: new CANNON.Vec3(),
     supported: false, pushDir: new CANNON.Vec3(), pushPoint: new CANNON.Vec3(),
-    descendingFrom: null, rubbing: null,
+    faceNormal: new CANNON.Vec3(), faceRatio: 0, normalY: 1,
+    descendingFrom: null, engagement: NO_ENGAGEMENT, lastCenter: null,
   }));
 
   constructor(
@@ -199,6 +207,7 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
     step.contact = NO_WHEEL_EDGE;
     step.lateralPenetrationM = 0;
     step.supported = false;
+    step.faceRatio = 0;
     if (this.edgeBoxes.length === 0) return depth;
 
     const ray = wheel.raycastResult;
@@ -217,19 +226,25 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
     chassis.quaternion.vmult(axle, axle);
     axle.y = 0;
     if (axle.normalize() === 0) return depth;
+    // Plan travel of the tyre centre since the previous castRay (null right after a reset). The
+    // chassis velocity is not used: edge impulses applied before the step change it, not the path.
+    const travelX = step.lastCenter ? center.x - step.lastCenter.x : 0;
+    const travelZ = step.lastCenter ? center.z - step.lastCenter.z : 0;
+    (step.lastCenter ??= new CANNON.Vec3()).copy(center);
     const result: TyreEdgeResult = tyreEdge({
       centerM: [center.x, center.y, center.z],
       rollDir: [-axle.z, 0, axle.x],
       axleDir: [axle.x, 0, axle.z],
       radiusM: wheel.radius,
       groundY,
-    }, this.edgeBoxes, step.rubbing);
+    }, this.edgeBoxes, {
+      engagement: step.engagement,
+      travelM: [travelX, 0, travelZ],
+    });
     step.contact = result.contact;
+    step.engagement = result.engagement;
     if (result.contact.state === 'over') step.descendingFrom = result.contact.colliderId;
     else if (result.contact.state === 'none') step.descendingFrom = null;
-    if (!step.rubbing || !result.lateralOnlyInReach) {
-      step.rubbing = result.lateralColliderId ?? result.lateralReachColliderId;
-    }
     if (result.lateralNormal) {
       step.lateralPenetrationM = result.lateralPenetrationM;
       step.lateralNormal.set(...result.lateralNormal);
@@ -244,8 +259,9 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
     if (dirY >= -1e-6) return depth;
     let suspensionLength = (supportY + wheel.radius - wheel.chassisConnectionPointWorld.y) / dirY;
     const minLength = wheel.suspensionRestLength - wheel.maxSuspensionTravel;
-    const maxLength = wheel.suspensionRestLength + wheel.maxSuspensionTravel;
-    if (suspensionLength > maxLength) return depth;
+    // The ground ray reaches only rest length (cannon-es raylen = rest + radius); an edge support
+    // reaching further would hold an airborne wheel low and let it snap to rest when it ends.
+    if (suspensionLength > wheel.suspensionRestLength) return depth;
     const distance = suspensionLength + wheel.radius;
     if (suspensionLength < minLength) suspensionLength = minLength;
 
@@ -254,9 +270,16 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
     const off = (hx - center.x) * axle.x + (hz - center.z) * axle.z;
     ray.hitPointWorld.set(hx - axle.x * off, hy, hz - axle.z * off);
     ray.hitNormalWorld.set(...result.normal);
-    step.pushDir.set(result.normal[0], 0, result.normal[2]);
+    // Edge dampers act across the face (head-on this is the normal's horizontal part).
+    if (result.faceNormal) step.pushDir.set(...result.faceNormal);
+    else step.pushDir.set(result.normal[0], 0, result.normal[2]);
     step.supported = step.pushDir.normalize() > 1e-6;
     step.pushPoint.copy(ray.hitPointWorld);
+    step.normalY = result.normal[1];
+    if (result.faceNormal) {
+      step.faceNormal.set(...result.faceNormal);
+      step.faceRatio = result.faceReactionRatio;
+    }
     ray.distance = distance;
     ray.body = this.edgeBodyById.get(result.contact.colliderId!) ?? null;
     ray.hasHit = true;
@@ -278,18 +301,57 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
     return distance;
   }
 
-  /** Forget per-wheel edge history (latches and the latest outcome), e.g. before a settle. */
+  /** Forget per-wheel edge history (engagements and the latest outcome), e.g. before a settle. */
   resetEdgeState(): void {
     for (const step of this.edgeSteps) {
       step.contact = NO_WHEEL_EDGE;
       step.lateralPenetrationM = 0;
       step.supported = false;
+      step.faceRatio = 0;
       step.descendingFrom = null;
-      step.rubbing = null;
+      step.engagement = NO_ENGAGEMENT;
+      step.lastCenter = null;
     }
   }
 
-  /** Edge forces from the latest castRay: sidewall-against-face push, then rebound damping. */
+  /**
+   * Rigid-face impulses from this step's castRay, applied after the friction impulses (so drive and
+   * side friction cannot carry the tyre on into the face before integration):
+   * - a tyre overlapping a face it did not roll onto stops moving further into it (inelastic
+   *   sidewall contact; the spring in applyEdgeForces pushes the overlap back out);
+   * - an oblique edge's face reaction (TyreEdgeResult.faceReactionRatio times the vertical load)
+   *   stops the tyre moving into the face but never pushes it back out (a rigid oblique edge would
+   *   return the stored lift as a bounce, then chatter).
+   */
+  applyEdgeImpulses(h: number): void {
+    const chassis = this.chassisBody;
+    for (const step of this.edgeSteps) {
+      if (step.lateralPenetrationM <= 0) continue;
+      chassis.getVelocityAtWorldPoint(step.lateralPoint, edgeTmp.velocity);
+      const into = edgeTmp.velocity.dot(step.lateralNormal);
+      if (into >= 0) continue;
+      const j = -into / impulseDenominator(chassis, step.lateralPoint, step.lateralNormal);
+      step.lateralNormal.scale(j, edgeTmp.force);
+      step.lateralPoint.vsub(chassis.position, edgeTmp.rel);
+      chassis.applyImpulse(edgeTmp.force, edgeTmp.rel);
+    }
+    this.edgeSteps.forEach((step, i) => {
+      if (step.faceRatio <= 0) return;
+      const wheel = this.wheelInfos[i];
+      const load = Math.min(wheel.suspensionForce, wheel.maxSuspensionForce) * step.normalY;
+      if (load <= 0) return;
+      chassis.getVelocityAtWorldPoint(step.pushPoint, edgeTmp.velocity);
+      const into = -edgeTmp.velocity.dot(step.faceNormal);
+      if (into <= 0) return;
+      const stop = into / impulseDenominator(chassis, step.pushPoint, step.faceNormal);
+      const impulse = Math.min(load * step.faceRatio * h, stop);
+      step.faceNormal.scale(impulse, edgeTmp.force);
+      step.pushPoint.vsub(chassis.position, edgeTmp.rel);
+      chassis.applyImpulse(edgeTmp.force, edgeTmp.rel);
+    });
+  }
+
+  /** Edge forces from the latest castRay: sidewall spring on an overlap, then edge damping. */
   applyEdgeForces(): void {
     const chassis = this.chassisBody;
     for (const step of this.edgeSteps) {
@@ -416,6 +478,7 @@ class CorrectedRaycastVehicle extends CANNON.RaycastVehicle {
         ground.applyImpulse(fr.impulse, fr.relPos2);
       }
     });
+    this.applyEdgeImpulses(timeStep);
   }
 }
 

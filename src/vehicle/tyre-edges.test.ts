@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ColliderBox } from '../runtime-types';
-import { TOUCH_MARGIN_M, tyreEdge, type TyreFrame } from './tyre-edges';
+import { TOUCH_MARGIN_M, tyreEdge, type TyreEdgeHistory, type TyreFrame } from './tyre-edges';
 
 const R = 0.31;
 const faceX = 0.5;
@@ -187,7 +187,12 @@ describe('tyreEdge', () => {
     expect(Math.abs(hx * s + hz * c)).toBeLessThanOrEqual(0.1 + 1e-9);
   });
 
-  it('keeps a side-rubbed box lateral at any angle when named lateral-only', () => {
+  const d0 = Math.sqrt(2 * R * 0.11 - 0.11 * 0.11);
+  const still = (engagement: Record<string, number>): TyreEdgeHistory => ({
+    engagement: new Map(Object.entries(engagement)), travelM: [0, 0, 0],
+  });
+
+  it('rubs a box it was alongside when steered or slid into it, with no lift', () => {
     // Rolling 45 deg into the +x face with the leading outer slice 2 cm inside the box.
     const c = Math.SQRT1_2;
     const curb = box(0.11, { id: 'rubbed' });
@@ -195,57 +200,84 @@ describe('tyreEdge', () => {
       centerM: [faceX + 0.02 - 0.1 * c, R, -0.1 * c], rollDir: [c, 0, -c], axleDir: [c, 0, c],
       radiusM: R, groundY: 0,
     };
-    const rolling = tyreEdge(tyre, [curb]);
-    expect(rolling.supportY).not.toBeNull();
-    expect(rolling.lateralColliderId).toBeNull();
-    const lateral = tyreEdge(tyre, [curb], 'rubbed');
+    // Plain geometry (no history): the tyre has rolled onto the box.
+    expect(tyreEdge(tyre, [curb]).supportY).not.toBeNull();
+    // Engagement still at reach (it got there by steering, not rolling): sidewall push only.
+    const lateral = tyreEdge(tyre, [curb], still({ rubbed: d0 + TOUCH_MARGIN_M }));
     expect(lateral.contact).toEqual({ colliderId: 'rubbed', kind: 'curb', state: 'touching' });
     expect(lateral.supportY).toBeNull();
     expect(lateral.normal).toBeNull();
     expect(lateral.lateralPenetrationM).toBeCloseTo(0.02, 9);
     expect(lateral.lateralNormal).toEqual([-1, 0, 0]);
     expect(lateral.lateralColliderId).toBe('rubbed');
-    // Another box id leaves the rolling contact unchanged.
-    expect(tyreEdge(tyre, [curb], 'other')).toEqual(rolling);
+    expect(lateral.engagement.get('rubbed')).toBeCloseTo(d0 + TOUCH_MARGIN_M, 12);
+    // Another box's history leaves the rolling contact unchanged.
+    expect(tyreEdge(tyre, [curb], still({ other: 0.1 })).supportY)
+      .toBeCloseTo(tyreEdge(tyre, [curb]).supportY!, 12);
   });
 
-  it('names a box the wheel is alongside within reach, and rubs it once steered toward it', () => {
+  it('remembers a box the wheel is alongside and lifts only as it rolls into it', () => {
     const h = 0.11;
-    const d0 = Math.sqrt(2 * R * h - h * h);
     const curb = box(h, { id: 'side' });
-    // Parallel to the +x face (rolling +z), outer slice 5 cm short of it: lateral, no contact.
+    // Parallel to the +x face (rolling +z), outer slice 5 cm short of it: in reach, no contact.
     const parallel: TyreFrame = {
       centerM: [faceX - 0.05 - 0.1, R, 0], rollDir: [0, 0, 1], axleDir: [1, 0, 0],
       radiusM: R, groundY: 0,
     };
-    const alongside = tyreEdge(parallel, [curb]);
+    const alongside = tyreEdge(parallel, [curb], still({}));
     expect(alongside.contact.state).toBe('none');
     expect(alongside.supportY).toBeNull();
-    expect(alongside.lateralReachColliderId).toBe('side');
-    expect(alongside.lateralOnlyInReach).toBe(false);
-    // Out of reach across the face: nothing to latch.
-    const far = tyreEdge({ ...parallel, centerM: [faceX - d0 - 0.01 - 0.1, R, 0] }, [curb]);
-    expect(far.lateralReachColliderId).toBeNull();
-    // Steered 35 deg toward the face: unlatched it is a deep rolling contact (the old one-step lift).
+    expect(alongside.engagement.get('side')).toBeCloseTo(d0 + TOUCH_MARGIN_M, 12);
+    // Out of reach across the face: nothing remembered.
+    const far = tyreEdge({ ...parallel, centerM: [faceX - d0 - 0.01 - 0.1, R, 0] }, [curb], still({}));
+    expect(far.engagement.has('side')).toBe(false);
+    // Steered 35 deg toward the face: plain geometry is a deep rolling contact (a one-step lift) ...
     const a = 35 * Math.PI / 180;
+    const roll: [number, number, number] = [Math.sin(a), 0, Math.cos(a)];
     const steered: TyreFrame = {
-      ...parallel, rollDir: [Math.sin(a), 0, Math.cos(a)], axleDir: [Math.cos(a), 0, -Math.sin(a)],
+      ...parallel, rollDir: roll, axleDir: [Math.cos(a), 0, -Math.sin(a)],
     };
-    const rolling = tyreEdge(steered, [curb]);
-    expect(rolling.contact.state).toBe('climbing');
-    expect(rolling.lateralReachColliderId).toBeNull();
-    // Latched: the footprint reaches the face, so it rubs it (touching) with no support or force.
-    const rub = tyreEdge(steered, [curb], 'side');
+    expect(tyreEdge(steered, [curb]).contact.state).toBe('climbing');
+    // ... but steering is not rolling: the footprint reaches the face, so it rubs it.
+    const remembered = { engagement: alongside.engagement, travelM: [0, 0, 0] as const };
+    const rub = tyreEdge(steered, [curb], remembered);
     expect(rub.contact).toEqual({ colliderId: 'side', kind: 'curb', state: 'touching' });
     expect(rub.supportY).toBeNull();
-    expect(rub.normal).toBeNull();
     expect(rub.lateralPenetrationM).toBe(0);
-    expect(rub.lateralOnlyInReach).toBe(true);
-    // Latched but the steered footprint short of the face: in reach, no contact.
-    const short = tyreEdge({ ...steered, centerM: [faceX - 0.2 - 0.1, R, 0] }, [curb], 'side');
+    // Rolling 1 cm along its rolling direction (about 5.7 mm into the face) advances e by at most
+    // 1.25 cm and lifts the tyre a little, never to the geometric height.
+    const rolled = tyreEdge({ ...steered, centerM: [steered.centerM[0] + roll[0] * 0.01, R, roll[2] * 0.01] },
+      [curb], { engagement: rub.engagement, travelM: [roll[0] * 0.01, 0, roll[2] * 0.01] });
+    const e = rolled.engagement.get('side')!;
+    expect(e).toBeLessThan(d0 + TOUCH_MARGIN_M);
+    expect(e).toBeGreaterThanOrEqual(d0 + TOUCH_MARGIN_M - 0.0125 - 1e-12);
+    expect(rolled.supportY!).toBeLessThan(0.01);
+    expect(rolled.contact.state).toBe('touching');
+    // Steered footprint short of the face: remembered, no contact.
+    const short = tyreEdge({ ...steered, centerM: [faceX - 0.2 - 0.1, R, 0] }, [curb], remembered);
     expect(short.contact.state).toBe('none');
-    expect(short.lateralOnlyInReach).toBe(true);
-    // A box the wheel rolls into is never named alongside.
-    expect(tyreEdge(tyreAt(0.1), [box(h)]).lateralReachColliderId).toBeNull();
+    expect(short.engagement.has('side')).toBe(true);
+  });
+
+  it('eases off an edge no faster than the tyre travels', () => {
+    const curb = box(0.11);
+    // Engaged on top of the face (e = 0) and then 5 cm short of it after travelling 1 cm.
+    const r = tyreEdge(tyreAt(0.05), [curb], {
+      engagement: new Map([['curb-a', 0]]), travelM: [-0.01, 0, 0],
+    });
+    expect(r.engagement.get('curb-a')).toBeCloseTo(0.0125, 12);
+    expect(r.supportY!).toBeGreaterThan(tyreEdge(tyreAt(0.05), [curb]).supportY!);
+  });
+
+  it('reports over only for the box that carries the wheel centre', () => {
+    // Centre over a low stop, outer slice rubbing a tall curb it never rolled onto.
+    const low = box(0.05, { id: 'low', kind: 'wheel-stop', centerM: [0, 0.025, 0], halfExtentsM: [1, 0.025, 1] });
+    const tall = box(0.11, { id: 'tall', centerM: [0, 0.055, 1.5], halfExtentsM: [1, 0.055, 0.5] });
+    const tyre: TyreFrame = {
+      centerM: [0, R, 0.92], rollDir: [1, 0, 0], axleDir: [0, 0, 1], radiusM: R, groundY: 0,
+    };
+    const r = tyreEdge(tyre, [tall, low]);
+    expect(r.contact).toEqual({ colliderId: 'low', kind: 'wheel-stop', state: 'over' });
+    expect(r.lateralColliderId).toBe('tall');
   });
 });
