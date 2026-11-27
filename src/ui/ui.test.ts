@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mountCalibration, mountScreen } from './screens';
 import { mountHud } from './hud';
 import { mountViewSettings } from './view-settings';
@@ -142,7 +142,7 @@ it.each([
   const summary: AttemptSummary = {
     stageId: 1, vehicleId: 'sedan', outcome: 'fail', failureReason, obstacleId,
     elapsedSimulationS: 1, closestSampledClearanceM: null, peakSpeedMps: 0.2,
-    directionChanges: 0, curbTouches: 0, acknowledgedStepIds: [], usedAids: [],
+    directionChanges: 0, curbTouches: 0, nearMisses: [], acknowledgedStepIds: [], usedAids: [],
   };
   mountScreen(element, {
     kind: 'history-detail', record: { id: 'a', completedAt: '2026-11-04T10:00:00.000Z', summary },
@@ -165,6 +165,7 @@ it('localizes acknowledged steps and obstacle labels in history details', () => 
     peakSpeedMps: 0.2,
     directionChanges: 0,
     curbTouches: 4,
+    nearMisses: [],
     acknowledgedStepIds: ['survey-space'],
     usedAids: [],
   };
@@ -187,7 +188,7 @@ it('localizes acknowledged steps and obstacle labels in history details', () => 
 const recap: AttemptSummary = {
   stageId: 5, vehicleId: 'sedan', outcome: 'success', failureReason: null, obstacleId: null,
   elapsedSimulationS: 40, closestSampledClearanceM: null, peakSpeedMps: 0.4,
-  directionChanges: 2, curbTouches: 3, acknowledgedStepIds: [], usedAids: [],
+  directionChanges: 2, curbTouches: 3, nearMisses: [], acknowledgedStepIds: [], usedAids: [],
 };
 
 it.each([
@@ -1201,4 +1202,33 @@ it('lists the mirror adjustment key in the paused controls help', () => {
 it('tells the driver the car must be stopped before adjusting a mirror', () => {
   expect(messages.mirrorAdjustBlocked).toContain('dừng');
   expect(messages.controlsHelp).toContain('khi xe đã dừng');
+});
+
+describe('near misses and actor collisions', () => {
+  function mountRecap(summary: AttemptSummary) {
+    const element = root();
+    mountScreen(element, { kind: 'success', summary, historyStatus: 'persistent' }, context, vi.fn());
+    return element;
+  }
+
+  it('lists the near-miss count and actor kinds', () => {
+    const element = mountRecap({ ...recap, nearMisses: [
+      { actorId: 'ped-stage2-crossing', atS: 3 }, { actorId: 'car-stage3-behind', atS: 9 },
+    ] });
+    expect(element.textContent).toContain(`${messages.historyNearMisses}2 (người đi bộ, ô tô)`);
+  });
+
+  it('shows the no-record value without near misses', () => {
+    const element = mountRecap(recap);
+    expect(element.textContent).toContain(`${messages.historyNearMisses}${messages.noRecordedValue}`);
+  });
+
+  it.each([
+    ['car-stage3-behind', 'Xe ô tô đang di chuyển'],
+    ['ped-stage2-crossing', 'Người đi bộ'],
+  ])('names the %s collision obstacle', (obstacleId, label) => {
+    const element = mountRecap({ ...recap, outcome: 'fail', failureReason: 'collision', obstacleId });
+    expect(element.textContent).toContain(`${messages.historyObstacle}${label}`);
+    expect(element.textContent).not.toContain(obstacleId);
+  });
 });

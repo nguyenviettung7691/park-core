@@ -220,6 +220,7 @@ export interface AttemptSummary {
   readonly peakSpeedMps: number;
   readonly directionChanges: number;
   readonly curbTouches: number;
+  readonly nearMisses: readonly { readonly actorId: string; readonly atS: number }[];
   readonly acknowledgedStepIds: readonly string[];
   readonly usedAids: readonly ('chase' | '360' | 'trajectory' | 'help')[];
 }

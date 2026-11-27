@@ -22,6 +22,7 @@ const SUMMARY_KEYS = [
   'elapsedSimulationS', 'closestSampledClearanceM', 'peakSpeedMps',
   'directionChanges', 'curbTouches', 'acknowledgedStepIds', 'usedAids',
 ];
+const SUMMARY_KEYS_WITH_NEAR_MISSES = [...SUMMARY_KEYS, 'nearMisses'];
 const RECORD_KEYS = ['id', 'completedAt', 'summary'];
 const STORAGE_ERROR_NAMES = new Set([
   'AbortError', 'ConstraintError', 'DataError', 'InvalidStateError',
@@ -67,8 +68,24 @@ function isValidStringList(value: unknown): value is string[] {
     && new Set(value).size === value.length;
 }
 
+function validateNearMisses(value: unknown): AttemptSummary['nearMisses'] | null {
+  if (!Array.isArray(value)) return null;
+  const misses: { actorId: string; atS: number }[] = [];
+  for (const entry of value) {
+    if (!isObject(entry) || !hasExactKeys(entry, ['actorId', 'atS'])
+      || !isNonEmptyString(entry.actorId) || !isFiniteAtLeast(entry.atS, 0)) return null;
+    misses.push({ actorId: entry.actorId, atS: entry.atS });
+  }
+  return misses;
+}
+
 function validateSummary(value: unknown): AttemptSummary | null {
-  if (!isObject(value) || !hasExactKeys(value, SUMMARY_KEYS)) return null;
+  if (!isObject(value)
+    || !(hasExactKeys(value, SUMMARY_KEYS) || hasExactKeys(value, SUMMARY_KEYS_WITH_NEAR_MISSES))) {
+    return null;
+  }
+  const nearMisses = Object.hasOwn(value, 'nearMisses') ? validateNearMisses(value.nearMisses) : [];
+  if (!nearMisses) return null;
   if (!STAGE_IDS.has(value.stageId as number)
     || (value.vehicleId !== 'sedan' && value.vehicleId !== 'cuv')
     || (value.outcome !== 'success' && value.outcome !== 'fail')) return null;
@@ -102,6 +119,7 @@ function validateSummary(value: unknown): AttemptSummary | null {
     peakSpeedMps: value.peakSpeedMps,
     directionChanges: value.directionChanges,
     curbTouches: value.curbTouches as number,
+    nearMisses,
     acknowledgedStepIds: [...value.acknowledgedStepIds],
     usedAids: [...value.usedAids] as AttemptSummary['usedAids'],
   };

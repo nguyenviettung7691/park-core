@@ -77,12 +77,18 @@ function summaryRows(summary: AttemptSummary): readonly (readonly [string, strin
     ? summary.usedAids.map((aid) => vi[aid === 'chase' ? 'aidChase'
       : aid === '360' ? 'aid360' : aid === 'trajectory' ? 'aidTrajectory' : 'aidHelp']).join(', ')
     : vi.noRecordedValue;
+  const kinds = [...new Set(summary.nearMisses.map((miss) =>
+    miss.actorId.startsWith('car-') ? vi.nearMissCar : vi.nearMissPedestrian))];
+  const nearMisses = summary.nearMisses.length
+    ? `${summary.nearMisses.length} (${kinds.join(', ')})`
+    : vi.noRecordedValue;
   const rows: (readonly [string, string])[] = [
     [vi.historyElapsed, `${summary.elapsedSimulationS.toFixed(1)} giây`],
     [vi.historyClosestClearance, clearances],
     [vi.historyPeakSpeed, `${(summary.peakSpeedMps * 3.6).toFixed(1)} km/h`],
     [vi.historyDirectionChanges, String(summary.directionChanges)],
     [vi.metricCurbTouches, String(summary.curbTouches)],
+    [vi.historyNearMisses, nearMisses],
     [vi.historyAcknowledged, steps],
     [vi.historyAids, aids],
   ];
@@ -90,7 +96,10 @@ function summaryRows(summary: AttemptSummary): readonly (readonly [string, strin
     rows.push([vi.historyFailure, vi[FAILURE_MESSAGES[summary.failureReason]]]);
   }
   if (summary.obstacleId) {
-    const message = OBSTACLE_MESSAGES[summary.obstacleId] ?? 'historyObstacleGeneric';
+    const message = OBSTACLE_MESSAGES[summary.obstacleId]
+      ?? (summary.obstacleId.startsWith('ped-') ? 'obstaclePedestrian'
+        : summary.obstacleId.startsWith('car-') ? 'obstacleMovingCar'
+          : 'historyObstacleGeneric');
     rows.push([vi.historyObstacle, vi[message]]);
   }
   return rows;

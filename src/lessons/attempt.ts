@@ -26,6 +26,7 @@ export interface AttemptTracker {
   readonly peakSpeedMps: number;
   readonly directionChanges: number;
   readonly curbTouches: number;
+  readonly nearMisses: AttemptSummary['nearMisses'];
   readonly acknowledgedStepIds: readonly string[];
   readonly usedAids: AttemptSummary['usedAids'];
   readonly previousDirectionSign: -1 | 0 | 1;
@@ -47,6 +48,7 @@ export function createAttemptTracker(
     peakSpeedMps: 0,
     directionChanges: 0,
     curbTouches: 0,
+    nearMisses: [],
     acknowledgedStepIds: [],
     usedAids: [],
     previousDirectionSign: 0,
@@ -68,6 +70,7 @@ export function updateAttemptTracker(
   runtime: LessonRuntime,
   deltaS: number,
   curbTouchBegan = false,
+  nearMissIds: readonly string[] = [],
 ): AttemptTracker {
   let closestSampledClearanceM = tracker.closestSampledClearanceM;
   for (const reading of sensors?.readings ?? []) {
@@ -88,9 +91,15 @@ export function updateAttemptTracker(
     ...new Set([...tracker.acknowledgedStepIds, ...runtime.acknowledgedStepIds]),
   ];
 
+  const elapsedSimulationS = tracker.elapsedSimulationS + deltaS;
+  const nearMisses = nearMissIds.length
+    ? [...tracker.nearMisses, ...nearMissIds.map((actorId) => ({ actorId, atS: elapsedSimulationS }))]
+    : tracker.nearMisses;
+
   return {
     ...tracker,
-    elapsedSimulationS: tracker.elapsedSimulationS + deltaS,
+    elapsedSimulationS,
+    nearMisses,
     closestSampledClearanceM,
     peakSpeedMps: Math.max(tracker.peakSpeedMps, Math.abs(telemetry.signedSpeedMps)),
     directionChanges: tracker.directionChanges + Number(directionChanged),
@@ -119,6 +128,7 @@ export function finishAttempt(
     peakSpeedMps: tracker.peakSpeedMps,
     directionChanges: tracker.directionChanges,
     curbTouches: tracker.curbTouches,
+    nearMisses: tracker.nearMisses.map((miss) => ({ ...miss })),
     acknowledgedStepIds: [...tracker.acknowledgedStepIds],
     usedAids: [...tracker.usedAids],
   };

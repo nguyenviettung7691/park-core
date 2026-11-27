@@ -115,7 +115,7 @@ const attemptSummary: AttemptSummary = {
   elapsedSimulationS: 4,
   closestSampledClearanceM: null,
   peakSpeedMps: 0.5,
-  directionChanges: 0, curbTouches: 0,
+  directionChanges: 0, curbTouches: 0, nearMisses: [],
   acknowledgedStepIds: ['survey-space'],
   usedAids: [],
 };
