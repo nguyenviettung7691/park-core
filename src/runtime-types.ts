@@ -3,6 +3,7 @@ import type { ControllerProfileId } from './input/profiles';
 import type { MirrorId, MirrorSpec } from './vehicle/asset-contract';
 import type { SavedMirrorOffsets } from './views/mirror-adjust';
 import type { SavedSeatPosition } from './views/seat-position';
+import type { HeadClearance } from './views/head-pose';
 import type {
   AppState,
   AttemptSummary,
@@ -60,6 +61,8 @@ export const OVERHEAD_EXCLUDED_LAYER = 2;
 
 export interface VehicleAnchors {
   readonly driverEyeLocalM: Vec3Data;
+  /** Vehicle-local box the driver's eye must stay inside. */
+  readonly headClearance: HeadClearance;
   readonly mirrors: Readonly<Record<MirrorId, MirrorSpec>>;
 }
 

@@ -63,7 +63,8 @@ export function buildPrototypeScene(
   chassis.add(steeringWheel);
 
   // Glass faces sit at the shared contract poses; side housings sit just behind them.
-  const mirrorSpecs = deriveVehicleAssetContract(profile).mirrors;
+  const contract = deriveVehicleAssetContract(profile);
+  const mirrorSpecs = contract.mirrors;
   for (const id of ['rear', 'left', 'right'] as const) {
     const spec = mirrorSpecs[id];
     const surface = new Mesh(
@@ -101,6 +102,7 @@ export function buildPrototypeScene(
   const look = new Vector3();
   const anchors: VehicleAnchors = {
     driverEyeLocalM: geometry.driverEyeLocalM,
+    headClearance: contract.headClearance,
     mirrors: mirrorSpecs,
   };
   let disposed = false;

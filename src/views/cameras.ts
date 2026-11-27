@@ -27,6 +27,8 @@ import { renderAuxiliaryPass, type RendererPort } from './auxiliary';
 import { getOverheadInset } from './layout';
 import { applyMirrorCamera, type MirrorGlass } from './mirror-optics';
 import type { MirrorOffsets } from './mirror-adjust';
+import { headEyeLocal, LOOK_LEFT_LIMIT_RAD, LOOK_RIGHT_LIMIT_RAD, ZERO_SEAT, type SeatOffset } from './head-pose';
+import type { LookPose } from './look';
 
 const MIRROR_INTERVAL_MS = 1000 / 15;
 const OVERHEAD_INTERVAL_MS = 1000 / 30;
@@ -47,6 +49,13 @@ type MirrorId = typeof MIRROR_IDS[number];
 
 export interface ViewSystem {
   render(frame: RenderFrame, nowMs: number): void;
+  /** Sets the glance/look pose; yaw is positive to the left and is clamped to the look limits. */
+  setLookPose(pose: LookPose): void;
+  /** Moves the driver's seat from its nominal position (clamped by the head clearance box). */
+  setSeatOffset(seat: SeatOffset): void;
+  /** Current vehicle-local eye point after seat, head lean and clearance clamp. */
+  driverEyeLocal(): Vec3Data;
+  /** @deprecated — removed in Task 9; use setLookPose. */
   look(deltaX: number, deltaY: number): void;
   setCamera(mode: CameraMode): void;
   setOverhead(enabled: boolean): void;
@@ -57,6 +66,7 @@ export interface ViewSystem {
   /** Outlines the glass being adjusted, or none. */
   setMirrorHighlight(id: MirrorId | null): void;
   resize(widthCss: number, heightCss: number, pixelRatio: number): void;
+  /** @deprecated — removed in Task 9; use setLookPose. */
   recenter(): void;
   dispose(): void;
 }
@@ -318,6 +328,8 @@ export function createViews(
   let driverFov = 60;
   let yaw = 0;
   let pitch = 0;
+  let seat: SeatOffset = ZERO_SEAT;
+  let eyeLocal: Vec3Data = assets.anchors.driverEyeLocalM;
   let chaseArmM = CHASE_OFFSET_LOCAL.length();
   let lastChaseTime = Number.NaN;
   let lastMirrorTime = Number.NEGATIVE_INFINITY;
@@ -325,8 +337,14 @@ export function createViews(
   let insetViewport: readonly [number, number, number, number] = [0, 0, 0, 0];
   let disposed = false;
 
+  function setPose(yawRad: number, pitchRad: number) {
+    yaw = Math.max(-LOOK_RIGHT_LIMIT_RAD, Math.min(LOOK_LEFT_LIMIT_RAD, yawRad));
+    pitch = Math.max(-45 * Math.PI / 180, Math.min(35 * Math.PI / 180, pitchRad));
+  }
+
   function updateDriverCamera() {
-    driverEye.set(...assets.anchors.driverEyeLocalM)
+    eyeLocal = headEyeLocal(assets.anchors.driverEyeLocalM, seat, yaw, assets.anchors.headClearance);
+    driverEye.set(...eyeLocal)
       .applyQuaternion(assets.vehicle.quaternion)
       .add(assets.vehicle.position);
     driverCamera.position.copy(driverEye);
@@ -462,12 +480,26 @@ export function createViews(
         }
       }
     },
+    setLookPose(pose) {
+      if (!Number.isFinite(pose.yawRad) || !Number.isFinite(pose.pitchRad)) {
+        throw new RangeError('Look pose must be finite');
+      }
+      setPose(pose.yawRad, pose.pitchRad);
+    },
+    setSeatOffset(next) {
+      if (!Number.isFinite(next.foreAftM) || !Number.isFinite(next.heightM)) {
+        throw new RangeError('Seat offset must be finite');
+      }
+      seat = next;
+    },
+    driverEyeLocal() {
+      return eyeLocal;
+    },
     look(deltaX, deltaY) {
       if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)) {
         throw new RangeError('Mouse-look deltas must be finite');
       }
-      yaw = Math.max(-110 * Math.PI / 180, Math.min(110 * Math.PI / 180, yaw - deltaX * 0.002));
-      pitch = Math.max(-45 * Math.PI / 180, Math.min(35 * Math.PI / 180, pitch - deltaY * 0.002));
+      setPose(yaw - deltaX * 0.002, pitch - deltaY * 0.002);
     },
     setCamera(mode) {
       cameraMode = mode;
@@ -525,8 +557,7 @@ export function createViews(
       insetViewport = [x, y, insetPx, insetPx];
     },
     recenter() {
-      yaw = 0;
-      pitch = 0;
+      setPose(0, 0);
     },
     dispose() {
       if (disposed) return;

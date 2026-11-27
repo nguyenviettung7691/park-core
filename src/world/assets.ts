@@ -521,7 +521,8 @@ export async function loadSceneAssets(
   }
   const eye = requiredObject(vehicleRoot, 'DriverEye', 'vehicle');
   vehicleRoot.updateMatrixWorld(true);
-  const glass = deriveVehicleAssetContract(profiles[vehicle]).mirrors;
+  const contract = deriveVehicleAssetContract(profiles[vehicle]);
+  const glass = contract.mirrors;
   const mirror = (id: 'rear' | 'left' | 'right', node: string) => ({
     ...pose(requiredObject(vehicleRoot!, node, 'vehicle'), vehicleRoot!),
     halfSizeM: glass[id].halfSizeM,
@@ -529,6 +530,7 @@ export async function loadSceneAssets(
   });
   const anchors: VehicleAnchors = {
     driverEyeLocalM: tuple3(eye, vehicleRoot),
+    headClearance: contract.headClearance,
     mirrors: {
       rear: mirror('rear', 'MirrorRear'),
       left: mirror('left', 'MirrorLeft'),

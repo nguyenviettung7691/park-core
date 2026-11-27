@@ -44,6 +44,7 @@ it('composes loaded groups, converts wheel world poses into vehicle space, and r
     wheelNodes: wheels,
     anchors: {
       driverEyeLocalM: [0, 1, 0],
+      headClearance: { minM: [-1, 0, -1], maxM: [1, 2, 1] },
       mirrors: {
         rear: { positionM: [0, 1, 0], rotation: [0, 0, 0, 1], halfSizeM: [0.1, 0.05], convexity: 1 },
         left: { positionM: [0, 1, 0], rotation: [0, 0, 0, 1], halfSizeM: [0.1, 0.05], convexity: 1 },
@@ -91,7 +92,7 @@ function cockpitAssets() {
   vehicle.add(...wheels);
   const pose = { positionM: [0, 1, 0], rotation: [0, 0, 0, 1], halfSizeM: [0.1, 0.05], convexity: 1 } as const;
   const assets: SceneAssets = { environment: new Group(), vehicle, wheelNodes: wheels,
-    anchors: { driverEyeLocalM: [0, 1, 0], mirrors: { rear: pose, left: pose, right: pose } },
+    anchors: { driverEyeLocalM: [0, 1, 0], headClearance: { minM: [-1, 0, -1], maxM: [1, 2, 1] }, mirrors: { rear: pose, left: pose, right: pose } },
     dispose: () => {} };
   return { assets, node: (name: string) => vehicle.getObjectByName(name)! };
 }
