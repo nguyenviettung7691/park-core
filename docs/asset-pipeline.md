@@ -108,6 +108,23 @@ npm run assets:check -- --vehicle sedan --candidate C:\asset-work\candidate
 npm run assets:review -- --vehicle sedan --candidate C:\asset-work\candidate --out C:\asset-work\review
 ```
 
+A candidate feature that is not yet approved sits behind an opt-in generator
+option, off by default, so plain generation always reproduces the approved
+public GLBs (and `assets:check` and the sync test stay green). The issue #11
+exterior lamps use `--lamps`; pass it to all three commands for a lamp candidate:
+
+```powershell
+npm run assets:generate -- --vehicle sedan --out C:\asset-work\candidate --lamps
+npm run assets:check -- --vehicle sedan --candidate C:\asset-work\candidate --lamps
+npm run assets:review -- --vehicle sedan --candidate C:\asset-work\candidate --out C:\asset-work\review --lamps
+```
+
+Promotion after the developer approves the candidate hash and captures is one
+reviewed change: flip the option's default (`EXTERIOR_LAMPS_DEFAULT` in
+`tools\generate-assets.mjs`) to on, regenerate with `node tools\generate-assets.mjs`,
+confirm the public GLB hashes equal the approved candidate hashes, then run
+`npm run assets:check` and the full suites.
+
 Use your session workspace in place of `C:\asset-work`. Choose an empty output
 directory for each review: existing evidence is never overwritten or mixed with
 another run. The review output must be outside the repository or inside
@@ -118,10 +135,10 @@ generator/loader/view tests and the candidate browser review, using Playwright's
 existing local server. It fails on stale candidate bytes, test failures or missing
 browser tooling. It does not copy candidates into public assets or approve them.
 Install the project's locked dependencies and Playwright Chromium when missing.
-The focused unit run skips the "checked-in GLBs in sync" test, which cannot pass
-until an approved candidate is promoted; `assets:check` and the ordinary `vitest`
-run still enforce it. A pre-promotion `assets:review` therefore runs through the
-browser step. After promotion, run `npm run assets:check` and the full suites.
+The focused unit run includes the "checked-in GLBs in sync" test: it compares
+the public GLBs with default generation, which keeps unapproved options off, so it
+passes before and after promotion. After promotion, run `npm run assets:check` and
+the full suites.
 (The sedan and CUV redesigns for issue #12 predate this and ran the browser spec
 directly with the `PARK_CORE_REVIEW_*` variables.)
 If dimensional/anchor changes make the old public GLB incompatible with the new
@@ -187,13 +204,15 @@ geometry alone is not the feature.
 Exterior lamp nodes (issue #11) are hidden by default and shown from telemetry:
 `BrakeLampsLit` (brake above 0.05), `ReverseLampsLit` (gear R) and
 `TurnSignalLeftLit`/`TurnSignalRightLit` (the indicator flash). They sit under
-`Body`, are one batched unlit mesh each, and parked clones hide them. The vehicle
-GLBs that contain them are **candidates pending developer approval and are not
-promoted**: the public GLBs lack the nodes, and until promotion the
-`keeps checked-in GLBs in sync` test fails. Do not run plain `assets:generate`
-to regenerate environments; use
-`writeAssets('.', ['garage','roadside'])` so unapproved vehicle output is never
-written to `public`.
+`Body`, are one batched unlit mesh each, and parked clones hide them (parked
+clones also fit their bounds without the `*Lit` nodes). They are authored only
+with the generator's `--lamps` option (off by default) while the candidates
+await developer approval; the public GLBs lack them until promotion flips that
+default, as described above.
+Environment changes for issue #11 (0.11 m curbs, the garage wheel-stop
+template) are promoted on the branch because the art must match the colliders,
+but their visual approval is **pending the developer**, and merging the issue #11
+PR is gated on that approval (recorded with the capture hashes).
 The driven exterior uses outward-only opaque glazing: no transparency sorting,
 with open interior sightlines. That glazing is excluded from mirror passes.
 `ParkedGlazing` is hidden on the driven car and enabled on parked clones.

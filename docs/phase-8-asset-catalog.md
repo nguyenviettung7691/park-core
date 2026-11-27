@@ -42,10 +42,12 @@ brake above 0.05, reverse in R, and the indicators from the same 1.5 Hz flash as
 the cockpit arrows. Parked lesson cars hide them. Placements of the sedan high
 mount and the reverse/side-repeater lamps are inferred, not measured.
 
-**These GLBs are not promoted.** The checked-in `public/assets/vehicles/*.glb`
-files are unchanged and the lamp captures await developer approval, so the
-`keeps checked-in GLBs in sync` test fails until promotion. Candidate figures
-(pending, not yet catalog values):
+**These GLBs are not promoted.** The lamps are authored only with the
+generator's `--lamps` option (default off), so the checked-in
+`public/assets/vehicles/*.glb` files and default generation stay in sync while
+the lamp captures await developer approval. Promotion flips the default after
+approval (see `docs/asset-pipeline.md`). Candidate figures (pending, not yet
+catalog values; candidate sha256 sedan `84eaccc0…`, CUV `d4626703…`):
 
 | Candidate | Stored triangles | GLB bytes |
 |---|---:|---:|
@@ -202,9 +204,11 @@ garage GLB grew by that template (+68 triangles, +6,172 bytes). The car's tyres
 meet the stop's top edge when the tyre centre is about 0.24 m from its near face;
 measured resting poses leave 0.29 to 0.83 m of margin inside the target (minimum
 0.288 m, stage 4 sedan). A 15 km/h approach fails with `wheel-stop-mounted`.
-The stop is a simple box collider, not per-polygon contact. Its visual sign-off
-is pending the developer, and the garage capture images under `images/phase-8`
-were not refreshed.
+The stop is a simple box collider, not per-polygon contact. The environment
+GLBs (0.11 m curbs, this template) are promoted on the branch because the art has
+to match the colliders, but their **visual approval is pending the developer**:
+merging the issue #11 PR is gated on that approval, and the garage capture images
+under `images/phase-8` were not refreshed.
 
 The cockpit pictures above also show ceiling fixtures and pipe runs.
 All overhead details remain in `Ceiling`, excluded from the overhead camera
@@ -329,15 +333,14 @@ npx vitest run src\world\generate-assets.test.mjs src\world\assets.test.mjs
 npx playwright test phase-8-assets.spec.ts
 ```
 
-While the issue #11 vehicle candidates are unpromoted, `generate-assets.mjs`
-without arguments would overwrite the public vehicle GLBs with them. Regenerate
-only the environments instead:
-`node -e "import('./tools/generate-assets.mjs').then(m=>m.writeAssets('.',['garage','roadside']))"`.
+Plain generation reproduces the approved public GLBs; unapproved issue #11 lamp
+candidates need `--lamps` (with `--vehicle` and `--out`, see
+`docs/asset-pipeline.md`).
 
 Exterior lamp captures (unlit, brake, reverse, left, right and all-lit, from the
 rear and front quarter) come from `asset-review.spec.ts` and load candidate bytes
 through `PARK_CORE_REVIEW_VEHICLE` and `PARK_CORE_REVIEW_CANDIDATE` (the
-`assets:review` command sets both and links them as `<vehicle>-lamps`):
+`assets:review ... --lamps` command sets both and links them as `<vehicle>-lamps`):
 
 ```powershell
 $env:PARK_CORE_REVIEW_VEHICLE='sedan'

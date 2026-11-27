@@ -42,11 +42,12 @@ export function inspectAsset(id, bytes) {
     ] : [] };
 }
 
-export function checkAssets(root = projectRoot, selected = ids) {
+/** `options.lamps` checks candidates generated with `--lamps` (see EXTERIOR_LAMPS_DEFAULT). */
+export function checkAssets(root = projectRoot, selected = ids, options = {}) {
   const reports = selected.map((id) => {
     if (!ids.includes(id)) throw new RangeError(`Unknown asset: ${id}`);
     const bytes = readFileSync(assetPath(root, id));
-    if (!bytes.equals(Buffer.from(buildGlb(id)))) {
+    if (!bytes.equals(Buffer.from(buildGlb(id, options)))) {
       throw new Error(`${id}: stale or foreign GLB; output does not match current authoring source`);
     }
     return inspectAsset(id, bytes);
@@ -70,7 +71,8 @@ function run(script, args, env = process.env) {
   if (result.status !== 0) throw new Error(`${script} failed (exit ${result.status}, signal ${result.signal})`);
 }
 
-export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline }) {
+export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline, lamps }) {
+  const buildOptions = lamps === undefined ? {} : { lamps };
   const output = resolve(out);
   const outputRelative = relative(projectRoot, output);
   const outputParent = outputRelative.split(/[\\/]/)[0];
@@ -87,19 +89,18 @@ export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline }
     'src/world/assets.ts', 'src/views/cameras.ts', 'src/render/asset-scene.ts',
     'src/vehicle/geometry.ts', 'src/vehicle/rig.ts', 'src/contracts.ts', 'tests/browser/fixtures/phase-8.ts',
     'tests/browser/asset-review.spec.ts', 'playwright.config.ts', 'package-lock.json'];
-  const report = { version: 1, vehicle, automated: 'running', visualApproval: 'pending',
+  const report = { version: 1, vehicle, lamps: lamps ?? null, automated: 'running', visualApproval: 'pending',
     performance: 'unverified', opticalCalibration: 'unverified',
     sourceHashes: Object.fromEntries(sourceFiles.map((path) =>
       [path, sha256(readFileSync(join(projectRoot, ...path.split('/'))))])),
     assets: [], error: null };
   try {
-    report.assets = checkAssets(resolve(candidate), [vehicle]);
-    // The checked-in sync test compares public GLBs with the source, so it cannot pass
-    // before an approved candidate is promoted; `assets:check` covers it after promotion.
+    report.assets = checkAssets(resolve(candidate), [vehicle], buildOptions);
+    // Unapproved features are opt-in generator options, so the checked-in sync test (public
+    // GLBs vs default generation) holds before and after promotion.
     run('node_modules/vitest/vitest.mjs', ['run', 'src/world/generate-assets.test.mjs',
       'src/world/assets.test.mjs', 'src/vehicle/asset-contract.test.ts',
-      'src/views/views.test.ts', 'src/render/parked-vehicle.test.ts',
-      '--testNamePattern', '^(?!.*keeps checked-in GLBs in sync)']);
+      'src/views/views.test.ts', 'src/render/parked-vehicle.test.ts']);
     run('node_modules/@playwright/test/cli.js', ['test', 'asset-review.spec.ts',
       '--output', join(output, 'browser')], {
       ...process.env, PARK_CORE_REVIEW_VEHICLE: vehicle,
@@ -111,7 +112,7 @@ export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline }
         throw new Error(`Source changed during review: ${path}; rerun before approval`);
       }
     }
-    if (checkAssets(resolve(candidate), [vehicle])[0].sha256 !== report.assets[0].sha256) {
+    if (checkAssets(resolve(candidate), [vehicle], buildOptions)[0].sha256 !== report.assets[0].sha256) {
       throw new Error('Candidate changed during review; rerun before approval');
     }
     report.automated = 'passed';
@@ -135,19 +136,21 @@ export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values, positionals } = parseArgs({ allowPositionals: true,
     options: { vehicle: { type: 'string' }, candidate: { type: 'string' }, out: { type: 'string' },
-      baseline: { type: 'string' } } });
+      baseline: { type: 'string' }, lamps: { type: 'boolean' } } });
   const [command] = positionals;
   if (positionals.length !== 1 || !['check', 'review'].includes(command)) {
-    throw new Error('Usage: asset-workflow.mjs check|review [--vehicle sedan|cuv] [--candidate root] [--out directory]');
+    throw new Error('Usage: asset-workflow.mjs check|review [--vehicle sedan|cuv] [--candidate root] [--out directory] [--lamps]');
   }
   if (values.vehicle && !['sedan', 'cuv'].includes(values.vehicle)) {
     throw new RangeError('--vehicle must be sedan or cuv');
   }
   if (command === 'check') {
     console.log(JSON.stringify(checkAssets(resolve(values.candidate ?? projectRoot),
-      values.vehicle ? [values.vehicle] : ids), null, 2));
+      values.vehicle ? [values.vehicle] : ids, values.lamps === undefined ? {} : { lamps: values.lamps }),
+    null, 2));
   } else {
     if (!values.vehicle || !values.out) throw new Error('review requires --vehicle and --out');
-    reviewAssets({ vehicle: values.vehicle, candidate: values.candidate, out: values.out, baseline: values.baseline });
+    reviewAssets({ vehicle: values.vehicle, candidate: values.candidate, out: values.out,
+      baseline: values.baseline, lamps: values.lamps });
   }
 }

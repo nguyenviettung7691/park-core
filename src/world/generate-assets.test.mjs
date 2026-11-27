@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkAssets, reviewAssets } from '../../tools/asset-workflow.mjs';
-import { buildGlb } from '../../tools/generate-assets.mjs';
+import { EXTERIOR_LAMPS_DEFAULT, buildGlb } from '../../tools/generate-assets.mjs';
 import { profiles } from '../vehicle/profiles.ts';
 
 const projectRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -177,8 +177,8 @@ describe('phase 5 original GLB generator', () => {
     }
   });
 
-  it.each(['sedan', 'cuv'])('adds batched exterior lit-lamp nodes under Exterior for %s', (id) => {
-    const glb = readGlbBytes(buildGlb(id));
+  it.each(['sedan', 'cuv'])('adds batched exterior lit-lamp nodes under Exterior for %s with lamps', (id) => {
+    const glb = readGlbBytes(buildGlb(id, { lamps: true }));
     const index = (name) => glb.nodes.findIndex((node) => node.name === name);
     const ancestors = (name) => {
       const chain = [];
@@ -193,6 +193,16 @@ describe('phase 5 original GLB generator', () => {
       expect(glb.nodes[index(name)]?.mesh, name).toBeTypeOf('number');
       expect(ancestors(name), name).toContain('Exterior');
     }
+  });
+
+  it.each(['sedan', 'cuv'])('leaves the unapproved lit-lamp nodes out of default %s output', (id) => {
+    // Promotion after developer approval flips EXTERIOR_LAMPS_DEFAULT (docs/asset-pipeline.md).
+    expect(EXTERIOR_LAMPS_DEFAULT).toBe(false);
+    const names = readGlbBytes(buildGlb(id)).nodes.map((node) => node.name);
+    for (const name of ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit']) {
+      expect(names).not.toContain(name);
+    }
+    expect(buildGlb(id, { lamps: false })).toEqual(buildGlb(id));
   });
 
   it.each(['sedan', 'cuv'])('keeps the hood below the driver eye for %s', (assetId) => {
