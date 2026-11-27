@@ -14,6 +14,10 @@ import {
   createActorWorld,
   rulesForStage,
   stepActors,
+  ACCEL_MPS2,
+  BLOCKED_WAIT_S,
+  CAR_DECEL_MPS2,
+  LESSON_LIFETIME_S,
   type ActorWorldState,
   type LearnerState,
 } from './actors';
@@ -225,7 +229,7 @@ describe('scripted actors', () => {
     expect(record()).toEqual(record());
   });
 
-  it('keeps contact and near-miss results empty and the state frozen', () => {
+  it('reports no contact or near miss for a distant learner and freezes state', () => {
     const world = createActorWorld(lesson(entry('moving-off')), 'coach');
     const result = stepActors(world, learner(), DT);
     expect(result.contactId).toBeNull();
@@ -236,5 +240,193 @@ describe('scripted actors', () => {
   it('maps stages to rule sets', () => {
     expect([1, 2, 3, 4, 5].map((id) => rulesForStage(id as 1 | 2 | 3 | 4 | 5)))
       .toEqual(['coach', 'coach', 'realistic', 'realistic', 'realistic']);
+  });
+
+  describe('yield, contact and detours', () => {
+    const CAR_SPEED = 20 / 3.6;
+
+    function car(id: string, path: ActorDefinition['path']): ActorDefinition {
+      return {
+        id, kind: 'car', halfExtentsM: [0.9, 0.7, 2.2], path, cruiseMps: CAR_SPEED,
+        detour: { kind: 'turn-back' },
+      };
+    }
+
+    const forced = (definition: ActorDefinition): ActorSchedule => lesson({
+      actor: definition, trigger: 'moving-off', delayS: 0, checkMoment: 'moving-off', side: 'left',
+    });
+
+    function rectangle(minX: number, maxX: number, minZ: number, maxZ: number, speed = 0) {
+      return {
+        footprint: [[minX, 0, minZ], [maxX, 0, minZ], [maxX, 0, maxZ], [minX, 0, maxZ]],
+        headingRad: 0, signedSpeedMps: speed, gear: 'D' as Gear, parkingBrake: false,
+        indicator: 'off' as Indicator,
+      } satisfies LearnerState;
+    }
+
+    const start = (definition: ActorDefinition, rules: 'coach' | 'realistic') => createActorWorld(
+      forced(definition), rules, { forceTriggersAtS: 0 },
+    );
+    const speedOf = (world: ActorWorldState) => world.cursors[0].speedMps;
+    const distanceOf = (world: ActorWorldState) => world.cursors[0].distanceM;
+
+    it('realistic car brakes at 6 m/s²', () => {
+      let world = start(car('car-a', [[0, 0], [0, -80]]), 'realistic');
+      // Learner box across the path, near edge 10 m ahead of the origin.
+      const blocker = rectangle(-3, 3, -13, -10);
+      let braked = 0;
+      let previous = speedOf(world);
+      for (let i = 0; i < 300; i += 1) {
+        const result = stepActors(world, blocker, DT);
+        world = result.state;
+        expect(result.contactId).toBeNull();
+        if (actorPoses(world)[0].braking && previous > 0.06) {
+          expect(previous - speedOf(world)).toBeCloseTo(CAR_DECEL_MPS2 * DT, 9);
+          braked += 1;
+        }
+        previous = speedOf(world);
+      }
+      expect(braked).toBeGreaterThan(50);
+      expect(speedOf(world)).toBe(0);
+    });
+
+    it('realistic rules allow a late cut-in', () => {
+      let world = start(car('car-a', [[0, 0], [0, -80]]), 'realistic');
+      world = run(world, learner(), 60);
+      const front = actorBoxes(world)[0].centerM[2] - 2.2;
+      const cutIn = rectangle(-3, 3, front - 3, front - 1);
+      let contact: string | null = null;
+      for (let i = 0; i < 60 && contact === null; i += 1) {
+        const result = stepActors(world, cutIn, DT);
+        world = result.state;
+        contact = result.contactId;
+      }
+      expect(contact).toBe('car-a');
+    });
+
+    it('coach rules never let actor motion cause contact', () => {
+      let world = start(car('car-a', [[0, 0], [0, -80]]), 'coach');
+      world = run(world, learner(), 60);
+      const front = actorBoxes(world)[0].centerM[2] - 2.2;
+      const cutIn = rectangle(-3, 3, front - 3, front - 1);
+      let held = false;
+      let heldAt = 0;
+      for (let i = 0; i < 240; i += 1) {
+        const result = stepActors(world, cutIn, DT);
+        world = result.state;
+        expect(result.contactId).toBeNull();
+        if (held) expect(distanceOf(world)).toBe(heldAt);
+        else if (speedOf(world) === 0) { held = true; heldAt = distanceOf(world); }
+      }
+      expect(held).toBe(true);
+    });
+
+    it('coach rules: learner driving into a stopped pedestrian is a contact', () => {
+      let world = start(actor('ped-1', [[0, 0], [10, 0]]), 'coach');
+      const wall = rectangle(4, 6, -1, 1);
+      for (let i = 0; i < 480; i += 1) {
+        const result = stepActors(world, wall, DT);
+        world = result.state;
+        expect(result.contactId).toBeNull();
+      }
+      expect(speedOf(world)).toBe(0);
+      const front = actorBoxes(world)[0].centerM[0] + 0.2;
+      const driven = stepActors(world, rectangle(front - 0.4, front + 2, -1, 1, 1), DT);
+      expect(driven.contactId).toBe('ped-1');
+    });
+
+    it('near miss emitted once per encounter, only when the learner was moving', () => {
+      let world = start(actor('ped-1', [[0, 0], [10, 0]]), 'realistic');
+      const emitted: string[] = [];
+      let minX = 8;
+      for (let i = 0; i < 600; i += 1) {
+        if (i < 420) minX -= 1 * DT;
+        const result = stepActors(world, rectangle(minX, minX + 1.5, -1, 1, i < 420 ? 1 : 0), DT);
+        world = result.state;
+        emitted.push(...result.nearMissIds);
+      }
+      expect(emitted).toEqual(['ped-1']);
+
+      let still = start(actor('ped-1', [[0, 0], [10, 0]]), 'realistic');
+      const quiet: string[] = [];
+      for (let i = 0; i < 240; i += 1) {
+        const result = stepActors(still, rectangle(1, 2.5, -1, 1), DT);
+        still = result.state;
+        quiet.push(...result.nearMissIds);
+      }
+      expect(quiet).toEqual([]);
+    });
+
+    const detours: readonly [string, ActorDefinition['detour']][] = [
+      ['turn-back', { kind: 'turn-back' }],
+      ['offset', { kind: 'offset', lateralM: 4 }],
+    ];
+    it.each(detours)('stationary blocker → 3 s wait → %s detour', (_name, detour) => {
+      let world = start({ ...actor('ped-1', [[0, 0], [10, 0]]), detour }, 'realistic');
+      const blocker = rectangle(4, 5, -0.3, 0.3);
+      let stoppedStep = -1;
+      let switchStep = -1;
+      for (let step = 1; step <= 1800 && activeActorCount(world) === 1; step += 1) {
+        const result = stepActors(world, blocker, DT);
+        world = result.state;
+        expect(result.contactId).toBeNull();
+        if (stoppedStep < 0 && speedOf(world) < 0.05) stoppedStep = step;
+        if (switchStep < 0 && world.cursors[0].detour !== null) switchStep = step;
+      }
+      expect(stoppedStep).toBeGreaterThan(0);
+      expect(Math.abs(switchStep - stoppedStep - BLOCKED_WAIT_S / DT)).toBeLessThanOrEqual(1);
+      expect(activeActorCount(world)).toBe(0);
+    });
+
+    it('stationary learner blocking both path and detour is cleared by the lifetime cap', () => {
+      const detour = { kind: 'offset', lateralM: 2 } as const;
+      let world = start({ ...actor('ped-1', [[0, 0], [10, 0]]), detour }, 'realistic');
+      const wide = rectangle(4, 5, -6, 6);
+      let goneAtS = -1;
+      for (let step = 1; step <= 120 * 20; step += 1) {
+        const result = stepActors(world, wide, DT);
+        world = result.state;
+        expect(result.contactId).toBeNull();
+        if (goneAtS < 0 && activeActorCount(world) === 0) goneAtS = actorTimeS(world);
+      }
+      expect(goneAtS).toBeGreaterThan(0);
+      expect(goneAtS).toBeLessThanOrEqual(LESSON_LIFETIME_S + DT);
+
+      // A learner creeping at 0.3 m/s never counts as stationary, so only the cap ends it.
+      world = start(actor('ped-1', [[0, 0], [10, 0]]), 'realistic');
+      goneAtS = -1;
+      for (let step = 1; step <= 120 * 20; step += 1) {
+        const result = stepActors(world, rectangle(4, 5, -6, 6, 0.3), DT);
+        world = result.state;
+        expect(result.contactId).toBeNull();
+        if (goneAtS < 0 && activeActorCount(world) === 0) goneAtS = actorTimeS(world);
+      }
+      expect(goneAtS).toBeGreaterThan(LESSON_LIFETIME_S - 1);
+      expect(goneAtS).toBeLessThanOrEqual(LESSON_LIFETIME_S + DT);
+    });
+
+    it('braking flag mirrors deceleration', () => {
+      let world = start(car('car-a', [[0, 0], [0, -200]]), 'realistic');
+      const blocker = rectangle(-3, 3, -13, -10);
+      const far = learner();
+      let previous = speedOf(world);
+      let sawBraking = false;
+      let sawRecovery = false;
+      for (let i = 0; i < 480; i += 1) {
+        const present = i < 240;
+        world = stepActors(world, present ? blocker : far, DT).state;
+        const { braking } = actorPoses(world)[0];
+        const speed = speedOf(world);
+        if (braking) {
+          sawBraking = true;
+          expect(speed).toBeLessThanOrEqual(previous);
+        } else if (speed < CAR_SPEED - 1e-9) {
+          sawRecovery = true;
+          expect(speed - previous).toBeCloseTo(ACCEL_MPS2.car * DT, 9);
+        }
+        previous = speed;
+      }
+      expect(sawBraking && sawRecovery).toBe(true);
+    });
   });
 });

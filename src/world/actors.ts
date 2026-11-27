@@ -10,10 +10,22 @@ import type {
   StageId,
   Vec3Data,
 } from '../contracts';
+import { orientedRectangle, polygonsOverlap } from './footprint';
 
 const MOVING_SPEED_MPS = 0.2;
 const FIRST_STOP_DWELL_S = 0.5;
 const TIME_EPSILON_S = 1e-9;
+const SWEEP_STEP_M = 0.05;
+const STOPPED_SPEED_MPS = 0.05;
+const DETOUR_TRANSITION_M = 2;
+
+export const PEDESTRIAN_STOP_DISTANCE_M = 0.5;
+export const CAR_DECEL_MPS2 = 6;
+export const LOOKAHEAD_MARGIN_M = { pedestrian: 0.5, car: 1.0 } as const;
+export const COACH_GAP_M = 0.3;
+export const BLOCKED_WAIT_S = 3;
+export const LESSON_LIFETIME_S = 15;
+export const ACCEL_MPS2 = { pedestrian: 1, car: 2 } as const;
 
 export interface LearnerState {
   readonly footprint: readonly Vec3Data[];
@@ -51,6 +63,14 @@ interface ActorCursor {
   readonly cycle: number;
   /** Lesson entries only: simulation time the trigger fired. */
   readonly triggeredAtS: number | null;
+  /** True while the actor is braking for the learner. */
+  readonly braking: boolean;
+  /** Continuous time stopped by a stationary learner. */
+  readonly blockedS: number;
+  /** Path taken after being blocked; null while on the scheduled path. */
+  readonly detour: PathGeometry | null;
+  /** Distance walked on earlier paths, so strides stay continuous. */
+  readonly strideBaseM: number;
 }
 
 interface PathGeometry {
@@ -111,6 +131,10 @@ const idleCursor: ActorCursor = {
   finished: false,
   cycle: -1,
   triggeredAtS: null,
+  braking: false,
+  blockedS: 0,
+  detour: null,
+  strideBaseM: 0,
 };
 
 function activate(cursor: ActorCursor, definition: ActorDefinition, timeS: number,
@@ -122,6 +146,10 @@ function activate(cursor: ActorCursor, definition: ActorDefinition, timeS: numbe
     activeSinceS: timeS,
     finished: false,
     cycle,
+    braking: false,
+    blockedS: 0,
+    detour: null,
+    strideBaseM: 0,
   };
 }
 
@@ -196,6 +224,166 @@ function triggerFired(
   }
 }
 
+function pathOf(state: ActorWorldState, index: number, cursor: ActorCursor): PathGeometry {
+  return cursor.detour ?? state.paths[index];
+}
+
+function boxPolygon(
+  definition: ActorDefinition,
+  path: PathGeometry,
+  distanceM: number,
+  inflateM: number,
+): readonly Vec3Data[] {
+  const at = pointAlong(path, distanceM);
+  return orientedRectangle(
+    [at.x, definition.halfExtentsM[1], at.z],
+    definition.halfExtentsM[0] + inflateM,
+    definition.halfExtentsM[2] + inflateM,
+    at.yawRad,
+  );
+}
+
+function overlapsLearner(
+  definition: ActorDefinition,
+  path: PathGeometry,
+  distanceM: number,
+  inflateM: number,
+  learner: LearnerState,
+): boolean {
+  return polygonsOverlap(boxPolygon(definition, path, distanceM, inflateM), learner.footprint);
+}
+
+/** Sweeps the actor's box along its path every SWEEP_STEP_M. */
+function corridorBlocked(
+  definition: ActorDefinition,
+  path: PathGeometry,
+  fromM: number,
+  toM: number,
+  learner: LearnerState,
+): boolean {
+  const end = Math.min(toM, path.lengthM);
+  for (let distanceM = fromM; distanceM < end; distanceM += SWEEP_STEP_M) {
+    if (overlapsLearner(definition, path, distanceM, 0, learner)) return true;
+  }
+  return overlapsLearner(definition, path, Math.max(end, fromM), 0, learner);
+}
+
+function decelOf(definition: ActorDefinition): number {
+  return definition.kind === 'car'
+    ? CAR_DECEL_MPS2
+    : (definition.cruiseMps * definition.cruiseMps) / (2 * PEDESTRIAN_STOP_DISTANCE_M);
+}
+
+/** The path walked so far, reversed, starting at the current position. */
+function turnBackPath(path: PathGeometry, distanceM: number): PathGeometry {
+  const here = pointAlong(path, distanceM);
+  const walked: GroundPoint[] = [[here.x, here.z]];
+  for (let i = path.points.length - 1; i >= 0; i -= 1) {
+    if (path.cumulativeM[i] < distanceM - 1e-9) walked.push(path.points[i]);
+  }
+  if (walked.length < 2) walked.push([here.x, here.z]);
+  return buildPath(walked);
+}
+
+/** The remaining path shifted to the left of travel, after a short transition. */
+function offsetPath(path: PathGeometry, distanceM: number, lateralM: number): PathGeometry {
+  const shifted = (at: number): GroundPoint => {
+    const p = pointAlong(path, at);
+    // Heading (dx, dz) = (-sin yaw, -cos yaw); left of travel is (dz, -dx).
+    return [p.x - Math.cos(p.yawRad) * lateralM, p.z + Math.sin(p.yawRad) * lateralM];
+  };
+  const here = pointAlong(path, distanceM);
+  const joinM = Math.min(distanceM + DETOUR_TRANSITION_M, path.lengthM);
+  const points: GroundPoint[] = [[here.x, here.z], shifted(joinM)];
+  for (let i = 0; i < path.points.length; i += 1) {
+    if (path.cumulativeM[i] > joinM + 1e-9) points.push(shifted(path.cumulativeM[i]));
+  }
+  return buildPath(points);
+}
+
+interface ActorAdvance {
+  readonly cursor: ActorCursor;
+  readonly nearMiss: boolean;
+  readonly contact: boolean;
+}
+
+function advanceActor(
+  state: ActorWorldState,
+  index: number,
+  cursor: ActorCursor,
+  learner: LearnerState,
+  timeS: number,
+  dtS: number,
+): ActorAdvance {
+  const definition = definitionOf(state.schedule, index);
+  const path = pathOf(state, index, cursor);
+  const learnerSpeed = Math.abs(learner.signedSpeedMps);
+  const decel = decelOf(definition);
+
+  // Rule 1: corridor ahead.
+  const stopM = (cursor.speedMps * cursor.speedMps) / (2 * decel);
+  const braking = corridorBlocked(
+    definition, path, cursor.distanceM,
+    cursor.distanceM + stopM + LOOKAHEAD_MARGIN_M[definition.kind], learner,
+  );
+  // Rule 3: near miss on entering the corridor while the learner is moving.
+  const nearMiss = braking && !cursor.braking && learnerSpeed > MOVING_SPEED_MPS;
+  let speedMps = braking
+    ? Math.max(0, cursor.speedMps - decel * dtS)
+    : Math.min(definition.cruiseMps, cursor.speedMps + ACCEL_MPS2[definition.kind] * dtS);
+  let distanceM = cursor.distanceM + speedMps * dtS;
+
+  // Rule 2: coach guard.
+  if (state.rules === 'coach'
+    && overlapsLearner(definition, path, distanceM, COACH_GAP_M, learner)) {
+    if (overlapsLearner(definition, path, cursor.distanceM, COACH_GAP_M, learner)) {
+      distanceM = cursor.distanceM;
+    } else {
+      let low = cursor.distanceM;
+      let high = distanceM;
+      for (let i = 0; i < 16; i += 1) {
+        const mid = (low + high) / 2;
+        if (overlapsLearner(definition, path, mid, COACH_GAP_M, learner)) high = mid;
+        else low = mid;
+      }
+      distanceM = low;
+    }
+    speedMps = 0;
+  }
+
+  let finished = distanceM >= path.lengthM;
+  if (finished) { distanceM = path.lengthM; speedMps = 0; }
+  const entry = state.schedule.kind === 'lesson' ? state.schedule.entries[index] : null;
+  const triggeredAtS = cursor.triggeredAtS;
+  if (entry !== null && triggeredAtS !== null
+    && timeS - triggeredAtS >= LESSON_LIFETIME_S - TIME_EPSILON_S) finished = true;
+
+  // Rule 4: contact after the move.
+  const contact = !finished && overlapsLearner(definition, path, distanceM, 0, learner);
+
+  // Rule 5: blocked by a stationary learner.
+  const blocked = speedMps < STOPPED_SPEED_MPS && learnerSpeed < MOVING_SPEED_MPS;
+  const blockedS = blocked ? cursor.blockedS + dtS : 0;
+  const moved: ActorCursor = { ...cursor, distanceM, speedMps, finished, braking, blockedS };
+  if (!finished && blockedS >= BLOCKED_WAIT_S - TIME_EPSILON_S) {
+    if (cursor.detour !== null) {
+      return { cursor: { ...moved, finished: true }, nearMiss, contact };
+    }
+    const detour = definition.detour.kind === 'turn-back'
+      ? turnBackPath(path, distanceM)
+      : offsetPath(path, distanceM, definition.detour.lateralM);
+    return {
+      cursor: {
+        ...moved, distanceM: 0, speedMps: 0, blockedS: 0, detour,
+        strideBaseM: cursor.strideBaseM + distanceM,
+      },
+      nearMiss,
+      contact,
+    };
+  }
+  return { cursor: moved, nearMiss, contact };
+}
+
 export function stepActors(
   state: ActorWorldState,
   learner: LearnerState,
@@ -209,13 +397,15 @@ export function stepActors(
   const firstStop = hasMoved && !moving
     && slowSteps * dtS >= FIRST_STOP_DWELL_S - TIME_EPSILON_S;
 
+  const nearMissIds: string[] = [];
+  let contactId: string | null = null;
   const cursors: ActorCursor[] = state.cursors.map((cursor, index) => {
     if (cursor.activeSinceS === null || cursor.finished) return cursor;
-    const distanceM = cursor.distanceM + cursor.speedMps * dtS;
-    if (distanceM >= state.paths[index].lengthM) {
-      return { ...cursor, distanceM: state.paths[index].lengthM, speedMps: 0, finished: true };
-    }
-    return { ...cursor, distanceM };
+    const result = advanceActor(state, index, cursor, learner, timeS, dtS);
+    const { id } = definitionOf(state.schedule, index);
+    if (result.nearMiss) nearMissIds.push(id);
+    if (result.contact && contactId === null) contactId = id;
+    return result.cursor;
   });
 
   const next: ActorWorldState = {
@@ -239,7 +429,7 @@ export function stepActors(
   }
   startDueActors(next, cursors);
 
-  return { state: freezeState(next), contactId: null, nearMissIds: [] };
+  return { state: freezeState(next), contactId, nearMissIds };
 }
 
 function isVisible(cursor: ActorCursor): boolean {
@@ -269,15 +459,15 @@ function pointAlong(path: PathGeometry, distanceM: number): {
 export function actorPoses(state: ActorWorldState): readonly ActorPose[] {
   return state.cursors.map((cursor, index) => {
     const definition = definitionOf(state.schedule, index);
-    const at = pointAlong(state.paths[index], cursor.distanceM);
+    const at = pointAlong(pathOf(state, index, cursor), cursor.distanceM);
     return {
       id: definition.id,
       kind: definition.kind,
       visible: isVisible(cursor),
       positionM: [at.x, definition.halfExtentsM[1], at.z] as const,
       yawRad: at.yawRad,
-      braking: false,
-      strideM: cursor.distanceM,
+      braking: cursor.braking,
+      strideM: cursor.strideBaseM + cursor.distanceM,
     };
   });
 }
@@ -287,7 +477,7 @@ export function actorBoxes(state: ActorWorldState): readonly ActorBox[] {
   state.cursors.forEach((cursor, index) => {
     if (!isVisible(cursor)) return;
     const definition = definitionOf(state.schedule, index);
-    const at = pointAlong(state.paths[index], cursor.distanceM);
+    const at = pointAlong(pathOf(state, index, cursor), cursor.distanceM);
     boxes.push({
       id: definition.id,
       centerM: [at.x, definition.halfExtentsM[1], at.z],
