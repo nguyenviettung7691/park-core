@@ -153,6 +153,45 @@ export interface ScenarioCollider {
   readonly yawRad: number;
 }
 
+export type ActorKind = 'pedestrian' | 'car';
+export type GroundPoint = readonly [x: number, z: number];
+export type ActorTrigger = 'moving-off' | 'reverse-selected' | 'indicator-left'
+  | 'indicator-right' | 'first-stop';
+export type CheckMoment = 'moving-off' | 'reverse' | 'signal-left' | 'signal-right';
+export type ActorDetour = { readonly kind: 'turn-back' }
+  | { readonly kind: 'offset'; readonly lateralM: number };
+
+export interface ActorDefinition {
+  readonly id: string;
+  readonly kind: ActorKind;
+  /** x = half width, y = half height, z = half length (along travel). */
+  readonly halfExtentsM: Vec3Data;
+  /** At least two points. */
+  readonly path: readonly GroundPoint[];
+  readonly cruiseMps: number;
+  readonly detour: ActorDetour;
+}
+
+export interface LessonActorEntry {
+  readonly actor: ActorDefinition;
+  readonly trigger: ActorTrigger;
+  readonly delayS: number;
+  readonly checkMoment: CheckMoment;
+  readonly side: 'left' | 'right' | 'rear';
+}
+
+export interface AmbientActorEntry {
+  readonly actor: ActorDefinition;
+  readonly startS: number;
+  readonly periodS: number;
+}
+
+export type ActorSchedule =
+  | { readonly kind: 'lesson'; readonly entries: readonly LessonActorEntry[] }
+  | { readonly kind: 'ambient'; readonly entries: readonly AmbientActorEntry[] };
+
+export type ActorRules = 'coach' | 'realistic';
+
 export interface ScenarioDefinition {
   readonly stageId: StageId;
   readonly environmentId: EnvironmentId;
@@ -164,6 +203,7 @@ export interface ScenarioDefinition {
   readonly steps: readonly LessonStep[];
   readonly guidance: 'full' | 'reduced' | 'on-request';
   readonly obstacles: readonly ScenarioCollider[];
+  readonly actors: readonly LessonActorEntry[];
 }
 
 export type FailureReason = 'collision' | 'curb-contact' | 'out-of-bounds'

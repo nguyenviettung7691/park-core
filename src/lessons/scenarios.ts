@@ -110,6 +110,7 @@ const scenarios: Readonly<Record<StageId, ScenarioDefinition>> = Object.freeze({
       ]),
     ],
     guidance: 'full',
+    actors: [],
     obstacles: [
       box('stage1-parked-left', [-3.4, 0.8, -5], [0.9, 0.8, 2.2]),
       box('stage1-parked-right', [3.4, 0.8, -5], [0.9, 0.8, 2.2]),
@@ -145,6 +146,7 @@ const scenarios: Readonly<Record<StageId, ScenarioDefinition>> = Object.freeze({
       ]),
     ],
     guidance: 'full',
+    actors: [],
     obstacles: [
       box('stage2-parked-left', [-3.2, 0.8, -7], [0.8, 0.8, 2.2]),
       box('stage2-parked-right', [3.2, 0.8, -7], [0.8, 0.8, 2.2]),
@@ -181,6 +183,7 @@ const scenarios: Readonly<Record<StageId, ScenarioDefinition>> = Object.freeze({
       ]),
     ],
     guidance: 'full',
+    actors: [],
     obstacles: [
       box('stage3-parked-rear', [2.9, 0.8, -10], [0.9, 0.8, 2.3]),
       box('stage3-parked-front', [2.9, 0.8, 10], [0.9, 0.8, 2.3]),
@@ -212,6 +215,7 @@ const scenarios: Readonly<Record<StageId, ScenarioDefinition>> = Object.freeze({
       ]),
     ],
     guidance: 'reduced',
+    actors: [],
     obstacles: [
       box('stage4-adjacent-vehicle', [2.7, 0.8, -7], [0.7, 0.8, 2.1]),
       wheelStop('stage4-wheel-stop', 5.4, -8.60),
@@ -240,6 +244,7 @@ const scenarios: Readonly<Record<StageId, ScenarioDefinition>> = Object.freeze({
       ]),
     ],
     guidance: 'on-request',
+    actors: [],
     obstacles: [
       box('stage5-parked-rear', [2.9, 0.8, -10], [0.9, 0.8, 2.3]),
       box('stage5-parked-front', [2.9, 0.8, 11], [0.9, 0.8, 2.3]),
