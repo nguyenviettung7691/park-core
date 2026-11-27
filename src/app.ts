@@ -26,6 +26,7 @@ import {
   DEFAULT_GRAPHICS_CAPABILITIES,
   parseGraphicsSettings,
 } from './views/graphics-settings';
+import { offsetsFromSaved, savedFromOffsets, ZERO_MIRROR_OFFSETS } from './views/mirror-adjust';
 
 export interface AppDeps {
   createOnboarding: () => OnboardingStore;
@@ -124,11 +125,19 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
 
   function notice(key: MessageKey) {
     if (key === 'gearRejected' && (audioUnavailable || persistenceNotice)) return;
+    // Never claim a mirror save over a persistence warning; show that warning instead of
+    // leaving the (untimed) mirror selection prompt on screen.
+    if (key === 'mirrorAdjustDone' && persistenceNotice) {
+      clearStatus();
+      return;
+    }
     clearTimeout(noticeTimer);
     if (key === 'audioUnavailable') audioUnavailable = true;
     status.setAttribute('aria-live', key === 'gearRejected' ? 'off' : 'polite');
     if (status.textContent !== vi[key]) status.textContent = vi[key];
-    if (key === 'gearRejected') noticeTimer = setTimeout(clearStatus, 5000);
+    if (key === 'gearRejected' || key === 'mirrorAdjustBlocked' || key === 'mirrorAdjustDone') {
+      noticeTimer = setTimeout(clearStatus, 5000);
+    }
   }
   function clearStatus() {
     clearTimeout(noticeTimer);
@@ -469,6 +478,14 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
           }
           notice(key);
         },
+        onMirrorOffsets(savedVehicleId, offsets) {
+          if (disposed || token !== generation) return;
+          context = { ...context, settings: { ...context.settings, mirrorAdjustments: {
+            ...context.settings.mirrorAdjustments, [savedVehicleId]: savedFromOffsets(offsets),
+          } } };
+          reportPersistence(persistence.saveSettings(context.settings));
+          refreshPersistence();
+        },
       }, {
         environmentId, vehicleId,
         sceneAssets: assets, source: context.settings.inputSource,
@@ -476,7 +493,11 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         getGamepads: deps.getGamepads, settings: context.settings,
       }, undefined, mode);
       if (disposed || token !== generation) opened.dispose();
-      else { preview = opened; void resumePreview(); }
+      else {
+        opened.setMirrorOffsets(offsetsFromSaved(context.settings.mirrorAdjustments?.[vehicleId]));
+        preview = opened;
+        void resumePreview();
+      }
     } catch (error) {
       assets.dispose();
       if (disposed || token !== generation) return;
@@ -837,9 +858,14 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         drawScreen();
         break;
       case 'update-settings': {
-        const nextSettings = {
-          ...action.settings,
+        // Mirror adjustments are owned by the cockpit and the reset button, never by the
+        // panel's possibly stale copy of the settings.
+        const { mirrorAdjustments: _panelCopy, ...panelSettings } = action.settings;
+        const nextSettings: typeof context.settings = {
+          ...panelSettings,
           ...parseGraphicsSettings(action.settings, DEFAULT_GRAPHICS_CAPABILITIES),
+          ...(context.settings.mirrorAdjustments
+            ? { mirrorAdjustments: context.settings.mirrorAdjustments } : {}),
         };
         if (view.preview === 'running' ||
             (view.preview === 'paused' && !graphicsSettingsEqual(context.settings, nextSettings))) {
@@ -860,6 +886,17 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       }
       case 'recenter-view':
         preview?.recenterView();
+        break;
+      case 'reset-mirrors':
+        if (preview) preview.resetMirrors();
+        else {
+          context = { ...context, settings: { ...context.settings, mirrorAdjustments: {
+            ...context.settings.mirrorAdjustments,
+            [context.selectedVehicleId]: savedFromOffsets(ZERO_MIRROR_OFFSETS),
+          } } };
+          reportPersistence(persistence.saveSettings(context.settings));
+          refreshPersistence();
+        }
         break;
       case 'open-calibration':
         if (view.preview === 'running' || gamepadIndex === null || view.pauseReason === 'contact') return;

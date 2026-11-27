@@ -89,6 +89,17 @@ function circleFit(points: readonly (readonly [number, number])[]): number {
   return Math.sqrt(c + (a * a + b * b) / 4);
 }
 
+/** The box contains the given (mount) box, within 1e-6 m. */
+function expectCovers(
+  box: { readonly centerLocalM: readonly number[]; readonly halfExtentsM: readonly number[] },
+  center: readonly number[], half: readonly number[],
+) {
+  for (let axis = 0; axis < 3; axis++) {
+    expect(box.centerLocalM[axis]! - box.halfExtentsM[axis]!).toBeLessThanOrEqual(center[axis]! - half[axis]! + 1e-6);
+    expect(box.centerLocalM[axis]! + box.halfExtentsM[axis]!).toBeGreaterThanOrEqual(center[axis]! + half[axis]! - 1e-6);
+  }
+}
+
 describe('vehicle geometry and steering (no engine)', () => {
   it('derives COM-relative geometry', () => {
     const g = deriveGeometry(profiles.sedan);
@@ -99,13 +110,12 @@ describe('vehicle geometry and steering (no engine)', () => {
     expect(g.wheelMountsLocalM[0][0]).toBeCloseTo(-0.78, 6);
     expect(g.wheelMountsLocalM[3][0]).toBeCloseTo(0.78, 6);
     expect(deriveGeometry(profiles.cuv).wheelMountsLocalM[0][1]).toBeCloseTo(-0.02903, 4);
-    expect(g.mirrors[0].halfExtentsM[0]).toBeCloseTo(0.06, 4);
-    expect(g.mirrors[0].centerLocalM[0]).toBeCloseTo(-0.96, 4);
-    expect(g.mirrors[1].centerLocalM[0]).toBeCloseTo(0.96, 4);
-    expect(g.mirrors[0].centerLocalM[1]).toBeCloseTo(0.43, 4);
-    // Side mirrors sit at the A-pillar base (issue #12 sedan and CUV interior subtasks).
-    expect(g.mirrors[0].centerLocalM[2]).toBeCloseTo(-1.45, 4);
-    expect(deriveGeometry(profiles.cuv).mirrors[0].centerLocalM[2]).toBeCloseTo(-1.3312, 4);
+    // Side mirrors sit at the A-pillar base (issue #12 sedan and CUV interior subtasks); the
+    // collider covers that mount (centre +/-0.96, 0.43, -1.45; half 0.06, 0.05, 0.1) and,
+    // since issue #9, the housing around the glass.
+    expectCovers(g.mirrors[0], [-0.96, 0.43, -1.45], [0.06, 0.05, 0.1]);
+    expectCovers(g.mirrors[1], [0.96, 0.43, -1.45], [0.06, 0.05, 0.1]);
+    expectCovers(deriveGeometry(profiles.cuv).mirrors[0], [-0.965, 0.48, -1.3312], [0.065, 0.05, 0.1]);
   });
 
   it('matches the design table for chassis boxes and driver eyes', () => {
@@ -125,7 +135,7 @@ describe('vehicle geometry and steering (no engine)', () => {
     expect(c.chassis.centerLocalM[2]).toBeCloseTo(0.2288, 4);
     expect(c.driverEyeLocalM[1]).toBeCloseTo(0.68, 6);
     expect(c.driverEyeLocalM[2]).toBeCloseTo(-0.5462, 4);
-    expect(c.mirrors[1].centerLocalM[1]).toBeCloseTo(0.48, 4);
+    expectCovers(c.mirrors[1], [0.965, 0.48, -1.3312], [0.065, 0.05, 0.1]);
   });
 
   it('rear axle is behind COM along world forward', () => {
@@ -134,6 +144,19 @@ describe('vehicle geometry and steering (no engine)', () => {
     expect(p[0]).toBeCloseTo(1.485, 4); expect(p[2]).toBeCloseTo(0, 4);
     const id = { positionM: [1, 0.5, 2], rotation: [0, 0, 0, 1] } as const;
     expect(rearAxleCenter(id, profiles.cuv)[2]).toBeCloseTo(2 + 1.5138, 4);
+  });
+
+  it('mirror colliders cover the mount span while the ground footprint keeps the mount width', () => {
+    for (const id of ['sedan', 'cuv'] as const) {
+      const boxes = deriveGeometry(profiles[id]).mirrors;
+      const outer = Math.max(...boxes.map((box) => Math.abs(box.centerLocalM[0]) + box.halfExtentsM[0]));
+      const inner = Math.min(...boxes.map((box) => Math.abs(box.centerLocalM[0]) - box.halfExtentsM[0]));
+      expect(outer, id).toBeGreaterThanOrEqual(profiles[id].mirrorWidthM / 2);
+      expect(inner, id).toBeLessThanOrEqual(profiles[id].bodySizeM[0] / 2);
+      // Mirrors ride above curbs and markings, so the ground footprint stays at the mount width.
+      const [, fr] = vehicleFootprint({ positionM: [0, 0, 0], rotation: [0, 0, 0, 1] }, profiles[id]);
+      expect(fr[0], id).toBeCloseTo(profiles[id].mirrorWidthM / 2, 9);
+    }
   });
 
   it('footprint uses mirror width and distinct overhang extents, rotated', () => {

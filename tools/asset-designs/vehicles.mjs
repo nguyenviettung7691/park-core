@@ -574,52 +574,47 @@ function authorMirrors({ root, addNode, addMesh }, data, exterior, roofY) {
   for (const [id, pose] of Object.entries(data.contract.mirrors)) {
     const name = id[0].toUpperCase() + id.slice(1);
     const position = pose.positionM;
+    // The pivot node and the glass share the contract pose; the runtime tilts only the glass.
     addNode(`Mirror${name}`, root, { translation: position, rotation: pose.rotation });
-    const display = name === 'Rear'
-      ? data.contract.rearDisplayM : position;
-    // The rearview is a 4:1 display matching its 512x128 RenderTarget.
-    const size = name === 'Rear' ? [0.18, 0.045, 0.025] : [0.18, 0.1, 0.035];
+    const size = [pose.halfSizeM[0] * 2, pose.halfSizeM[1] * 2];
     const surface = {
       positions: [-size[0] / 2, -size[1] / 2, 0, size[0] / 2, -size[1] / 2, 0,
         size[0] / 2, size[1] / 2, 0, -size[0] / 2, size[1] / 2, 0],
       normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
       colors: Array(12).fill(1), indices: [0, 1, 2, 0, 2, 3], uvs: [0, 0, 1, 0, 1, 1, 0, 1],
     };
-    // Faces follow the reflection law: the normal bisects the direction to the fixed
-    // eye and the virtual camera's view direction, so the driver sees the face obliquely
-    // and the shell behind it stays out of that camera's view.
-    const cameraYaw = 2 * Math.atan2(pose.rotation[1], pose.rotation[3]);
-    const toEye = [eye[0] - display[0], eye[2] - display[2]];
-    const eyeLength = Math.hypot(...toEye);
-    const faceYaw = Math.atan2(toEye[0] / eyeLength - Math.sin(cameraYaw),
-      toEye[1] / eyeLength - Math.cos(cameraYaw));
-    const faceRotation = [0, Math.sin(faceYaw / 2), 0, Math.cos(faceYaw / 2)];
+    addMesh(`MirrorSurface${name}`, root, surface, [1, 1, 1], position, pose.rotation);
+    // Housings are baked in vehicle axes: the roll-free glass rotation is yaw then pitch,
+    // which transformGeometry applies as Euler [pitch, yaw, 0] (X first, then Y).
+    const [qx, qy, qz, qw] = pose.rotation;
+    const normal = [2 * (qx * qz + qw * qy), 2 * (qy * qz - qw * qx), 1 - 2 * (qx * qx + qy * qy)];
+    const glassEuler = [-Math.asin(normal[1]), Math.atan2(normal[0], normal[2]), 0];
+    // Shared with the collider (mirrorBoxes) so physics covers the visible housing.
+    const H = data.mirrorHousing;
+    const shellDepth = name === 'Rear' ? H.rearShellDepthM : H.sideShellDepthM;
+    const shell = transformGeometry(transformGeometry(
+      boxGeometry([size[0] + 2 * H.rimM, size[1] + 2 * H.rimM, shellDepth], palette.trim),
+      [0, 0, -(shellDepth / 2 + H.gapM)]), [0, 0, 0], glassEuler);
     if (name === 'Rear') {
       // Display hangs from the headliner on a short stem; shell sits ahead of the face.
-      addMesh(`MirrorSurface${name}`, root, surface, [1, 1, 1], display, faceRotation);
       const headlinerY = roofY - 0.065 - data.comHeightM;
-      const bottom = [size[1] / 2 + 0.0125, -0.03], top = [headlinerY - display[1], 0.045];
+      const bottom = [size[1] / 2 + 0.0125, -0.03], top = [headlinerY - position[1], 0.045];
       const rise = top[0] - bottom[0], run = top[1] - bottom[1];
       addMesh(`MirrorHousing${name}`, exterior, mergeGeometry([
-        transformGeometry(transformGeometry(
-          boxGeometry([size[0] + 0.025, size[1] + 0.025, 0.035], palette.trim), [0, 0, -0.03]), [0, 0, 0], [0, faceYaw, 0]),
+        shell,
         transformGeometry(boxGeometry([0.025, Math.hypot(rise, run), 0.025], palette.trim),
           [0, (top[0] + bottom[0]) / 2, (top[1] + bottom[1]) / 2], [Math.atan2(run, rise), 0, 0]),
-      ]), palette.trim, display);
+      ]), palette.trim, position);
       continue;
     }
     // Side housings sit behind the face with an arm and foot down to the door belt.
     const side = Math.sign(position[0]);
-    addMesh(`MirrorSurface${name}`, root, surface, [1, 1, 1], display, faceRotation);
-    const shell = transformGeometry(transformGeometry(
-      boxGeometry([size[0] + 0.025, size[1] + 0.025, 0.05], palette.trim), [0, 0, -0.033]),
-    [0, 0, 0], [0, faceYaw, 0]);
-    const doorX = data.bodySizeM[0] / 2 - 0.02;
+    const doorX = data.bodySizeM[0] / 2 - H.doorInsetM;
     const armLength = Math.abs(position[0]) - doorX;
-    const arm = transformGeometry(boxGeometry([armLength, 0.035, 0.05], palette.trim),
-      [-side * armLength / 2, -0.08, 0]);
-    const foot = transformGeometry(boxGeometry([0.05, 0.05, 0.07], palette.trim),
-      [-side * armLength, -0.105, 0]);
-    addMesh(`MirrorHousing${name}`, exterior, mergeGeometry([shell, arm, foot]), palette.trim, display);
+    const arm = transformGeometry(boxGeometry([armLength, H.arm.heightM, H.arm.depthM], palette.trim),
+      [-side * armLength / 2, -H.arm.dropM, 0]);
+    const foot = transformGeometry(boxGeometry([...H.foot.sizeM], palette.trim),
+      [-side * armLength, -H.foot.dropM, 0]);
+    addMesh(`MirrorHousing${name}`, exterior, mergeGeometry([shell, arm, foot]), palette.trim, position);
   }
 }

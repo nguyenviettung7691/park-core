@@ -2,6 +2,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   DynamicDrawUsage,
+  EdgesGeometry,
   Group,
   Line,
   LineBasicMaterial,
@@ -24,6 +25,8 @@ import { MIRROR_EXCLUDED_LAYER, OVERHEAD_EXCLUDED_LAYER } from '../runtime-types
 import { sampleTrajectory, type TrajectorySample } from './trajectory';
 import { renderAuxiliaryPass, type RendererPort } from './auxiliary';
 import { getOverheadInset } from './layout';
+import { applyMirrorCamera, type MirrorGlass } from './mirror-optics';
+import type { MirrorOffsets } from './mirror-adjust';
 
 const MIRROR_INTERVAL_MS = 1000 / 15;
 const OVERHEAD_INTERVAL_MS = 1000 / 30;
@@ -33,11 +36,12 @@ const CHASE_OFFSET_LOCAL = new Vector3(0, 2.5, 5);
 const VIEW_LAYERS = (1 << 0) | (1 << MIRROR_EXCLUDED_LAYER) | (1 << OVERHEAD_EXCLUDED_LAYER);
 const MIRROR_LAYERS = VIEW_LAYERS & ~(1 << MIRROR_EXCLUDED_LAYER);
 const OVERHEAD_LAYERS = VIEW_LAYERS & ~(1 << OVERHEAD_EXCLUDED_LAYER);
-const MIRROR_SPECS = {
-  rear: { width: 512, height: 128, fov: 50 },
-  left: { width: 256, height: 256, fov: 75 },
-  right: { width: 256, height: 256, fov: 75 },
-} as const;
+// Long side of each mirror target at high quality; the short side follows the glass aspect.
+const MIRROR_TARGET_LONG_PX = { rear: 512, left: 256, right: 256 } as const;
+const MIRROR_FAR_M = 100;
+const MIRROR_HIGHLIGHT_MARGIN_M = 0.005;
+const LOCAL_UP = new Vector3(0, 1, 0);
+const LOCAL_RIGHT = new Vector3(1, 0, 0);
 const MIRROR_IDS = ['rear', 'left', 'right'] as const;
 type MirrorId = typeof MIRROR_IDS[number];
 
@@ -48,6 +52,10 @@ export interface ViewSystem {
   setOverhead(enabled: boolean): void;
   setTrajectory(enabled: boolean): void;
   setFov(degrees: number): void;
+  /** Tilts each mirror glass from its default aim (the reflection follows). */
+  setMirrorOffsets(offsets: MirrorOffsets): void;
+  /** Outlines the glass being adjusted, or none. */
+  setMirrorHighlight(id: MirrorId | null): void;
   resize(widthCss: number, heightCss: number, pixelRatio: number): void;
   recenter(): void;
   dispose(): void;
@@ -158,19 +166,6 @@ function closestChaseHit(
   return Number.isFinite(closest) ? closest : null;
 }
 
-function bodyPoseCamera(
-  camera: PerspectiveCamera,
-  vehicle: SceneAssets['vehicle'],
-  positionM: Vec3Data,
-  rotation: readonly [number, number, number, number],
-): void {
-  camera.position.set(...positionM).applyQuaternion(vehicle.quaternion).add(vehicle.position);
-  camera.quaternion.copy(vehicle.quaternion).multiply(
-    new Quaternion(rotation[0], rotation[1], rotation[2], rotation[3]),
-  );
-  camera.updateMatrixWorld(true);
-}
-
 function onGround(point: Vec3Data): Vec3Data {
   return [point[0], 0.03, point[2]];
 }
@@ -232,11 +227,13 @@ export function createViews(
 
   const mirrorTargets = {} as Record<MirrorId, WebGLRenderTarget>;
   const mirrorCameras = {} as Record<MirrorId, PerspectiveCamera>;
+  const mirrorSurfaces = {} as Record<MirrorId, Mesh>;
+  const defaultGlassRotations = {} as Record<MirrorId, Quaternion>;
   const mirrorScale = quality.mirrorQuality === 'high' ? 1 : 0.5;
   for (const id of MIRROR_IDS) {
-    const spec = MIRROR_SPECS[id];
-    const width = Math.round(spec.width * mirrorScale);
-    const height = Math.round(spec.height * mirrorScale);
+    const [halfWidth, halfHeight] = assets.anchors.mirrors[id].halfSizeM;
+    const width = Math.round(MIRROR_TARGET_LONG_PX[id] * mirrorScale);
+    const height = Math.max(1, Math.round(width * halfHeight / halfWidth));
     const target = new WebGLRenderTarget(width, height);
     target.texture.wrapS = RepeatWrapping;
     target.texture.repeat.x = -1;
@@ -244,7 +241,8 @@ export function createViews(
     target.texture.generateMipmaps = false;
     mirrorTargets[id] = target;
 
-    const camera = new PerspectiveCamera(spec.fov, width / height, 0.05, 100);
+    // Projection is set per pass from the glass (applyMirrorCamera), never from fov.
+    const camera = new PerspectiveCamera(50, width / height, 0.05, MIRROR_FAR_M);
     camera.name = `mirror-${id}-camera`;
     camera.layers.mask = MIRROR_LAYERS;
     mirrorCameras[id] = camera;
@@ -257,7 +255,27 @@ export function createViews(
     }
     surface.material.map = target.texture;
     surface.material.needsUpdate = true;
+    mirrorSurfaces[id] = surface;
+    defaultGlassRotations[id] = surface.quaternion.clone();
   }
+  const highlightGeometries = {} as Record<MirrorId, EdgesGeometry>;
+  const highlightMaterial = new LineBasicMaterial({ color: '#f5d76e', depthTest: false });
+  const highlight = new LineSegments(undefined, highlightMaterial);
+  highlight.name = 'mirror-highlight';
+  highlight.layers.set(MIRROR_EXCLUDED_LAYER);
+  highlight.renderOrder = 10;
+  highlight.visible = false;
+  for (const id of MIRROR_IDS) {
+    const [halfWidth, halfHeight] = assets.anchors.mirrors[id].halfSizeM;
+    const plane = new PlaneGeometry(
+      2 * (halfWidth + MIRROR_HIGHLIGHT_MARGIN_M), 2 * (halfHeight + MIRROR_HIGHLIGHT_MARGIN_M));
+    highlightGeometries[id] = new EdgesGeometry(plane);
+    plane.dispose();
+  }
+  const glassCenter = new Vector3();
+  const glassRotation = new Quaternion();
+  const offsetYaw = new Quaternion();
+  const offsetPitch = new Quaternion();
 
   const overheadSize = quality.overheadQuality === 'high' ? 320 : 160;
   const overheadTarget = new WebGLRenderTarget(overheadSize, overheadSize);
@@ -349,8 +367,27 @@ export function createViews(
 
   function updateMirrorCameras() {
     for (const id of MIRROR_IDS) {
-      const anchor = assets.anchors.mirrors[id];
-      bodyPoseCamera(mirrorCameras[id], assets.vehicle, anchor.positionM, anchor.rotation);
+      const surface = mirrorSurfaces[id];
+      const spec = assets.anchors.mirrors[id];
+      const glass: MirrorGlass = {
+        center: surface.getWorldPosition(glassCenter),
+        quaternion: surface.getWorldQuaternion(glassRotation),
+        halfSizeM: spec.halfSizeM,
+        convexity: spec.convexity,
+      };
+      applyMirrorCamera(mirrorCameras[id], driverEye, glass, MIRROR_FAR_M);
+    }
+  }
+
+  function applyMirrorOffsets(offsets: MirrorOffsets) {
+    for (const id of MIRROR_IDS) {
+      const { yawRad, pitchRad } = offsets[id];
+      if (!Number.isFinite(yawRad) || !Number.isFinite(pitchRad)) {
+        throw new RangeError(`Mirror ${id} offsets must be finite`);
+      }
+      offsetYaw.setFromAxisAngle(LOCAL_UP, yawRad);
+      offsetPitch.setFromAxisAngle(LOCAL_RIGHT, pitchRad);
+      mirrorSurfaces[id].quaternion.copy(defaultGlassRotations[id]).multiply(offsetYaw).multiply(offsetPitch);
     }
   }
 
@@ -443,6 +480,19 @@ export function createViews(
       trajectoryEnabled = enabled;
       trajectoryGroup.visible = enabled;
     },
+    setMirrorOffsets(offsets) {
+      if (disposed) return;
+      applyMirrorOffsets(offsets);
+    },
+    setMirrorHighlight(id) {
+      if (disposed) return;
+      highlight.removeFromParent();
+      highlight.visible = id !== null;
+      if (id === null) return;
+      highlight.geometry = highlightGeometries[id];
+      highlight.position.set(0, 0, 0.002);
+      mirrorSurfaces[id].add(highlight);
+    },
     setFov(degrees) {
       if (!Number.isFinite(degrees)) throw new RangeError('FOV must be finite');
       driverFov = Math.max(50, Math.min(80, degrees));
@@ -481,14 +531,18 @@ export function createViews(
     dispose() {
       if (disposed) return;
       disposed = true;
+      highlight.removeFromParent();
+      highlightMaterial.dispose();
       for (const id of MIRROR_IDS) {
-        const surface = assets.vehicle.getObjectByName(`mirror-surface-${id}`);
-        if (surface instanceof Mesh && surface.material instanceof MeshBasicMaterial &&
+        const surface = mirrorSurfaces[id];
+        surface.quaternion.copy(defaultGlassRotations[id]);
+        if (surface.material instanceof MeshBasicMaterial &&
             surface.material.map === mirrorTargets[id].texture) {
           surface.material.map = null;
           surface.material.needsUpdate = true;
         }
         mirrorTargets[id].dispose();
+        highlightGeometries[id].dispose();
       }
       overheadTarget.dispose();
       overlayGeometry.dispose();
