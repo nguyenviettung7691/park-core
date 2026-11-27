@@ -370,8 +370,8 @@ describe('tyre-edge physics in the rig', () => {
       + `above the curb ${mm(minOverCurbY)}, end speed `
       + `${f.rig.snapshot(f.t).telemetry.totalSpeedMps.toFixed(3)}`);
     expect(contacts).toEqual([]);
-    // 2 mm: a margin above solver noise (corner heights vary < 0.1 mm between runs of a profile),
-    // so a real loss of clearance from a tuning change fails here rather than as a chassis hit.
+    // The simulation is deterministic; 2 mm is a margin, so a tuning change that eats clearance
+    // fails here before it shows as a chassis hit.
     expect(minNearCurbY - curbTop).toBeGreaterThanOrEqual(0.002);
   });
 
@@ -751,6 +751,28 @@ describe('garage wheel stops in the lesson world', () => {
       f.rig.body.velocity.set(-Math.sin(heading) * v, 0, -Math.cos(heading) * v);
       for (let i = 0; i < Math.round(2 / H) && !f.failure; i++) lessonStep(f, idle);
       expect(f.failure).toEqual({ reason: 'wheel-stop-mounted', obstacleId: f.stopId });
+    });
+
+  /*
+   * Review M5: the measured mount threshold (coasting from 1 m, no brake, leading axle into the
+   * stop). Climbing is momentum-only, so a stop is mounted well below 15 km/h: walking pace in
+   * reverse (stages 2, 4: 1.5 m/s fails, 1.2 m/s holds) and 2 m/s nose-in (stage 1: 1.5 m/s
+   * climbs part way and rolls back). Documented in docs/phase-8-asset-catalog.md.
+   */
+  const MOUNT_CASES = STAGE_CASES.flatMap(({ stageId, id }) => {
+    const [hold, mount] = stageId === 1 ? [1.5, 2] : [1.2, 1.5];
+    return [{ stageId, id, speed: hold, mounts: false }, { stageId, id, speed: mount, mounts: true }];
+  });
+  it.each(MOUNT_CASES)('stage $stageId/$id: coasting into the stop at $speed m/s mounts it: $mounts',
+    ({ stageId, id, speed, mounts }) => {
+      const f = lessonSetup(stageId, id, 1);
+      shift(f, f.leading === 'front' ? 'D' : 'R');
+      const heading = scenarios[stageId].target.region.headingRad;
+      const v = speed * (f.leading === 'front' ? 1 : -1);
+      f.rig.body.velocity.set(-Math.sin(heading) * v, 0, -Math.cos(heading) * v);
+      for (let i = 0; i < Math.round(4 / H) && !f.failure; i++) lessonStep(f, idle);
+      record(`stage ${stageId}/${id} coast ${speed} m/s: failure ${f.failure?.reason ?? 'none'}`);
+      expect(f.failure).toEqual(mounts ? { reason: 'wheel-stop-mounted', obstacleId: f.stopId } : null);
     });
 
   it.each(IDS)('stage 2/%s: drives away in D after resting against the stop', (id) => {

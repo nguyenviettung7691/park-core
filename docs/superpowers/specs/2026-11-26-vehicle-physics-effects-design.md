@@ -39,6 +39,9 @@ are visible from the neutral cockpit POV in review captures, and reuses the
      arrows (`indicatorLit`).
    Lit state = a brighter emissive-looking mesh shown, the unlit mesh hidden
    (all art is unlit vertex colour; no real lights, no shaders).
+   *As built (ruling R14, review M3):* the lit mesh is a thin panel 4 mm
+   outboard of the static lamp, which covers it when shown; the static lamp is
+   not hidden. Visually equivalent; developer approval of the captures decides.
    Parked lesson clones show all exterior lamps off.
 2. **Correct wheel spin.** Wheel rotation about the axle matches the direction
    of travel in D and R (and stops when the car stops). The current
@@ -139,6 +142,16 @@ are visible from the neutral cockpit POV in review captures, and reuses the
 - Handling of the existing scripted lesson routes changes noticeably on flat
   ground (route witnesses in `src/lessons/scenario-routes.test.ts` must still
   pass unchanged).
+  *Ruling (builder note, review M1):* the witnesses' route endpoints changed in
+  one respect. In stages 1, 2 and 4 a wheel stop now sits inside the target, so
+  a route to the target centre would drive through the stop. The witnesses (and
+  `tests/browser/lesson-driver.ts`) end at whichever is nearer the spawn: the
+  target centre or the tyre-on-stop pose, 0.17-0.28 m short of the centre in
+  those stages. Their manoeuvre logic and tolerances are unchanged. That the
+  target centre stays reachable on flat ground is shown instead by the far-stop
+  bit-identity test (`a far stop leaves flat-ground creep bit-identical`) and by
+  the touching-rest test (the resting pose is inside the target with its
+  heading tolerance).
 - The car pops up a curb in one frame, or passes through a stop.
 - A learner reversing at creep onto a stop fails or gets a warning.
 - Parking sensors scream "stop" permanently in every garage bay.

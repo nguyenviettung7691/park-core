@@ -204,6 +204,14 @@ garage GLB grew by that template (+68 triangles, +6,172 bytes). The car's tyres
 meet the stop's top edge when the tyre centre is about 0.24 m from its near face;
 measured resting poses leave 0.29 to 0.83 m of margin inside the target (minimum
 0.288 m, stage 4 sedan). A 15 km/h approach fails with `wheel-stop-mounted`.
+Climbing is momentum-only, so the measured mount threshold is far below that
+(coasting from 1 m with no brake, leading axle into the stop, both vehicles):
+reversing in stages 2 and 4 a 1.2 m/s (4.3 km/h) arrival rests touching and
+1.5 m/s (5.4 km/h, walking pace) mounts the stop and fails; nose-in in stage 1,
+1.5 m/s climbs part way and rolls back and 2.0 m/s (7.2 km/h) fails. Braking hard
+at first touch from 2.5 m/s still mounts it in stages 2 and 4. Creep
+(0.56 m/s reverse, 0.83 m/s forward) never does. `edge-physics.test.ts` pins these
+speeds (`coasting into the stop`).
 The stop is a simple box collider, not per-polygon contact. The environment
 GLBs (0.11 m curbs, this template) are promoted on the branch because the art has
 to match the colliders, but their **visual approval is pending the developer**:
@@ -238,16 +246,23 @@ touch is a warning in lessons and climbing or mounting fails. Roadside driving
 bounds are the curb's outer face (half width 4.35 m).
 
 Lowest chassis-box corner above the curb top during a hard brake (brake 1) from
-2 m/s beside the curb, tyre 0.02 m from its face (`edge-physics.test.ts`):
+2 m/s beside the curb, tyre 0.02 m from its face (`edge-physics.test.ts`), for
+corners within 0.5 m of the curb face in plan (the asserted figure), with the
+lowest of all four corners in brackets:
 
 | Vehicle | D | D, steer +0.4 | D, steer -0.4 | R | R, steer +0.4 | R, steer -0.4 |
 |---|---:|---:|---:|---:|---:|---:|
-| Sedan | 13.8 mm | 10.6 mm | 5.3 mm | 10.8 mm | 2.0 mm | 6.5 mm |
-| CUV | 38.1 mm | 34.8 mm | 28.8 mm | 34.5 mm | 24.7 mm | 29.7 mm |
+| Sedan | 13.763 (13.763) mm | 14.293 (10.590) mm | 34.451 (13.944) mm | 10.754 (10.754) mm | 22.208 (-5.290) mm | 14.522 (6.545) mm |
+| CUV | 38.046 (38.046) mm | 38.233 (34.761) mm | 63.177 (31.707) mm | 34.470 (34.470) mm | 47.784 (17.798) mm | 38.889 (29.676) mm |
 
-The figure is the lowest of all four corners, whether or not that corner is above
-the curb in plan; counting only corners above the curb, the sedan minimum is
-5.3 mm (D, steer -0.4). The test requires at least 2 mm. The roadside GLB's
+The test requires at least 2 mm near the curb (sedan minimum 10.754 mm, R). Since
+the review-r1 edge fix (a steered tyre grazing the curb is held at the face
+instead of rubbing 3 cm into it), the sedan in R with steer +0.4 rolls toward the
+far side: its lowest corner (far rear, about 1.8 m from the curb) dips 5.3 mm
+below curb height there, over open road, so the all-corner figure is no longer a
+clearance. The simulation is deterministic, so the 2 mm bound is not a noise
+allowance: it is a margin, so a tuning change that eats clearance fails the test
+before it shows as a chassis hit (which the test also checks). The roadside GLB's
 triangle count is unchanged; it is 4 bytes larger (162,800).
 
 ### Parked lesson cars and guidance

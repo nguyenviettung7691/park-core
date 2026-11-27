@@ -488,6 +488,7 @@ describe('preview lifecycle', () => {
       expect(f.events.onAttemptOutcome).toHaveBeenCalled();
       expect(f.events.onAttemptOutcome.mock.lastCall?.[0]).toMatchObject({
         outcome: 'fail', failureReason: 'curb-contact', obstacleId: 'roadside-curb-right',
+        curbTouches: 1,
       });
       expect(f.events.onNotice).not.toHaveBeenCalledWith('curbTouchWarning');
       p.dispose();
@@ -498,6 +499,22 @@ describe('preview lifecycle', () => {
       const p = touchCurb(f, { kind: 'lesson', scenario: scenarios[3]! });
       expect(f.events.onNotice).toHaveBeenCalledWith('curbTouchWarning');
       expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
+      p.dispose();
+    });
+
+    it('reports the curb touch in the attempt summary', () => {
+      const f = fixture();
+      const p = touchCurb(f, { kind: 'lesson', scenario: scenarios[3]! });
+      expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
+      // End the attempt: put the car into the roadside fence (a chassis collision).
+      const body = f.world.bodies.find((candidate) => candidate.mass > 0)!;
+      body.position.x = 7.4;
+      body.velocity.setZero();
+      for (let i = 0; i < 60 && !f.events.onAttemptOutcome.mock.calls.length; i++) f.frame();
+      expect(f.events.onAttemptOutcome).toHaveBeenCalledOnce();
+      expect(f.events.onAttemptOutcome.mock.lastCall?.[0]).toMatchObject({
+        outcome: 'fail', failureReason: 'collision', curbTouches: 1,
+      });
       p.dispose();
     });
   });
