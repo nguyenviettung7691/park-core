@@ -5,6 +5,7 @@ import type {
   Gear,
   Indicator,
   LessonActorEntry,
+  Vec3Data,
 } from '../contracts';
 import {
   activeActorCount,
@@ -361,24 +362,45 @@ describe('scripted actors', () => {
       ['turn-back', { kind: 'turn-back' }],
       ['offset', { kind: 'offset', lateralM: 4 }],
     ];
-    it.each(detours)('stationary blocker → 3 s wait → %s detour', (_name, detour) => {
+    it.each(detours)('stationary blocker → 3 s wait → %s detour', (name, detour) => {
       let world = start({ ...actor('ped-1', [[0, 0], [10, 0]]), detour }, 'realistic');
       const blocker = rectangle(4, 5, -0.3, 0.3);
       let stoppedStep = -1;
       let switchStep = -1;
+      const after: Vec3Data[] = [];
       for (let step = 1; step <= 1800 && activeActorCount(world) === 1; step += 1) {
         const result = stepActors(world, blocker, DT);
         world = result.state;
         expect(result.contactId).toBeNull();
         if (stoppedStep < 0 && speedOf(world) < 0.05) stoppedStep = step;
         if (switchStep < 0 && world.cursors[0].detour !== null) switchStep = step;
+        if (switchStep >= 0 && activeActorCount(world) === 1) after.push(actorPoses(world)[0].positionM);
       }
       expect(stoppedStep).toBeGreaterThan(0);
       expect(Math.abs(switchStep - stoppedStep - BLOCKED_WAIT_S / DT)).toBeLessThanOrEqual(1);
       expect(activeActorCount(world)).toBe(0);
+      expect(after.length).toBeGreaterThan(10);
+      const startX = after[0][0];
+      if (name === 'turn-back') {
+        expect(after[after.length - 1][0]).toBeLessThan(startX - 1);
+        expect(after.every((p, i) => i === 0 || p[0] <= after[i - 1][0] + 1e-9)).toBe(true);
+        expect(after.every((p) => Math.abs(p[2]) < 1e-9)).toBe(true);
+      } else {
+        // Left of +x travel is -z: the path ends 4 m to the left.
+        const minZ = Math.min(...after.map((p) => p[2]));
+        expect(minZ).toBeCloseTo(-4, 1);
+        expect(after.every((p) => p[2] <= 1e-9)).toBe(true);
+        // Ramps over a 2 m transition, not an instant jump.
+        const ramp = after.filter((p) => p[0] < startX + 2 - 1e-6);
+        expect(ramp.some((p) => p[2] < -0.5 && p[2] > -3.5)).toBe(true);
+        expect(ramp.every((p) => p[2] > -4 + 1e-6)).toBe(true);
+        const settled = after.filter((p) => p[0] > startX + 2 + 1e-6);
+        expect(settled.length).toBeGreaterThan(5);
+        for (const p of settled) expect(p[2]).toBeCloseTo(-4, 6);
+      }
     });
 
-    it('stationary learner blocking both path and detour is cleared by the lifetime cap', () => {
+    it('blocking both path and detour finishes the actor through the detour-blocked rule', () => {
       const detour = { kind: 'offset', lateralM: 2 } as const;
       let world = start({ ...actor('ped-1', [[0, 0], [10, 0]]), detour }, 'realistic');
       const wide = rectangle(4, 5, -6, 6);
@@ -389,20 +411,50 @@ describe('scripted actors', () => {
         expect(result.contactId).toBeNull();
         if (goneAtS < 0 && activeActorCount(world) === 0) goneAtS = actorTimeS(world);
       }
-      expect(goneAtS).toBeGreaterThan(0);
-      expect(goneAtS).toBeLessThanOrEqual(LESSON_LIFETIME_S + DT);
+      expect(goneAtS).toBeGreaterThan(2 * BLOCKED_WAIT_S);
+      expect(goneAtS).toBeLessThan(LESSON_LIFETIME_S - 3);
+    });
 
-      // A learner creeping at 0.3 m/s never counts as stationary, so only the cap ends it.
-      world = start(actor('ped-1', [[0, 0], [10, 0]]), 'realistic');
-      goneAtS = -1;
+    it('the 15 s lifetime cap clears an actor a creeping learner keeps braking', () => {
+      // Learner at 0.3 m/s is never stationary, so only the cap can end the encounter.
+      let world = start(actor('ped-1', [[0, 0], [10, 0]]), 'realistic');
+      let goneAtS = -1;
       for (let step = 1; step <= 120 * 20; step += 1) {
         const result = stepActors(world, rectangle(4, 5, -6, 6, 0.3), DT);
         world = result.state;
         expect(result.contactId).toBeNull();
         if (goneAtS < 0 && activeActorCount(world) === 0) goneAtS = actorTimeS(world);
       }
-      expect(goneAtS).toBeGreaterThan(LESSON_LIFETIME_S - 1);
-      expect(goneAtS).toBeLessThanOrEqual(LESSON_LIFETIME_S + DT);
+      expect(Math.abs(goneAtS - LESSON_LIFETIME_S)).toBeLessThanOrEqual(DT + 1e-9);
+    });
+
+    it('an ambient actor that detoured starts its next cycle on the scheduled path', () => {
+      const schedule: ActorSchedule = {
+        kind: 'ambient',
+        entries: [{ actor: actor('ped-1', [[0, 0], [10, 0]]), startS: 0, periodS: 20 }],
+      };
+      let world = createActorWorld(schedule, 'realistic');
+      const blocker = rectangle(4, 5, -0.3, 0.3);
+      let detoured = false;
+      while (actorTimeS(world) < 19.9) {
+        world = stepActors(world, blocker, DT).state;
+        if (world.cursors[0].detour !== null) detoured = true;
+      }
+      expect(detoured).toBe(true);
+      expect(activeActorCount(world)).toBe(0);
+      while (actorTimeS(world) < 20.02) world = stepActors(world, rectangle(50, 51, 50, 51), DT).state;
+      const cursor = world.cursors[0];
+      expect(cursor.cycle).toBe(1);
+      expect(cursor.detour).toBeNull();
+      expect(cursor.blockedS).toBe(0);
+      expect(cursor.strideBaseM).toBe(0);
+      expect(cursor.braking).toBe(false);
+      const pose = actorPoses(world)[0];
+      expect(pose.visible).toBe(true);
+      expect(pose.positionM[0]).toBeGreaterThan(0);
+      expect(pose.positionM[0]).toBeLessThan(0.1);
+      expect(pose.positionM[2]).toBe(0);
+      expect(pose.strideM).toBeCloseTo(pose.positionM[0], 9);
     });
 
     it('braking flag mirrors deceleration', () => {
