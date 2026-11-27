@@ -2,6 +2,7 @@ import type * as THREE from 'three';
 import type { ControllerProfileId } from './input/profiles';
 import type { MirrorId, MirrorSpec } from './vehicle/asset-contract';
 import type { SavedMirrorOffsets } from './views/mirror-adjust';
+import type { SavedSeatPosition } from './views/seat-position';
 import type {
   AppState,
   AttemptSummary,
@@ -95,6 +96,8 @@ export interface SettingsSaveV1 extends GraphicsSettings {
   readonly inputSource: InputSource;
   /** Driver mirror adjustments per vehicle (degrees); absent means default aim. */
   readonly mirrorAdjustments?: Readonly<Partial<Record<VehicleId, SavedMirrorOffsets>>>;
+  /** Driver seat position per vehicle (whole cm); absent means the nominal eye point. */
+  readonly seatPositions?: Readonly<Partial<Record<VehicleId, SavedSeatPosition>>>;
 }
 
 export type PersistenceRecord = 'progress' | 'settings' | 'calibration';

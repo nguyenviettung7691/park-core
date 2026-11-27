@@ -6,6 +6,7 @@ import {
   createDefaultGraphicsSettings, DEFAULT_GRAPHICS_CAPABILITIES, parseGraphicsSettings,
 } from '../views/graphics-settings';
 import { parseSavedMirrorAdjustments } from '../views/mirror-adjust';
+import { parseSavedSeatPositions } from '../views/seat-position';
 import type {
   PersistenceRecord, PersistenceResult, PersistenceSnapshot, RecordStatus, SettingsSaveV1,
 } from '../runtime-types';
@@ -86,6 +87,7 @@ function validateSettings(value: unknown): SettingsSaveV1 | null {
       (value.inputSource !== 'keyboard' && value.inputSource !== 'gamepad')) return null;
   const graphics = parseGraphicsSettings(value, DEFAULT_GRAPHICS_CAPABILITIES);
   const mirrorAdjustments = parseSavedMirrorAdjustments(value.mirrorAdjustments, ['sedan', 'cuv']);
+  const seatPositions = parseSavedSeatPositions(value.seatPositions, ['sedan', 'cuv']);
   return {
     version: 1,
     volume: value.volume,
@@ -97,6 +99,7 @@ function validateSettings(value: unknown): SettingsSaveV1 | null {
     inputSource: value.inputSource,
     ...graphics,
     ...(mirrorAdjustments ? { mirrorAdjustments } : {}),
+    ...(seatPositions ? { seatPositions } : {}),
   };
 }
 
