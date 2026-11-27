@@ -732,3 +732,108 @@ describe('mirror adjustment mode', () => {
     expect(controller.mirrorInput().selected).toBeNull();
   });
 });
+
+describe('controller look input', () => {
+  const neutral = { glance: null, recenter: false, stickX: 0, stickY: 0 };
+  const lookCal: ControllerCalibration = { ...wheel, lookLeftButton: 8, lookRightButton: 9,
+    lookBackButton: 10, recenterButton: 11, lookStick: { xAxis: 2, yAxis: 3 } };
+  const padWith = (pressed: number[] = [], axes: number[] = [0.1, 1, 0, 0]) => {
+    const buttons = new Array<number>(12).fill(0);
+    pressed.forEach((index) => { buttons[index] = 1; });
+    return makePad({ axes, buttons });
+  };
+  function lookController(pad: Gamepad = padWith()) {
+    const ctx = gamepadController(pad);
+    ctx.controller.setCalibration(lookCal);
+    return ctx;
+  }
+
+  it('is neutral before any poll and for the keyboard source', () => {
+    const { controller } = setup();
+    expect(controller.lookInput()).toEqual(neutral);
+    controller.poll();
+    expect(controller.lookInput()).toEqual(neutral);
+  });
+
+  it('reports a held look button as a glance', () => {
+    const { controller, world } = lookController();
+    world.pads = [padWith([8])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('left');
+    world.pads = [padWith([9])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('right');
+  });
+
+  it('lets the latest pressed button win and falls back to a still-held one', () => {
+    const { controller, world } = lookController();
+    world.pads = [padWith([8])];
+    controller.poll();
+    world.pads = [padWith([8, 10])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('back');
+    world.pads = [padWith([8, 10, 9])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('right');
+    world.pads = [padWith([8, 10])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('back');
+    world.pads = [padWith([8])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('left');
+    world.pads = [padWith()];
+    controller.poll();
+    expect(controller.lookInput().glance).toBeNull();
+  });
+
+  it('reports recenter once per press and not for a button held at start', () => {
+    const { controller, world } = lookController(padWith([11]));
+    controller.poll();
+    expect(controller.lookInput().recenter).toBe(false);
+    world.pads = [padWith()];
+    controller.poll();
+    world.pads = [padWith([11])];
+    controller.poll();
+    expect(controller.lookInput().recenter).toBe(true);
+    controller.poll();
+    expect(controller.lookInput().recenter).toBe(false);
+  });
+
+  it('passes raw stick axes through, treating missing and non-finite as 0', () => {
+    const { controller, world } = lookController();
+    world.pads = [padWith([], [0.1, 1, 0.05, -0.8])];
+    controller.poll();
+    expect(controller.lookInput()).toMatchObject({ stickX: 0.05, stickY: -0.8 });
+    world.pads = [padWith([], [0.1, 1, Number.NaN])];
+    controller.poll();
+    expect(controller.lookInput()).toMatchObject({ stickX: 0, stickY: 0 });
+  });
+
+  it('resets on a poll fault, clear, selectSource and setCalibration', () => {
+    const { controller, world } = lookController();
+    const look = padWith([8], [0.1, 1, 0.5, 0.5]);
+    world.pads = [look];
+    controller.poll();
+    world.pads = [];
+    expect(controller.poll().issue).toBe('controllerDisconnected');
+    expect(controller.lookInput()).toEqual(neutral);
+    world.pads = [look];
+    controller.poll();
+    controller.clear();
+    expect(controller.lookInput()).toEqual(neutral);
+    controller.poll();
+    controller.setCalibration(lookCal);
+    expect(controller.lookInput()).toEqual(neutral);
+    controller.poll();
+    controller.selectSource('gamepad', 0);
+    expect(controller.lookInput()).toEqual(neutral);
+  });
+
+  it('is neutral for a calibration without look fields', () => {
+    const { controller, world } = gamepadController();
+    world.pads = [padWith([8, 9, 10, 11], [0.1, 1, 0.5, 0.5])];
+    controller.poll();
+    controller.poll();
+    expect(controller.lookInput()).toEqual(neutral);
+  });
+});

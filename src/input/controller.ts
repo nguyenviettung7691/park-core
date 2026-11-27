@@ -4,6 +4,7 @@ import type {
 import type { InputPoll } from '../runtime-types';
 import { normalizePedal, normalizeSteering, validateCalibration } from './calibration';
 import type { MirrorId } from '../vehicle/asset-contract';
+import type { Glance } from '../views/look';
 import type { MirrorIntent } from '../views/mirror-adjust';
 
 export interface MirrorInput {
@@ -11,6 +12,15 @@ export interface MirrorInput {
   readonly intent: MirrorIntent;
   /** True once after KeyM was pressed while adjustment is not allowed. */
   readonly blocked: boolean;
+}
+
+export interface LookInput {
+  readonly glance: Glance | null;
+  /** True only on the poll where the recenter button went from released to pressed. */
+  readonly recenter: boolean;
+  /** Raw look-stick axes; deadzone is applied by the view layer. */
+  readonly stickX: number;
+  readonly stickY: number;
 }
 
 export interface InputController {
@@ -23,6 +33,8 @@ export interface InputController {
   /** Adjustment is only allowed when the car is held (gear P or parking brake). */
   setMirrorAdjustAllowed(allowed: boolean): void;
   mirrorInput(): MirrorInput;
+  /** Look state from the most recent poll; neutral for keyboard or after any reset. */
+  lookInput(): LookInput;
   dispose(): void;
 }
 
@@ -32,6 +44,7 @@ const mirrorArrows: Readonly<Record<string, { readonly yaw: -1 | 0 | 1; readonly
   ArrowUp: { yaw: 0, pitch: 1 }, ArrowDown: { yaw: 0, pitch: -1 },
 };
 
+const NEUTRAL_LOOK: LookInput = { glance: null, recenter: false, stickX: 0, stickY: 0 };
 const NEUTRAL_PEDAL = 0.02;
 const MAX_GAMEPAD_INDEX = 63;
 
@@ -50,7 +63,9 @@ const indicatorKeys: Readonly<Record<string, Exclude<Indicator, 'off'>>> = {
 type GamepadRead =
   | { readonly issue: MessageKey }
   | { readonly issue: null; readonly frame: InputFrame;
-      readonly reverse: boolean; readonly drive: boolean; readonly parkingBrake: boolean };
+      readonly reverse: boolean; readonly drive: boolean; readonly parkingBrake: boolean;
+      readonly glances: readonly Glance[]; readonly recenter: boolean;
+      readonly stickX: number; readonly stickY: number };
 
 function isEditable(target: EventTarget | null): boolean {
   if (typeof Element === 'undefined' || !(target instanceof Element)) return false;
@@ -75,6 +90,9 @@ export function createInputController(
   const held = new Set<string>();
   const suppressed = new Set<string>();
   let gamepadEdges: { reverse: boolean; drive: boolean; parkingBrake: boolean } | null = null;
+  let look: LookInput = NEUTRAL_LOOK;
+  let lookOrder: Glance[] = [];
+  let recenterHeld: boolean | null = null;
   let mirrorAllowed = false;
   let mirrorSelected: MirrorId | null = null;
   let mirrorBlocked = false;
@@ -107,9 +125,15 @@ export function createInputController(
 
   const zeroFrame = (): InputFrame =>
     ({ source, throttle: 0, brake: 0, steering: 0 });
+  function resetLook(): void {
+    look = NEUTRAL_LOOK;
+    lookOrder = [];
+    recenterHeld = null;
+  }
   const fail = (issue: MessageKey): InputPoll => {
     queue = [];
     gamepadEdges = null;
+    resetLook();
     return { frame: zeroFrame(), actions: [], issue };
   };
 
@@ -119,6 +143,7 @@ export function createInputController(
     queue = [];
     pendingIssue = null;
     gamepadEdges = null;
+    resetLook();
     for (const code of held) suppressed.add(code);
     held.clear();
   }
@@ -233,6 +258,16 @@ export function createInputController(
       || reverse === undefined || drive === undefined || parkingBrake === undefined) {
       return { issue: 'controllerControlsMissing' };
     }
+    const pressedAt = (index: number | undefined): boolean =>
+      index !== undefined && padButtons[index]?.pressed === true;
+    const axisAt = (index: number | undefined): number => {
+      const value = index === undefined ? undefined : axes[index];
+      return value !== undefined && Number.isFinite(value) ? value : 0;
+    };
+    const glances: Glance[] = [];
+    if (pressedAt(cal.lookLeftButton)) glances.push('left');
+    if (pressedAt(cal.lookRightButton)) glances.push('right');
+    if (pressedAt(cal.lookBackButton)) glances.push('back');
     try {
       const frame: InputFrame = {
         source: 'gamepad',
@@ -246,6 +281,10 @@ export function createInputController(
         reverse: reverse.pressed === true,
         drive: drive.pressed === true,
         parkingBrake: parkingBrake.pressed === true,
+        glances,
+        recenter: pressedAt(cal.recenterButton),
+        stickX: axisAt(cal.lookStick?.xAxis),
+        stickY: axisAt(cal.lookStick?.yAxis),
       };
     } catch (error) {
       if (error instanceof RangeError) return { issue: 'controllerInvalid' };
@@ -283,6 +322,16 @@ export function createInputController(
     gamepadEdges = {
       reverse: read.reverse, drive: read.drive, parkingBrake: read.parkingBrake,
     };
+    // Latest pressed wins: keep still-held glances in press order, append new ones.
+    lookOrder = lookOrder.filter((glance) => read.glances.includes(glance));
+    for (const glance of read.glances) if (!lookOrder.includes(glance)) lookOrder.push(glance);
+    look = {
+      glance: lookOrder[lookOrder.length - 1] ?? null,
+      recenter: recenterHeld === false && read.recenter,
+      stickX: read.stickX,
+      stickY: read.stickY,
+    };
+    recenterHeld = read.recenter;
     return { frame: read.frame, actions, issue: null };
   }
 
@@ -312,6 +361,7 @@ export function createInputController(
       calibration = valid;
       calibrationInvalid = valid === null;
       gamepadEdges = null;
+      resetLook();
     },
     clear() {
       if (!disposed) clearState();
@@ -337,9 +387,13 @@ export function createInputController(
         blocked,
       };
     },
+    lookInput() {
+      return look;
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
+      resetLook();
       abort.abort();
       queue = [];
       held.clear();
