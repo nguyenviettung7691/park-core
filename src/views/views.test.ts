@@ -491,19 +491,6 @@ describe('camera and auxiliary views', () => {
     expect(fixture.renderer.calls.filter((call) => call.camera.name.startsWith('mirror-'))).toHaveLength(6);
   });
 
-  it('keeps deprecated look() and recenter() working on the new limits', () => {
-    const fixture = makeFixture();
-    fixtures.push(fixture);
-    fixture.views.look(100_000, 0);
-    fixture.draw(0);
-    const d = lastCameraCall(fixture.renderer, 'driver-camera').camera.getWorldDirection(new Vector3());
-    expect(Math.atan2(-d.x, -d.z)).toBeCloseTo(-160 * Math.PI / 180, 2);
-    fixture.views.recenter();
-    fixture.draw(16);
-    const c = lastCameraCall(fixture.renderer, 'driver-camera').camera.getWorldDirection(new Vector3());
-    expect(c.z).toBeCloseTo(-1, 6);
-  });
-
   it('sizes mirror targets from glass aspect', () => {
     const fixture = makeFixture();
     fixtures.push(fixture);

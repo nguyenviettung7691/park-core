@@ -53,6 +53,8 @@ function fixture() {
       requestPointerLock: vi.fn(() => lockRequest()),
       updateSettings: vi.fn(),
       recenterView: vi.fn(),
+      setSeatOffset: vi.fn(),
+      seatAdjustAllowed: vi.fn(() => true),
       setMirrorOffsets: vi.fn(),
       resetMirrors: vi.fn(),
       selectSource: vi.fn(),

@@ -55,8 +55,6 @@ export interface ViewSystem {
   setSeatOffset(seat: SeatOffset): void;
   /** Current vehicle-local eye point after seat, head lean and clearance clamp. */
   driverEyeLocal(): Vec3Data;
-  /** @deprecated — removed in Task 9; use setLookPose. */
-  look(deltaX: number, deltaY: number): void;
   setCamera(mode: CameraMode): void;
   setOverhead(enabled: boolean): void;
   setTrajectory(enabled: boolean): void;
@@ -66,8 +64,6 @@ export interface ViewSystem {
   /** Outlines the glass being adjusted, or none. */
   setMirrorHighlight(id: MirrorId | null): void;
   resize(widthCss: number, heightCss: number, pixelRatio: number): void;
-  /** @deprecated — removed in Task 9; use setLookPose. */
-  recenter(): void;
   dispose(): void;
 }
 
@@ -495,12 +491,6 @@ export function createViews(
     driverEyeLocal() {
       return eyeLocal;
     },
-    look(deltaX, deltaY) {
-      if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)) {
-        throw new RangeError('Mouse-look deltas must be finite');
-      }
-      setPose(yaw - deltaX * 0.002, pitch - deltaY * 0.002);
-    },
     setCamera(mode) {
       cameraMode = mode;
     },
@@ -555,9 +545,6 @@ export function createViews(
       const x = Math.round(insetX * pixelRatio);
       const y = marginPx;
       insetViewport = [x, y, insetPx, insetPx];
-    },
-    recenter() {
-      setPose(0, 0);
     },
     dispose() {
       if (disposed) return;

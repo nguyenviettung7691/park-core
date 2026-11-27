@@ -351,10 +351,9 @@ async function setup() {
       }
       if (shot === 'driver' || shot.startsWith('driver-')) {
         views.setCamera('driver');
-        views.recenter();
-        if (shot === 'driver') views.look(0, 80);
-        if (shot === 'driver-left') views.look(550, 0);
-        if (shot === 'driver-right') views.look(-550, 0);
+        // Same poses as the former mouse-look deltas (0.002 rad/px): (0, 80), (550, 0), (-550, 0).
+        const yawRad = shot === 'driver-left' ? -1.1 : shot === 'driver-right' ? 1.1 : 0;
+        views.setLookPose({ yawRad, pitchRad: shot === 'driver' ? -0.16 : 0 });
         views.render(frame, time += 100);
         return;
       }
