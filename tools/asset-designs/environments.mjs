@@ -1,6 +1,30 @@
 // SPDX-License-Identifier: CC-BY-NC-4.0
-import { boxGeometry, mergeGeometry, transformGeometry } from '../asset-geometry.mjs';
+import { boxGeometry, facesGeometry, mergeGeometry, transformGeometry } from '../asset-geometry.mjs';
 import { palette } from './palette.mjs';
+
+// Wheel-stop cross-section (z, y), centred: 0.15 m deep, 0.11 m tall, 0.025 m top chamfers.
+const STOP_PROFILE = [[-0.075, -0.055], [0.075, -0.055], [0.075, 0.03], [0.05, 0.055],
+  [-0.05, 0.055], [-0.075, 0.03]];
+
+function stopPrism(x0, x1, color, caps) {
+  const faces = [];
+  STOP_PROFILE.forEach(([az, ay], index) => {
+    const [bz, by] = STOP_PROFILE[(index + 1) % STOP_PROFILE.length];
+    faces.push({ color, points: [[x0, ay, az], [x1, ay, az], [x1, by, bz], [x0, by, bz]] });
+  });
+  if (caps[0]) faces.push({ color, points: STOP_PROFILE.map(([z, y]) => [x0, y, z]) });
+  if (caps[1]) faces.push({ color, points: STOP_PROFILE.map(([z, y]) => [x1, y, z]).reverse() });
+  return facesGeometry(faces);
+}
+
+/** Hidden 1.8 x 0.11 x 0.15 m concrete wheel stop with two yellow bands, cloned per lesson stop. */
+function wheelStopGeometry() {
+  const concrete = [0.6, 0.58, 0.55], yellow = [0.86, 0.69, 0.12];
+  const bands = [[-0.9, -0.62, concrete], [-0.62, -0.48, yellow], [-0.48, 0.48, concrete],
+    [0.48, 0.62, yellow], [0.62, 0.9, concrete]];
+  return mergeGeometry(bands.map(([x0, x1, color], index) =>
+    stopPrism(x0, x1, color, [index === 0, index === bands.length - 1])));
+}
 
 export function authorEnvironment({ root, addNode, addMesh, box }, assetId) {
   const garage = assetId === 'garage';
@@ -52,6 +76,7 @@ export function authorEnvironment({ root, addNode, addMesh, box }, assetId) {
     wallParts.push(part([-0.1, 2.25, -14.56], [1.4, 0.8, 0.04], dark));
     wallParts.push(...lettering('B1', -0.58, 2.49, -14.53, 0.11));
     batch('GarageWallDetails', walls, wallParts);
+    addMesh('WheelStop', addNode('WheelStopTemplate', walls), wheelStopGeometry(), [0.6, 0.58, 0.55]);
     const floorParts = [];
     for (let v = -12; v <= 12; v += 3) {
       floorParts.push(part([v, 0.002, 0], [0.012, 0.002, 30], [0.32, 0.31, 0.32]));
@@ -86,15 +111,15 @@ export function authorEnvironment({ root, addNode, addMesh, box }, assetId) {
     for (const z of [-8, 8]) fixtures.push(part([0, 5.48, z], [30, 0.2, 0.25], [0.38, 0.35, 0.37]));
     batch('CeilingFixtures', ceiling, fixtures);
   } else {
-    box('CurbLeft', walls, [-4.2, 0.12, 0], [0.3, 0.24, 32], [0.66, 0.63, 0.57]);
-    box('CurbRight', walls, [4.2, 0.12, 0], [0.3, 0.24, 32], [0.66, 0.63, 0.57]);
+    box('CurbLeft', walls, [-4.2, 0.055, 0], [0.3, 0.11, 32], [0.66, 0.63, 0.57]);
+    box('CurbRight', walls, [4.2, 0.055, 0], [0.3, 0.11, 32], [0.66, 0.63, 0.57]);
     box('RoadsideFence', walls, [8, 0.9, 0], [0.18, 1.8, 28], [0.48, 0.45, 0.42]);
     box('RoadsideBlock', walls, [-7.2, 0.35, -1], [1.2, 0.7, 0.7], [0.56, 0.53, 0.48]);
     const surface = [part([0, 0.001, 0], [8.1, 0.002, 32], [0.23, 0.23, 0.25])];
     for (const side of [-1, 1]) {
       for (let z = -15; z <= 15; z += 1.5) {
         surface.push(part([side * 6.1, 0.003, z], [3.4, 0.003, 0.015], [0.43, 0.4, 0.38]));
-        surface.push(part([side * 4.2, 0.242, z], [0.3, 0.004, 0.02], [0.34, 0.32, 0.31]));
+        surface.push(part([side * 4.2, 0.112, z], [0.3, 0.004, 0.02], [0.34, 0.32, 0.31]));
       }
       surface.push(part([side * 6.2, 0.003, 0], [0.016, 0.003, 32], [0.43, 0.4, 0.38]));
       surface.push(part([side * 3.85, 0.004, 0], [0.08, 0.004, 32], [0.79, 0.76, 0.69]));

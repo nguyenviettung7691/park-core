@@ -6,6 +6,7 @@ import type {
 import { scenarios } from '../../src/lessons/scenarios';
 import { profiles } from '../../src/vehicle/profiles';
 import { rearAxleCenter } from '../../src/vehicle/geometry';
+import { wheelStops, wheelStopTouchingPose } from '../../src/test/wheel-stop-pose';
 
 export const STAGE_DRIVE_DEADLINE_MS = 90_000;
 const STALE_MS = 2000;
@@ -223,10 +224,14 @@ export function rearAxleRoute(stageId: StageId, profile: VehicleProfile): Vec3Da
     rotation: [0, Math.sin(spawn.yawRad / 2), 0, Math.cos(spawn.yawRad / 2)],
   }, profile);
   const region = scenario.target.region;
-  const targetRear = rearAxleCenter({
+  // A learner stops at the earlier of the target centre and the pose where the tyres touch a stop.
+  const ends = [rearAxleCenter({
     positionM: [region.centerM[0], profile.centerOfMassHeightM, region.centerM[2]],
     rotation: [0, Math.sin(region.headingRad / 2), 0, Math.cos(region.headingRad / 2)],
-  }, profile);
+  }, profile), ...wheelStops(scenario).map((stop) =>
+    rearAxleCenter(wheelStopTouchingPose(scenario, stop, profile).pose, profile))];
+  const fromStart = (rear: Vec3Data) => Math.hypot(rear[0] - startRear[0], rear[2] - startRear[2]);
+  const targetRear = ends.reduce((best, rear) => fromStart(rear) < fromStart(best) ? rear : best);
   const lateral = targetRear[0] - startRear[0];
   const route: Vec3Data[] = [startRear];
   if (Math.abs(lateral) < 0.01) {

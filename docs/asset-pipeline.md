@@ -108,6 +108,22 @@ npm run assets:check -- --vehicle sedan --candidate C:\asset-work\candidate
 npm run assets:review -- --vehicle sedan --candidate C:\asset-work\candidate --out C:\asset-work\review
 ```
 
+A candidate feature that is not yet approved sits behind an opt-in generator
+option, off by default, so plain generation always reproduces the approved
+public GLBs (and `assets:check` and the sync test stay green). Promotion after
+the developer approves the candidate hash and captures is one reviewed change:
+author the feature by default, regenerate with `node tools\generate-assets.mjs`,
+confirm the public GLBs match the approved candidate, then run
+`npm run assets:check` and the full suites.
+
+The issue #11 exterior lamps went through this gate and are promoted: the
+developer approved them (delegated approval on 2026-11-27, PR #22), so
+`EXTERIOR_LAMPS_DEFAULT` in `tools\generate-assets.mjs` is on and the former
+opt-in `--lamps` flag is retired. `buildGlb(id, { lamps: false })` remains as a
+programmatic opt-out. Promoted vehicle GLB SHA-256: sedan
+`e409a8961635fad8fea9a355979baf46e9546d45f774177a0ea5a9ff624d9a5b`, CUV
+`7cb934d717dc51da168959d9a3876324bec6a8e21b48eed1917b39ea3133276b`.
+
 Use your session workspace in place of `C:\asset-work`. Choose an empty output
 directory for each review: existing evidence is never overwritten or mixed with
 another run. The review output must be outside the repository or inside
@@ -118,10 +134,10 @@ generator/loader/view tests and the candidate browser review, using Playwright's
 existing local server. It fails on stale candidate bytes, test failures or missing
 browser tooling. It does not copy candidates into public assets or approve them.
 Install the project's locked dependencies and Playwright Chromium when missing.
-The focused unit run skips the "checked-in GLBs in sync" test, which cannot pass
-until an approved candidate is promoted; `assets:check` and the ordinary `vitest`
-run still enforce it. A pre-promotion `assets:review` therefore runs through the
-browser step. After promotion, run `npm run assets:check` and the full suites.
+The focused unit run includes the "checked-in GLBs in sync" test: it compares
+the public GLBs with default generation, which keeps unapproved options off and
+authors promoted ones, so it passes before and after promotion. After promotion, run `npm run assets:check` and
+the full suites.
 (The sedan and CUV redesigns for issue #12 predate this and ran the browser spec
 directly with the `PARK_CORE_REVIEW_*` variables.)
 If dimensional/anchor changes make the old public GLB incompatible with the new
@@ -184,6 +200,18 @@ drives from telemetry each rendered frame. `SteeringWheelPivot` (under the raked
 optional `throttle` telemetry. The CUV console `ParkingBrakeLever` lifts 0.35 rad
 while the parking brake is applied. Vehicles without a node are left untouched;
 geometry alone is not the feature.
+Exterior lamp nodes (issue #11) are hidden by default and shown from telemetry:
+`BrakeLampsLit` (brake above 0.05), `ReverseLampsLit` (gear R) and
+`TurnSignalLeftLit`/`TurnSignalRightLit` (the indicator flash). They sit under
+`Body`, are one batched unlit mesh each, and parked clones hide them (parked
+clones also fit their bounds without the `*Lit` nodes). They are authored by
+default and present in the public GLBs: the developer approved them (delegated
+approval on 2026-11-27, PR #22).
+Environment changes for issue #11 (0.11 m curbs, the garage wheel-stop
+template) were approved by the developer in the same delegated approval
+(2026-11-27, PR #22). Environment GLB SHA-256: roadside
+`bfa62e02433f425ff100b75f3a38d1622cb90063d17d74e7ea7108a1fc755360`, garage
+`bf7adefc4a4844f160048a6a176fc983648657148323e6cff1148ac62860778d`.
 The driven exterior uses outward-only opaque glazing: no transparency sorting,
 with open interior sightlines. That glazing is excluded from mirror passes.
 `ParkedGlazing` is hidden on the driven car and enabled on parked clones.
@@ -204,6 +232,14 @@ groups remain. Garage pipes and fixtures belong to Ceiling, whose rendering
 layer is excluded from the overhead camera. Lamp faces are unlit geometry,
 not new lights. Fixed color shading is not an image-based light bake.
 
+The garage GLB carries a hidden `WallsAndCurbs/WheelStopTemplate` (one mesh,
+1.8 x 0.11 x 0.15 m, centred on its origin). The loader requires it, and
+`createLessonScene` clones it for every `wheel-stop` collider in the scenario,
+taking the collider's id, position and yaw; it throws if a stage has stops but no
+template, and never builds a parked car for a stop. Roadside curbs are 0.11 m tall
+(`CurbLeft`/`CurbRight` 0.3 x 0.11 x 32 m at x = +/-4.2); art and colliders must
+move together.
+
 `src\world\colliders.ts` and `src\lessons\scenarios.ts` remain authoritative.
 Parked lesson cars clone exterior/wheel resources, fit their visible bounds
 to existing collider boxes and own their copies. They do not create physics
@@ -216,7 +252,8 @@ Generator and loader regressions cover deterministic GLBs, dimensions,
 anchors, geometry/payload budgets, cockpit sightlines, mirror UVs and layer
 assignment. Render tests exercise actual GLTFLoader/WebGL and multi-pass views.
 These checks do not replace manual mirror-landmark, vehicle-clearance,
-instructor, real-wheel or reference-hardware validation.
+instructor, real-wheel or reference-hardware validation. SwiftShader captures do
+not verify 1440p60 performance or training readiness.
 
 Application and functional generator code remain MIT. New artwork and its
 creative sources use [CC BY-NC 4.0](../public/assets/LICENSE), with original

@@ -15,6 +15,7 @@ const summary: AttemptSummary = {
   closestSampledClearanceM: null,
   peakSpeedMps: 0,
   directionChanges: 0,
+  curbTouches: 0,
   acknowledgedStepIds: [],
   usedAids: [],
 };
@@ -33,10 +34,11 @@ function createStore(
   );
 }
 
-function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
+function openDatabase(factory: IDBFactory, version = 1): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = factory.open(DATABASE, 1);
+    const request = factory.open(DATABASE, version);
     request.onupgradeneeded = () => {
+      if (version > 1) return;
       const store = request.result.createObjectStore('attempts', { keyPath: 'id' });
       store.createIndex('completedAt', 'completedAt');
     };
@@ -67,7 +69,52 @@ async function seedRecord(factory: IDBFactory, record: unknown): Promise<void> {
 
 afterEach(() => vi.restoreAllMocks());
 
+const { curbTouches: _omitted, ...v1Summary } = summary;
+
 describe('completed attempt history', () => {
+  it('migrates v1 records to v2 with curbTouches 0 and keeps them listed', async () => {
+    const factory = new IDBFactory();
+    const record = { id: 'old', completedAt: '2026-11-04T10:00:00.000Z', summary: v1Summary };
+    await seedRecord(factory, record);
+
+    const listed = await createStore(factory, ['new']).list();
+
+    expect(listed.status).toBe('persistent');
+    expect(listed.records).toEqual([{ ...record, summary: { ...v1Summary, curbTouches: 0 } }]);
+  });
+
+  it('closes its connection on versionchange so a newer schema is not blocked', async () => {
+    const factory = new IDBFactory();
+    const opened: IDBDatabase[] = [];
+    const open = factory.open.bind(factory);
+    factory.open = (name: string, version?: number) => {
+      const request = open(name, version);
+      request.addEventListener('success', () => opened.push(request.result));
+      return request;
+    };
+    await createStore(factory).list();
+    const database = opened[0]!;
+    expect(database.onversionchange).toBeTypeOf('function');
+    const close = vi.spyOn(database, 'close');
+    database.onversionchange!(new Event('versionchange') as IDBVersionChangeEvent);
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('accepts wheel-stop-mounted failures and records curb touches', async () => {
+    const store = createStore(new IDBFactory(), ['mounted']);
+    const result = await store.append({
+      ...summary, outcome: 'fail', failureReason: 'wheel-stop-mounted',
+      obstacleId: 'stage5-wheel-stop', curbTouches: 3,
+    });
+    expect(result.status).toBe('persistent');
+    expect((await store.list()).records[0]?.summary)
+      .toMatchObject({ failureReason: 'wheel-stop-mounted', curbTouches: 3 });
+  });
+
+  it.each([-1, 1.5, Number.NaN])('rejects curbTouches %s', async (curbTouches) => {
+    await expect(createStore().append({ ...summary, curbTouches })).rejects.toThrow(RangeError);
+  });
+
   it('persists independent records and lists them newest first', async () => {
     const factory = new IDBFactory();
     const store = createStore(factory, ['older', 'newer'], [
@@ -176,7 +223,7 @@ describe('completed attempt history', () => {
     expect((await store.list()).status).toBe('reset-required');
     const result = await store.append(summary);
     const records = await store.list();
-    const database = await openDatabase(factory);
+    const database = await openDatabase(factory, 2);
 
     expect(result.status).toBe('reset-required');
     expect(records.status).toBe('reset-required');
@@ -211,7 +258,7 @@ describe('completed attempt history', () => {
     expect((await store.list()).status).toBe('reset-required');
     expect((await store.append(summary)).status).toBe('reset-required');
     const unchanged = await new Promise<IDBDatabase>((resolve, reject) => {
-      const open = factory.open(DATABASE, 1);
+      const open = factory.open(DATABASE);
       open.onsuccess = () => resolve(open.result);
       open.onerror = () => reject(open.error ?? new Error('Database open failed'));
     });

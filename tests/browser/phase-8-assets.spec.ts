@@ -44,12 +44,56 @@ for (const stage of [1, 2, 3, 4, 5]) {
     const report = await page.evaluate(() => window.phase8Capture.report());
     expect(report.parkedTriangles).toHaveLength(stage === 4 ? 1 : 2);
     for (const count of report.parkedTriangles) expect(count).toBeLessThanOrEqual(4000);
+    expect(report.wheelStopTriangles).toHaveLength(stage === 3 || stage === 5 ? 0 : 1);
+    for (const count of report.wheelStopTriangles) expect(count).toBeGreaterThan(0);
     for (const frame of report.frames) {
       expect(frame.find((pass) => pass.name === 'main')!.calls).toBeLessThanOrEqual(140);
     }
     await info.attach('lesson-asset-report', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
     await page.evaluate(() => window.phase8Capture.setShot('environment'));
     await page.screenshot({ path: info.outputPath(`stage-${stage}-parked-cars.png`) });
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const stage of [1, 2, 4]) {
+  for (const vehicle of ['sedan', 'cuv']) {
+    test(`stage ${stage} ${vehicle} rests its tyres against the garage wheel stop`, async ({ page }, info) => {
+      const errors: string[] = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      await page.goto(`/tests/browser/fixtures/phase-8.html?vehicle=${vehicle}&environment=garage&stage=${stage}&pose=stop-touch`);
+      await expect.poll(() => page.evaluate(() => window.phase8Capture?.ready)).toBe(true);
+      const report = await page.evaluate(() => window.phase8Capture.report());
+      const leading = stage === 1 ? report.wheelEdges.slice(0, 2) : report.wheelEdges.slice(2);
+      expect(leading).toEqual([`stage${stage}-wheel-stop:touching`, `stage${stage}-wheel-stop:touching`]);
+      for (const frame of report.frames) {
+        expect(frame.find((pass) => pass.name === 'main')!.calls).toBeLessThanOrEqual(140);
+      }
+      // Review captures for the garage wheel stops, written to the test's output folder.
+      for (const shot of ['chase', 'overhead', 'driver-neutral', 'stop-closeup'] as const) {
+        await page.evaluate((value) => window.phase8Capture.setShot(value), shot);
+        await page.screenshot({ path: info.outputPath(`stage-${stage}-${vehicle}-${shot}.png`) });
+      }
+      expect(errors).toEqual([]);
+    });
+  }
+}
+
+for (const vehicle of ['sedan', 'cuv']) {
+  test(`${vehicle} side-touches the 0.11 m roadside curb with its right tyres`, async ({ page }, info) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(`/tests/browser/fixtures/phase-8.html?vehicle=${vehicle}&environment=roadside&pose=curb-touch`);
+    await expect.poll(() => page.evaluate(() => window.phase8Capture?.ready)).toBe(true);
+    const report = await page.evaluate(() => window.phase8Capture.report());
+    expect([report.wheelEdges[1], report.wheelEdges[3]])
+      .toEqual(['roadside-curb-right:touching', 'roadside-curb-right:touching']);
+    expect([report.wheelEdges[0], report.wheelEdges[2]]).toEqual(['-:none', '-:none']);
+    // Review captures for the roadside curb, written to the test's output folder.
+    for (const shot of ['chase', 'driver-neutral', 'driver-right', 'curb-closeup'] as const) {
+      await page.evaluate((value) => window.phase8Capture.setShot(value), shot);
+      await page.screenshot({ path: info.outputPath(`roadside-curb-${vehicle}-${shot}.png`) });
+    }
     expect(errors).toEqual([]);
   });
 }

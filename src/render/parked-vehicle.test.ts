@@ -1,7 +1,7 @@
-import { Box3, Mesh, Vector3 } from 'three';
+import { Box3, BoxGeometry, Mesh, MeshBasicMaterial, Object3D, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { ColliderBox } from '../runtime-types';
-import { vehicleTemplate } from '../test/vehicle-template';
+import { vehicleTemplate, wheelStopTemplate } from '../test/vehicle-template';
 import { scenarios } from '../lessons/scenarios';
 import { createLessonScene } from './lesson-scene';
 import { createParkedVehicle } from './parked-vehicle';
@@ -33,7 +33,7 @@ describe('parked vehicle artwork', () => {
     const original = template.getObjectByName('Exterior') as Mesh;
     const originalGeometry = vi.spyOn(original.geometry, 'dispose');
     const originalMaterial = vi.spyOn(original.material as import('three').Material, 'dispose');
-    const lesson = createLessonScene(scenarios[1], template);
+    const lesson = createLessonScene(scenarios[1], template, wheelStopTemplate());
     const clone = lesson.group.getObjectByName('stage1-parked-left')!.getObjectByName('Exterior') as Mesh;
     expect(clone.geometry).not.toBe(original.geometry);
     expect(clone.material).not.toBe(original.material);
@@ -46,10 +46,42 @@ describe('parked vehicle artwork', () => {
   });
 
   it.each([1, 2, 3, 4, 5] as const)('renders every parked collider in stage %s', (stage) => {
-    const lesson = createLessonScene(scenarios[stage], vehicleTemplate());
+    const lesson = createLessonScene(scenarios[stage], vehicleTemplate(), wheelStopTemplate());
     for (const collider of scenarios[stage].obstacles) {
       expect(lesson.group.getObjectByName(collider.id)?.visible).toBe(true);
     }
     lesson.dispose();
+  });
+
+  it('hides the telemetry-driven exterior lit lamps on parked clones', () => {
+    const template = vehicleTemplate();
+    const exterior = template.getObjectByName('Exterior')!;
+    const names = ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit'];
+    for (const name of names) {
+      const lamp = new Object3D();
+      lamp.name = name;
+      lamp.visible = true;
+      exterior.add(lamp);
+    }
+    const car = createParkedVehicle(template, { id: 'parked', kind: 'obstacle', centerM: [0, 0.8, 0],
+      halfExtentsM: [0.9, 0.8, 2.2], yawRad: 0 });
+    for (const name of names) expect(car.getObjectByName(name)!.visible, name).toBe(false);
+  });
+
+  it('fits parked bounds without the outboard lit-lamp panels', () => {
+    const collider: ColliderBox = { id: 'parked', kind: 'obstacle', centerM: [0, 0.8, 0],
+      halfExtentsM: [0.9, 0.8, 2.2], yawRad: 0 };
+    const plain = createParkedVehicle(vehicleTemplate(), collider);
+    const template = vehicleTemplate();
+    // A lit panel well outside the body (like a side repeater 7 mm outboard, exaggerated).
+    const lamp = new Mesh(new BoxGeometry(0.1, 0.1, 0.1), new MeshBasicMaterial());
+    lamp.name = 'TurnSignalLeftLit';
+    lamp.position.set(-3, 0, 0);
+    template.getObjectByName('Exterior')!.add(lamp);
+    const lit = createParkedVehicle(template, collider);
+    const shape = (car: Object3D) => car.children[0]!;
+    expect(shape(lit).scale.toArray()).toEqual(shape(plain).scale.toArray());
+    expect(shape(lit).position.toArray()).toEqual(shape(plain).position.toArray());
+    expect(lit.getObjectByName('TurnSignalLeftLit')!.visible).toBe(false);
   });
 });

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BodyPose, StageId, Vec3Data, VehicleProfile } from '../contracts';
+import type { ColliderBox } from '../runtime-types';
+import { TYRE_HALF_WIDTH_M } from '../vehicle/tyre-edges';
 import { profiles } from '../vehicle/profiles';
 import { rearAxleCenter, rotate, vehicleFootprint } from '../vehicle/geometry';
 import {
@@ -11,6 +13,8 @@ import {
   polygonsOverlap,
   requireScenarioColliderComposer,
   requireScenarioModule,
+  wheelStops,
+  wheelStopTouchingPose,
 } from './scenario-test-utils';
 
 const routeRadiusM = 5;
@@ -42,8 +46,16 @@ function poseFromRearAxle(
 function routePoses(scenario: ReturnType<typeof requireScenarioModule>['scenarios'][StageId],
   profile: VehicleProfile): readonly BodyPose[] {
   const start = poseFromSpawn(scenario.spawnByVehicle[profile.id]);
-  const target = poseAtRegion(scenario.target.region, profile);
   const startRear = rearAxleCenter(start, profile);
+  // End at the earlier (nearer the spawn) of the target centre and any wheel-stop touching pose.
+  const ends = [poseAtRegion(scenario.target.region, profile),
+    ...wheelStops(scenario).map((stop) => wheelStopTouchingPose(scenario, stop, profile).pose)];
+  const distanceFromStart = (pose: BodyPose) => {
+    const rear = rearAxleCenter(pose, profile);
+    return Math.hypot(rear[0] - startRear[0], rear[2] - startRear[2]);
+  };
+  const target = ends.reduce((best, pose) =>
+    distanceFromStart(pose) < distanceFromStart(best) ? pose : best);
   const targetRear = rearAxleCenter(target, profile);
   const lateralM = targetRear[0] - startRear[0];
 
@@ -81,6 +93,26 @@ function routePoses(scenario: ReturnType<typeof requireScenarioModule>['scenario
   return poses;
 }
 
+/**
+ * Plan-view tyre patches FL, FR, RL, RR: wheel centre +/- the tyre's horizontal extent at the stop's
+ * top edge along roll (where the tyre first meets that edge), +/- TYRE_HALF_WIDTH_M along the axle.
+ */
+function tyrePatches(pose: BodyPose, profile: VehicleProfile, edgeHeightM: number):
+  readonly (readonly Vec3Data[])[] {
+  const f = profile.frontWeightFraction, L = profile.wheelbaseM;
+  const reach = Math.sqrt(2 * profile.tireRadiusM * edgeHeightM - edgeHeightM ** 2) - 1e-6;
+  const w = TYRE_HALF_WIDTH_M;
+  const corners = (x: number, z: number): Vec3Data[] => ([
+    [x - w, 0, z - reach], [x + w, 0, z - reach], [x + w, 0, z + reach], [x - w, 0, z + reach],
+  ] as const).map((local) => {
+    const r = rotate(pose.rotation, local);
+    return [pose.positionM[0] + r[0], 0, pose.positionM[2] + r[2]] as Vec3Data;
+  });
+  const x = profile.trackM / 2;
+  return [corners(-x, -(1 - f) * L), corners(x, -(1 - f) * L),
+    corners(-x, f * L), corners(x, f * L)];
+}
+
 describe('geometric lesson route witnesses', () => {
   it('keeps every stage/profile trace collision-free and within Ackermann curvature', async () => {
     const { scenarios } = requireScenarioModule();
@@ -88,8 +120,11 @@ describe('geometric lesson route witnesses', () => {
 
     for (const stageId of stages) {
       const scenario = scenarios[stageId];
-      const colliders = (await collidersForScenario(scenario))
-        .filter(({ kind }) => kind !== 'ground');
+      const all = await collidersForScenario(scenario);
+      // Wheel stops sit below both ground clearances: the body envelope passes over them, the
+      // tyres must not.
+      const colliders = all.filter(({ kind }) => kind !== 'ground' && kind !== 'wheel-stop');
+      const stops: readonly ColliderBox[] = all.filter(({ kind }) => kind === 'wheel-stop');
       for (const profile of Object.values(profiles)) {
         const route = routePoses(scenario, profile);
         const setup = scenario.regions.setup;
@@ -108,6 +143,13 @@ describe('geometric lesson route witnesses', () => {
             colliders.some((box) => polygonsOverlap(envelope, colliderFootprint(box))),
             `stage ${stageId}/${profile.id} sample ${index} intersects a collider`,
           ).toBe(false);
+          for (const stop of stops) {
+            const patches = tyrePatches(pose, profile, stop.centerM[1] + stop.halfExtentsM[1]);
+            expect(
+              patches.some((patch) => polygonsOverlap(patch, colliderFootprint(stop))),
+              `stage ${stageId}/${profile.id} sample ${index} puts a tyre across ${stop.id}`,
+            ).toBe(false);
+          }
           if (pointInRegion(pose.positionM, setup)) touchedSetup = true;
 
           if (index === 0) continue;

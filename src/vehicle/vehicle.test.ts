@@ -327,6 +327,71 @@ describe.each(IDS)('real Cannon rig: %s', (id) => {
     expect(f.rig.snapshot(f.t).telemetry.indicator).toBe('left');
   });
 
+  it('spins wheels in the rolling direction for D and R', () => {
+    const spinAbout = (f: Fixture, i: number, w: BodyPose) => {
+      const c = f.rig.body.quaternion;
+      const yaw = new CANNON.Quaternion().setFromAxisAngle(
+        new CANNON.Vec3(0, 1, 0), f.rig.vehicle.wheelInfos[i].steering);
+      const base = c.mult(yaw);
+      const rel = base.inverse().mult(new CANNON.Quaternion(...w.rotation));
+      return 2 * Math.atan2(rel.x, rel.w);
+    };
+    const measure = (gear: 'D' | 'R') => {
+      const f = setup(id);
+      shift(f, gear, true);
+      const start = f.rig.snapshot(f.t);
+      let prev = start.wheelPoses.map((w, i) => spinAbout(f, i, w));
+      const total = [0, 0, 0, 0];
+      const snap = run(f, frame({ throttle: 0.2 }), 2, (s) => {
+        s.wheelPoses.forEach((w, i) => {
+          const a = spinAbout(f, i, w);
+          let d = a - prev[i];
+          d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
+          total[i] += d;
+          prev[i] = a;
+        });
+      });
+      const dist = Math.hypot(
+        snap.telemetry.pose.positionM[0] - start.telemetry.pose.positionM[0],
+        snap.telemetry.pose.positionM[2] - start.telemetry.pose.positionM[2]);
+      return { total, expected: dist / profile.tireRadiusM };
+    };
+    const d = measure('D');
+    const r = measure('R');
+    record(`${id} wheel spin 2s: D=${d.total.map((a) => a.toFixed(3))} exp ${d.expected.toFixed(3)}; `
+      + `R=${r.total.map((a) => a.toFixed(3))} exp ${r.expected.toFixed(3)}`);
+    for (const a of d.total) {
+      expect(a).toBeLessThan(0);
+      expect(Math.abs(Math.abs(a) - d.expected)).toBeLessThanOrEqual(0.03 * d.expected);
+    }
+    for (const a of r.total) {
+      expect(a).toBeGreaterThan(0);
+      expect(Math.abs(a - r.expected)).toBeLessThanOrEqual(0.03 * r.expected);
+    }
+  });
+
+  it('keeps spinning in the travel direction while wheels are airborne', () => {
+    for (const [gear, dir] of [['D', -1], ['R', 1]] as const) {
+      const f = setup(id);
+      shift(f, gear, true);
+      run(f, frame({ throttle: 0.2 }), 1);
+      f.rig.body.position.y += 0.5;
+      const rot = () => f.rig.vehicle.wheelInfos.map((w) => w.rotation);
+      let prev = rot();
+      let airborneSteps = 0;
+      for (let k = 0; k < 20; k++) {
+        step(f, frame({ throttle: 0.2 }));
+        const now = rot();
+        if (f.rig.supports().every((s) => !s)) {
+          airborneSteps++;
+          now.forEach((a, i) => { expect((a - prev[i]) * dir).toBeGreaterThan(0); });
+        }
+        prev = now;
+      }
+      expect(airborneSteps).toBeGreaterThan(10);
+    }
+  });
+
   it('rejects a gear request at 0.5 m/s even with full brake', () => {
     const f = setup(id);
     shift(f, 'D', true);

@@ -147,7 +147,7 @@ export interface ParkingTarget {
 
 export interface ScenarioCollider {
   readonly id: string;
-  readonly kind: 'obstacle' | 'curb';
+  readonly kind: 'obstacle' | 'curb' | 'wheel-stop';
   readonly centerM: Vec3Data;
   readonly halfExtentsM: Vec3Data;
   readonly yawRad: number;
@@ -167,7 +167,7 @@ export interface ScenarioDefinition {
 }
 
 export type FailureReason = 'collision' | 'curb-contact' | 'out-of-bounds'
-  | 'tipped' | 'speed-envelope';
+  | 'tipped' | 'speed-envelope' | 'wheel-stop-mounted';
 
 export interface AttemptSummary {
   readonly stageId: StageId;
@@ -179,6 +179,7 @@ export interface AttemptSummary {
   readonly closestSampledClearanceM: number | null;
   readonly peakSpeedMps: number;
   readonly directionChanges: number;
+  readonly curbTouches: number;
   readonly acknowledgedStepIds: readonly string[];
   readonly usedAids: readonly ('chase' | '360' | 'trajectory' | 'help')[];
 }

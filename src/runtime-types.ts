@@ -23,6 +23,7 @@ import type {
 export interface PhysicsSnapshot {
   readonly telemetry: VehicleTelemetry;
   readonly wheelPoses: readonly [BodyPose, BodyPose, BodyPose, BodyPose];
+  readonly wheelEdges: readonly [WheelEdgeContact, WheelEdgeContact, WheelEdgeContact, WheelEdgeContact];
 }
 
 export interface RenderFrame {
@@ -31,9 +32,17 @@ export interface RenderFrame {
   readonly alpha: number;
 }
 
+export type TyreEdgeState = 'none' | 'touching' | 'climbing' | 'over';
+
+export interface WheelEdgeContact {
+  readonly colliderId: string | null;
+  readonly kind: 'curb' | 'wheel-stop' | null;
+  readonly state: TyreEdgeState;
+}
+
 export interface ColliderBox {
   readonly id: string;
-  readonly kind: 'ground' | 'obstacle' | 'curb';
+  readonly kind: 'ground' | 'obstacle' | 'curb' | 'wheel-stop';
   readonly centerM: Vec3Data;
   readonly halfExtentsM: Vec3Data;
   readonly yawRad: number;

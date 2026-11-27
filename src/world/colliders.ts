@@ -53,10 +53,10 @@ const environmentColliders: Readonly<Record<EnvironmentId, readonly ColliderBox[
   roadside: Object.freeze([
     { id: 'roadside-ground', kind: 'ground', centerM: [0, -0.12, 0],
       halfExtentsM: [25, 0.12, 16], yawRad: 0 },
-    { id: 'roadside-curb-left', kind: 'curb', centerM: [-4.2, 0.12, 0],
-      halfExtentsM: [0.15, 0.12, 16], yawRad: 0 },
-    { id: 'roadside-curb-right', kind: 'curb', centerM: [4.2, 0.12, 0],
-      halfExtentsM: [0.15, 0.12, 16], yawRad: 0 },
+    { id: 'roadside-curb-left', kind: 'curb', centerM: [-4.2, 0.055, 0],
+      halfExtentsM: [0.15, 0.055, 16], yawRad: 0 },
+    { id: 'roadside-curb-right', kind: 'curb', centerM: [4.2, 0.055, 0],
+      halfExtentsM: [0.15, 0.055, 16], yawRad: 0 },
     { id: 'roadside-fence', kind: 'obstacle', centerM: [8, 0.9, 0],
       halfExtentsM: [0.09, 0.9, 14], yawRad: 0 },
     { id: 'roadside-block', kind: 'obstacle', centerM: [-7.2, 0.35, -1],
@@ -81,9 +81,13 @@ export function collidersForScenario(scenario: ScenarioDefinition): readonly Col
 export const prototypeSpawn = (profile: VehicleProfile): SpawnPose =>
   ({ positionM: [0, profile.centerOfMassHeightM, 4], yawRad: 0 });
 
+export interface ColliderEdge { readonly box: ColliderBox; readonly body: CANNON.Body }
+
 export interface ColliderCleanup {
   (): void;
   idForBody(body: CANNON.Body): string | null;
+  /** Curb and wheel-stop boxes with their bodies, for the rig's tyre-edge contact. */
+  readonly edges: readonly ColliderEdge[];
 }
 
 export function addColliderBoxes(
@@ -109,5 +113,8 @@ export function addColliderBoxes(
     for (const body of bodies) world.removeBody(body);
   }, {
     idForBody: (body: CANNON.Body) => colliderIds.get(body) ?? null,
+    edges: Object.freeze(boxes.flatMap((box, i): ColliderEdge[] =>
+      box.kind === 'curb' || box.kind === 'wheel-stop'
+        ? [Object.freeze({ box, body: bodies[i] })] : [])),
   });
 }

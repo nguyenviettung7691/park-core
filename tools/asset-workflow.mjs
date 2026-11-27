@@ -42,11 +42,12 @@ export function inspectAsset(id, bytes) {
     ] : [] };
 }
 
-export function checkAssets(root = projectRoot, selected = ids) {
+/** `options` are passed to buildGlb (defaults reproduce the approved public GLBs). */
+export function checkAssets(root = projectRoot, selected = ids, options = {}) {
   const reports = selected.map((id) => {
     if (!ids.includes(id)) throw new RangeError(`Unknown asset: ${id}`);
     const bytes = readFileSync(assetPath(root, id));
-    if (!bytes.equals(Buffer.from(buildGlb(id)))) {
+    if (!bytes.equals(Buffer.from(buildGlb(id, options)))) {
       throw new Error(`${id}: stale or foreign GLB; output does not match current authoring source`);
     }
     return inspectAsset(id, bytes);
@@ -94,12 +95,11 @@ export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline }
     assets: [], error: null };
   try {
     report.assets = checkAssets(resolve(candidate), [vehicle]);
-    // The checked-in sync test compares public GLBs with the source, so it cannot pass
-    // before an approved candidate is promoted; `assets:check` covers it after promotion.
+    // An unapproved feature must stay an opt-in generator option, so the checked-in sync test
+    // (public GLBs vs default generation) holds before and after promotion.
     run('node_modules/vitest/vitest.mjs', ['run', 'src/world/generate-assets.test.mjs',
       'src/world/assets.test.mjs', 'src/vehicle/asset-contract.test.ts',
-      'src/views/views.test.ts', 'src/render/parked-vehicle.test.ts',
-      '--testNamePattern', '^(?!.*keeps checked-in GLBs in sync)']);
+      'src/views/views.test.ts', 'src/render/parked-vehicle.test.ts']);
     run('node_modules/@playwright/test/cli.js', ['test', 'asset-review.spec.ts',
       '--output', join(output, 'browser')], {
       ...process.env, PARK_CORE_REVIEW_VEHICLE: vehicle,
@@ -126,7 +126,7 @@ export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline }
     writeFileSync(join(output, 'index.html'), `<!doctype html><meta charset="utf-8">
 <title>${vehicle} asset review</title><h1>${vehicle} asset review</h1>
 <p>Automated: ${report.automated}. Developer visual approval: pending. Hardware and optical validation: unverified.</p>
-<ul>${['garage', 'roadside', 'view-limits'].map((view) =>
+<ul>${['garage', 'roadside', 'view-limits', 'lamps'].map((view) =>
     `<li><a href="${vehicle}-${view}/review.html">${view}</a></li>`).join('')}</ul>
 <p>Links may be unavailable when validation failed; see report.json and browser artifacts.</p><pre>${text}</pre>`);
   }
@@ -148,6 +148,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       values.vehicle ? [values.vehicle] : ids), null, 2));
   } else {
     if (!values.vehicle || !values.out) throw new Error('review requires --vehicle and --out');
-    reviewAssets({ vehicle: values.vehicle, candidate: values.candidate, out: values.out, baseline: values.baseline });
+    reviewAssets({ vehicle: values.vehicle, candidate: values.candidate, out: values.out,
+      baseline: values.baseline });
   }
 }

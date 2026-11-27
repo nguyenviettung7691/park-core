@@ -6,12 +6,13 @@ import type {
 } from '../runtime-types';
 
 const DATABASE_NAME = 'park-core.attempt-history';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const STORE_NAME = 'attempts';
 const COMPLETED_AT_INDEX = 'completedAt';
 const STAGE_IDS = new Set([1, 2, 3, 4, 5]);
 const FAILURE_REASONS = new Set<FailureReason>([
   'collision', 'curb-contact', 'out-of-bounds', 'tipped', 'speed-envelope',
+  'wheel-stop-mounted',
 ]);
 const AIDS = new Set<AttemptSummary['usedAids'][number]>([
   'chase', '360', 'trajectory', 'help',
@@ -19,7 +20,7 @@ const AIDS = new Set<AttemptSummary['usedAids'][number]>([
 const SUMMARY_KEYS = [
   'stageId', 'vehicleId', 'outcome', 'failureReason', 'obstacleId',
   'elapsedSimulationS', 'closestSampledClearanceM', 'peakSpeedMps',
-  'directionChanges', 'acknowledgedStepIds', 'usedAids',
+  'directionChanges', 'curbTouches', 'acknowledgedStepIds', 'usedAids',
 ];
 const RECORD_KEYS = ['id', 'completedAt', 'summary'];
 const STORAGE_ERROR_NAMES = new Set([
@@ -83,6 +84,8 @@ function validateSummary(value: unknown): AttemptSummary | null {
     || !isFiniteAtLeast(value.peakSpeedMps, 0)
     || !Number.isInteger(value.directionChanges)
     || !isFiniteAtLeast(value.directionChanges, 0)
+    || !Number.isInteger(value.curbTouches)
+    || !isFiniteAtLeast(value.curbTouches, 0)
     || !isValidStringList(value.acknowledgedStepIds)
     || !Array.isArray(value.usedAids)
     || !value.usedAids.every((aid) => AIDS.has(aid as AttemptSummary['usedAids'][number]))
@@ -98,6 +101,7 @@ function validateSummary(value: unknown): AttemptSummary | null {
     closestSampledClearanceM: value.closestSampledClearanceM as number | null,
     peakSpeedMps: value.peakSpeedMps,
     directionChanges: value.directionChanges,
+    curbTouches: value.curbTouches as number,
     acknowledgedStepIds: [...value.acknowledgedStepIds],
     usedAids: [...value.usedAids] as AttemptSummary['usedAids'],
   };
@@ -146,6 +150,21 @@ function requestFailure(request: IDBRequest): DOMException {
   return request.error ?? new DOMException('IndexedDB request failed', 'UnknownError');
 }
 
+/** v1 summaries had no curbTouches; add 0 in place so no record is lost. */
+function migrateV1ToV2(store: IDBObjectStore): void {
+  if (store.keyPath !== 'id' || !store.indexNames.contains(COMPLETED_AT_INDEX)) return;
+  const cursorRequest = store.openCursor();
+  cursorRequest.onsuccess = () => {
+    const cursor = cursorRequest.result;
+    if (!cursor) return;
+    const value: unknown = cursor.value;
+    if (isObject(value) && isObject(value.summary) && !Object.hasOwn(value.summary, 'curbTouches')) {
+      cursor.update({ ...value, summary: { ...value.summary, curbTouches: 0 } });
+    }
+    cursor.continue();
+  };
+}
+
 function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     let request: IDBOpenDBRequest;
@@ -157,9 +176,13 @@ function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
     }
 
     let settled = false;
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const database = request.result;
-      if (database.objectStoreNames.contains(STORE_NAME)) return;
+      if (database.objectStoreNames.contains(STORE_NAME)) {
+        const upgrade = request.transaction;
+        if (event.oldVersion < 2 && upgrade) migrateV1ToV2(upgrade.objectStore(STORE_NAME));
+        return;
+      }
       const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
       store.createIndex(COMPLETED_AT_INDEX, 'completedAt');
     };
@@ -175,6 +198,12 @@ function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
         return;
       }
       settled = true;
+      // Let a newer schema (another tab, a later deploy) upgrade instead of being blocked by this
+      // connection: close on versionchange; an operation in flight then fails as storage-
+      // unavailable and that attempt is kept for the session only. Rollback note: v2 cannot be
+      // opened by v1 code (VersionError), which then offers a history reset; nothing is deleted
+      // unless the learner confirms it.
+      request.result.onversionchange = () => request.result.close();
       resolve(request.result);
     };
     request.onerror = () => {

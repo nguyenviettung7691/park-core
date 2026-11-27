@@ -22,6 +22,19 @@ export function indicatorLit(telemetry: VehicleTelemetry, side: 'left' | 'right'
     Math.floor(telemetry.simulationTimeS * INDICATOR_FLASH_HZ * 2) % 2 === 0;
 }
 
+/** Brake lamps light once the brake telemetry exceeds this (above pedal noise). */
+export const BRAKE_LAMP_THRESHOLD = 0.05;
+
+export function exteriorLampState(telemetry: VehicleTelemetry):
+{ brake: boolean; reverse: boolean; left: boolean; right: boolean } {
+  return {
+    brake: telemetry.brake > BRAKE_LAMP_THRESHOLD,
+    reverse: telemetry.gear === 'R',
+    left: indicatorLit(telemetry, 'left'),
+    right: indicatorLit(telemetry, 'right'),
+  };
+}
+
 // Optional named cockpit controls; vehicles without a node are left untouched.
 function cockpitControls(vehicle: Object3D) {
   const find = (name: string) => vehicle.getObjectByName(name) ?? null;
@@ -34,8 +47,13 @@ function cockpitControls(vehicle: Object3D) {
     brake: find('BrakePedal'),
     accelerator: find('AcceleratorPedal'),
     lever: find('ParkingBrakeLever'),
+    brakeLit: find('BrakeLampsLit'),
+    reverseLit: find('ReverseLampsLit'),
+    leftLit: find('TurnSignalLeftLit'),
+    rightLit: find('TurnSignalRightLit'),
   };
-  for (const lamp of [controls.left, controls.right, controls.parking]) if (lamp) lamp.visible = false;
+  for (const lamp of [controls.left, controls.right, controls.parking, controls.brakeLit,
+    controls.reverseLit, controls.leftLit, controls.rightLit]) if (lamp) lamp.visible = false;
   return controls;
 }
 
@@ -94,6 +112,11 @@ export function createAssetScene(assets: SceneAssets): AssetScene {
       if (controls.left) controls.left.visible = indicatorLit(now, 'left');
       if (controls.right) controls.right.visible = indicatorLit(now, 'right');
       if (controls.parking) controls.parking.visible = now.parkingBrake;
+      const lamps = exteriorLampState(now);
+      if (controls.brakeLit) controls.brakeLit.visible = lamps.brake;
+      if (controls.reverseLit) controls.reverseLit.visible = lamps.reverse;
+      if (controls.leftLit) controls.leftLit.visible = lamps.left;
+      if (controls.rightLit) controls.rightLit.visible = lamps.right;
       controls.lever?.rotation.set(now.parkingBrake ? PARKING_LEVER_RAD : 0, 0, 0);
       controls.brake?.rotation.set(PEDAL_TRAVEL_RAD * mix(was.brake, now.brake), 0, 0);
       controls.accelerator?.rotation.set(

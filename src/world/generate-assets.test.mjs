@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkAssets, reviewAssets } from '../../tools/asset-workflow.mjs';
-import { buildGlb } from '../../tools/generate-assets.mjs';
+import { EXTERIOR_LAMPS_DEFAULT, buildGlb } from '../../tools/generate-assets.mjs';
 import { profiles } from '../vehicle/profiles.ts';
 
 const projectRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -175,6 +175,43 @@ describe('phase 5 original GLB generator', () => {
       expect(accessor.min[2]).toBeLessThan(-0.2);
       expect(accessor.max[2]).toBeLessThan(0.01);
     }
+  });
+
+  it.each(['sedan', 'cuv'])('adds batched exterior lit-lamp nodes under Exterior for %s by default', (id) => {
+    // The lamps were approved and promoted (issue #11), so default generation authors them.
+    expect(EXTERIOR_LAMPS_DEFAULT).toBe(true);
+    const glb = readGlbBytes(buildGlb(id));
+    const index = (name) => glb.nodes.findIndex((node) => node.name === name);
+    const ancestors = (name) => {
+      const chain = [];
+      let current = index(name);
+      while (current >= 0) {
+        chain.push(glb.nodes[current].name);
+        current = glb.nodes.findIndex((node) => node.children?.includes(current));
+      }
+      return chain;
+    };
+    for (const name of ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit']) {
+      expect(glb.nodes[index(name)]?.mesh, name).toBeTypeOf('number');
+      expect(ancestors(name), name).toContain('Exterior');
+    }
+    expect(buildGlb(id, { lamps: true })).toEqual(buildGlb(id));
+  });
+
+  it.each(['sedan', 'cuv'])('leaves the lit-lamp nodes out of %s with the lamps: false opt-out', (id) => {
+    const names = readGlbBytes(buildGlb(id, { lamps: false })).nodes.map((node) => node.name);
+    for (const name of ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit']) {
+      expect(names).not.toContain(name);
+    }
+  });
+
+  it('no longer accepts the retired --lamps candidate flag', () => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-lamps-'));
+    temporaryRoots.push(root);
+    const result = spawnSync(process.execPath, [generator, '--lamps', '--vehicle', 'sedan', '--out', root],
+      { encoding: 'utf8' });
+    expect(result.status).not.toBe(0);
+    expect(existsSync(assetPath(root, 'sedan'))).toBe(false);
   });
 
   it.each(['sedan', 'cuv'])('keeps the hood below the driver eye for %s', (assetId) => {

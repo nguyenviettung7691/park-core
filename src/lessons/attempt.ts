@@ -25,6 +25,7 @@ export interface AttemptTracker {
   readonly closestSampledClearanceM: number | null;
   readonly peakSpeedMps: number;
   readonly directionChanges: number;
+  readonly curbTouches: number;
   readonly acknowledgedStepIds: readonly string[];
   readonly usedAids: AttemptSummary['usedAids'];
   readonly previousDirectionSign: -1 | 0 | 1;
@@ -45,6 +46,7 @@ export function createAttemptTracker(
     closestSampledClearanceM: null,
     peakSpeedMps: 0,
     directionChanges: 0,
+    curbTouches: 0,
     acknowledgedStepIds: [],
     usedAids: [],
     previousDirectionSign: 0,
@@ -65,6 +67,7 @@ export function updateAttemptTracker(
   activeAids: AttemptSummary['usedAids'],
   runtime: LessonRuntime,
   deltaS: number,
+  curbTouchBegan = false,
 ): AttemptTracker {
   let closestSampledClearanceM = tracker.closestSampledClearanceM;
   for (const reading of sensors?.readings ?? []) {
@@ -91,6 +94,7 @@ export function updateAttemptTracker(
     closestSampledClearanceM,
     peakSpeedMps: Math.max(tracker.peakSpeedMps, Math.abs(telemetry.signedSpeedMps)),
     directionChanges: tracker.directionChanges + Number(directionChanged),
+    curbTouches: tracker.curbTouches + Number(curbTouchBegan),
     acknowledgedStepIds,
     usedAids,
     previousDirectionSign: currentDirectionSign || tracker.previousDirectionSign,
@@ -114,6 +118,7 @@ export function finishAttempt(
     closestSampledClearanceM: tracker.closestSampledClearanceM,
     peakSpeedMps: tracker.peakSpeedMps,
     directionChanges: tracker.directionChanges,
+    curbTouches: tracker.curbTouches,
     acknowledgedStepIds: [...tracker.acknowledgedStepIds],
     usedAids: [...tracker.usedAids],
   };

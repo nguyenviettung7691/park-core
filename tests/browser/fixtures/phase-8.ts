@@ -4,7 +4,7 @@ import {
   PerspectiveCamera, PlaneGeometry, Raycaster, Scene,
   Vector3, WebGLRenderer, type Object3D, type WebGLRenderTarget,
 } from 'three';
-import type { StageId } from '../../../src/contracts';
+import type { ScenarioDefinition, SpawnPose, StageId, VehicleProfile } from '../../../src/contracts';
 import { scenarios } from '../../../src/lessons/scenarios';
 import { createAssetScene } from '../../../src/render/asset-scene';
 import { createLessonScene } from '../../../src/render/lesson-scene';
@@ -12,15 +12,21 @@ import { profiles } from '../../../src/vehicle/profiles';
 import { deriveVehicleAssetContract, type MirrorId } from '../../../src/vehicle/asset-contract';
 import { deriveGeometry, vehicleFootprint } from '../../../src/vehicle/geometry';
 import { createVehicleRig } from '../../../src/vehicle/rig';
+import { TYRE_HALF_WIDTH_M } from '../../../src/vehicle/tyre-edges';
 import { createViews } from '../../../src/views/cameras';
 import { loadSceneAssets } from '../../../src/world/assets';
+import { wheelStops, wheelStopTouchingPose } from '../../../src/test/wheel-stop-pose';
 import {
   addColliderBoxes, collidersForEnvironment, collidersForScenario, createWorld, prototypeSpawn,
 } from '../../../src/world/colliders';
 
 export type Shot = 'front' | 'rear' | 'side' | 'driver' | 'driver-neutral' |
   'driver-left' | 'driver-right' | 'overhead' | 'environment' | 'props' | 'alignment' |
-  'mirror-rear' | 'mirror-left' | 'mirror-right' | 'steering';
+  'mirror-rear' | 'mirror-left' | 'mirror-right' | 'steering' | 'chase' | 'stop-closeup' |
+  'lamps-rear' | 'lamps-front' | 'curb-closeup';
+/** Exterior lamp states for review: telemetry-driven except all-lit, which shows every lit node. */
+export type LampState = 'unlit' | 'brake' | 'reverse' | 'left' | 'right' | 'all-lit';
+export const LAMP_NODES = ['BrakeLampsLit', 'ReverseLampsLit', 'TurnSignalLeftLit', 'TurnSignalRightLit'] as const;
 interface Pass {
   name: string;
   calls: number;
@@ -31,6 +37,8 @@ interface CaptureReport {
   passes: Pass[];
   frames: Pass[][];
   parkedTriangles: number[];
+  wheelStopTriangles: number[];
+  wheelEdges: string[];
   renderer: string | null;
   mirrorVisibility: Record<MirrorId, number>;
 }
@@ -41,9 +49,26 @@ declare global {
       setShot(shot: Shot): void;
       checkMirror(id: MirrorId, flipFault?: boolean): { left: number[]; right: number[] };
       setOcclusionFault(enabled: boolean): void;
+      /** Applies overridden telemetry for a lamp state; returns each lit node's visibility (null if absent). */
+      setLamps(state: LampState): Record<(typeof LAMP_NODES)[number], boolean | null>;
       report(): CaptureReport;
     };
   }
+}
+
+/** Spawn square to the target with the leading tyres at first-touch distance from the stop's near face. */
+function stopTouchSpawn(scenario: ScenarioDefinition, profile: VehicleProfile): SpawnPose {
+  const [stop] = wheelStops(scenario);
+  if (!stop) throw new Error('Capture stage has no wheel stop');
+  const { pose } = wheelStopTouchingPose(scenario, stop, profile);
+  return { positionM: pose.positionM, yawRad: scenario.target.region.headingRad };
+}
+
+/** Parallel to the right roadside curb with the right tyres' outer edge 5 mm into its face (touching). */
+function curbTouchSpawn(profile: VehicleProfile): SpawnPose {
+  const faceX = 4.05;
+  return { positionM: [faceX + 0.005 - TYRE_HALF_WIDTH_M - profile.trackM / 2,
+    profile.centerOfMassHeightM, 0], yawRad: 0 };
 }
 
 async function setup() {
@@ -58,6 +83,8 @@ async function setup() {
   if (environment !== 'garage' && environment !== 'roadside') throw new Error('Invalid capture environment');
   const stage = params.has('stage') ? Number(params.get('stage')) : null;
   if (stage !== null && ![1, 2, 3, 4, 5].includes(stage)) throw new Error('Invalid capture stage');
+  const atStop = params.get('pose') === 'stop-touch';
+  const atCurb = params.get('pose') === 'curb-touch';
   const scenario = stage === null ? null : scenarios[stage as StageId];
   if (scenario && scenario.environmentId !== environment) throw new Error('Capture stage/environment mismatch');
   const assets = await loadSceneAssets(environment, vehicle, new AbortController().signal);
@@ -69,12 +96,34 @@ async function setup() {
   const boxes = scenario ? collidersForScenario(scenario) : collidersForEnvironment(environment);
   const world = createWorld();
   const removeColliders = addColliderBoxes(world, boxes);
-  const rig = createVehicleRig(world, profiles[vehicle], removeColliders.idForBody);
-  rig.settle(scenario ? scenario.spawnByVehicle[vehicle] : prototypeSpawn(profiles[vehicle]));
-  const current = rig.snapshot(0);
+  const rig = createVehicleRig(world, profiles[vehicle], removeColliders.idForBody, removeColliders.edges);
+  if (atStop && !scenario) throw new Error('A stop-touch capture needs a stage');
+  if (atCurb && (scenario || environment !== 'roadside')) {
+    throw new Error('A curb-touch capture needs the roadside sandbox');
+  }
+  rig.settle(atCurb ? curbTouchSpawn(profiles[vehicle]) : scenario ? atStop
+    ? stopTouchSpawn(scenario, profiles[vehicle])
+    : scenario.spawnByVehicle[vehicle] : prototypeSpawn(profiles[vehicle]));
+  let current = rig.snapshot(0);
+  if (atCurb) {
+    // One held step so the tyre-edge contact reflects the settled pose (settle resets x/z).
+    rig.applyInput({ source: 'gamepad', steering: 0, throttle: 0, brake: 1 }, [], 1 / 120);
+    world.step(1 / 120);
+    current = rig.snapshot(1 / 120);
+  }
   const frame = { previous: current, current, alpha: 1 };
   content.apply(frame);
-  const lesson = scenario ? createLessonScene(scenario, assets.vehicle) : null;
+  // Studio shots re-apply this frame; setLamps swaps in overridden telemetry.
+  let studioFrame = frame;
+  let allLamps = false;
+  const lampNodes = () => LAMP_NODES.map((name) => assets.vehicle.getObjectByName(name) ?? null);
+  const applyStudio = () => {
+    content.apply(studioFrame);
+    // Telemetry lights one indicator side at a time; all-lit shows every lit node for the review.
+    if (allLamps) for (const node of lampNodes()) if (node) node.visible = true;
+  };
+  const lesson = scenario ? createLessonScene(scenario, assets.vehicle,
+    assets.environment.getObjectByName('WheelStopTemplate') ?? null) : null;
   if (lesson) {
     content.scene.add(lesson.group);
     lesson.update({ stageId: scenario!.stageId, stepIndex: 0, stepDwellS: 0,
@@ -129,11 +178,16 @@ async function setup() {
     });
     return count;
   };
-  const parkedTriangles = scenario?.obstacles.map((box) => triangles(lesson!.group.getObjectByName(box.id)!)) ?? [];
+  const obstacleTriangles = (stops: boolean) => scenario?.obstacles
+    .filter(({ kind }) => (kind === 'wheel-stop') === stops)
+    .map((box) => triangles(lesson!.group.getObjectByName(box.id)!)) ?? [];
+  const parkedTriangles = obstacleTriangles(false);
+  const wheelStopTriangles = obstacleTriangles(true);
+  const wheelEdges = current.wheelEdges.map((edge) => `${edge.colliderId ?? '-'}:${edge.state}`);
   const context = renderer.getContext();
   const debug = context.getExtension('WEBGL_debug_renderer_info');
   const gpu: unknown = debug ? context.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null;
-  const report: CaptureReport = { passes: frames[2]!, frames, parkedTriangles,
+  const report: CaptureReport = { passes: frames[2]!, frames, parkedTriangles, wheelStopTriangles, wheelEdges,
     renderer: typeof gpu === 'string' ? gpu : null,
     mirrorVisibility: { rear: 0, left: 0, right: 0 } };
   const contract = deriveVehicleAssetContract(profiles[vehicle]);
@@ -212,6 +266,24 @@ async function setup() {
     ready: true,
     report: () => ({ ...report, mirrorVisibility: mirrorVisibility() }),
     setOcclusionFault(enabled) { occluder.visible = enabled; },
+    setLamps(state) {
+      const base = current.telemetry;
+      const telemetry = {
+        ...base,
+        // t = 0 is inside the indicator's lit half-period.
+        simulationTimeS: 0,
+        brake: state === 'brake' || state === 'all-lit' ? 1 : 0,
+        gear: state === 'reverse' || state === 'all-lit' ? 'R' as const : 'P' as const,
+        indicator: state === 'left' ? 'left' as const : state === 'right' ? 'right' as const : 'off' as const,
+      };
+      const lit = { ...current, telemetry };
+      studioFrame = { previous: lit, current: lit, alpha: 1 };
+      allLamps = state === 'all-lit';
+      applyStudio();
+      const nodes = lampNodes();
+      return Object.fromEntries(LAMP_NODES.map((name, i) => [name, nodes[i]?.visible ?? null])) as
+        Record<(typeof LAMP_NODES)[number], boolean | null>;
+    },
     checkMirror(id, flipFault = false) {
       const markers = new Group();
       // Markers sit in the reflected view: placed through the live mirror camera (virtual eye
@@ -259,7 +331,7 @@ async function setup() {
     },
     setShot(shot) {
       const studio = shot === 'front' || shot === 'rear' || shot === 'side' ||
-        shot === 'alignment' || shot === 'steering';
+        shot === 'alignment' || shot === 'steering' || shot === 'lamps-rear' || shot === 'lamps-front';
       assets.environment.visible = !studio;
       if (lesson) lesson.group.visible = !studio;
       studioFloor.visible = studio;
@@ -270,6 +342,11 @@ async function setup() {
       if (shot.startsWith('mirror-')) {
         views.render(frame, time += 100);
         showMirror(shot.slice(7) as MirrorId);
+        return;
+      }
+      if (shot === 'chase') {
+        views.setCamera('chase');
+        views.render(frame, time += 100);
         return;
       }
       if (shot === 'driver' || shot.startsWith('driver-')) {
@@ -294,10 +371,30 @@ async function setup() {
           world.step(1 / 120);
           const steered = rig.snapshot(1 / 120);
           content.apply({ previous: steered, current: steered, alpha: 1 });
-        } else content.apply(frame);
-        camera.position.copy(origin).add(shot === 'side' || shot === 'alignment'
-          ? new Vector3(7, 1, 0) : new Vector3(4.1, 2.2, shot === 'rear' ? 5.8 : -5.8));
-        camera.lookAt(origin.clone().add(new Vector3(0, 0.1, 0)));
+        } else applyStudio();
+        if (shot === 'lamps-rear' || shot === 'lamps-front') {
+          // Low quarter views (forward is -Z): every lamp face on that end is in frame.
+          const end = shot === 'lamps-rear' ? 1 : -1;
+          camera.position.copy(origin).add(new Vector3(2.3, 1.0, end * 5.0));
+          camera.lookAt(origin.clone().add(new Vector3(0.2, 0.05, end * 1.9)));
+        } else {
+          camera.position.copy(origin).add(shot === 'side' || shot === 'alignment'
+            ? new Vector3(7, 1, 0) : new Vector3(4.1, 2.2, shot === 'rear' ? 5.8 : -5.8));
+          camera.lookAt(origin.clone().add(new Vector3(0, 0.1, 0)));
+        }
+      } else if (shot === 'stop-closeup') {
+        const stop = scenario?.obstacles.find(({ kind }) => kind === 'wheel-stop');
+        if (!stop) throw new Error('Capture stage has no wheel stop');
+        // Low, from the far side of the stop, in the gap beside the learner's left tyres.
+        const away = Math.sign(stop.centerM[2] - scenario!.target.region.centerM[2]);
+        const at = new Vector3(stop.centerM[0] - 0.78, 0.08, stop.centerM[2]);
+        camera.position.set(stop.centerM[0] - 1.75, 0.4, stop.centerM[2] + away * 1.1);
+        camera.lookAt(at);
+      } else if (shot === 'curb-closeup') {
+        // Low, ahead of the front-right tyre, looking back along the curb face at the touch.
+        const wheel = new Vector3(...current.wheelPoses[1].positionM);
+        camera.position.set(4.05 + 0.9, 0.45, wheel.z - 1.9);
+        camera.lookAt(new Vector3(4.05 - 0.05, 0.12, wheel.z + 0.2));
       } else if (shot === 'props') {
         camera.position.set(environment === 'garage' ? -5.8 : 3.8, 2.4, environment === 'garage' ? -4.8 : 4);
         camera.lookAt(environment === 'garage' ? new Vector3(-9, 1.4, -8) : new Vector3(7, 0.6, 0));

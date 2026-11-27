@@ -5,8 +5,10 @@ import { BufferGeometry, Color, Group, MeshBasicMaterial, PerspectiveCamera, Vec
 import * as clockModule from '../clock';
 import { collidersForEnvironment, createWorld } from '../world/colliders';
 import { profiles } from '../vehicle/profiles';
+import { deriveGeometry } from '../vehicle/geometry';
 import { buildPrototypeScene } from './prototype';
 import { testGamepad } from '../test/gamepad';
+import { wheelStopTemplate } from '../test/vehicle-template';
 import type { SensorReading } from '../contracts';
 import { scenarios } from '../lessons/scenarios';
 import {
@@ -26,6 +28,8 @@ afterEach(() => {
   else Reflect.deleteProperty(document, 'pointerLockElement');
 });
 
+const CURB_TOUCH_X = 3.2;
+
 const settings = {
   version: 1, volume: 0.5, muted: false, driverFovDeg: 60,
   cameraMode: 'driver', overhead: false, trajectory: false,
@@ -42,6 +46,7 @@ function options(settingsOverride: PrototypeOptions['settings'] = settings) {
   const markings = new Group();
   markings.name = 'ParkingMarkings';
   sceneAssets.environment.add(markings);
+  sceneAssets.environment.add(wheelStopTemplate());
   sceneAssets.wheelNodes.forEach((wheel, index) => {
     wheel.name = ['WheelFL', 'WheelFR', 'WheelRL', 'WheelRR'][index]!;
     sceneAssets.vehicle.add(wheel);
@@ -423,6 +428,96 @@ describe('preview lifecycle', () => {
     expect(p.resume()).toBe(false);
     p.dispose();
     expect(f.world.bodies).toHaveLength(0);
+  });
+
+  describe('curb tyre touch', () => {
+    function touchCurb(f: ReturnType<typeof fixture>, mode: Parameters<typeof startPreview>[5]) {
+      const p = startPreview(
+        f.canvas, f.container, f.events, { ...options(), environmentId: 'roadside' },
+        f.deps, mode,
+      );
+      f.canvas.focus();
+      void p.requestPointerLock();
+      expect(p.resume()).toBe(true);
+      const body = f.world.bodies.find((candidate) => candidate.mass > 0)!;
+      body.position.x = CURB_TOUCH_X;
+      body.position.z = 0;
+      body.velocity.setZero();
+      f.frame(100);
+      return p;
+    }
+
+    it('warns without pausing in sandbox mode', () => {
+      const f = fixture();
+      const p = touchCurb(f, { kind: 'sandbox' });
+      expect(f.events.onNotice).toHaveBeenCalledWith('curbTouchWarning');
+      expect(f.events.onNotice).not.toHaveBeenCalledWith('contactStop');
+      expect(f.events.onPaused).not.toHaveBeenCalled();
+      p.dispose();
+    });
+
+    /** Car square to the right curb with the front tyres already up its face (none -> climbing). */
+    function mountCurb(f: ReturnType<typeof fixture>, mode: Parameters<typeof startPreview>[5]) {
+      const p = startPreview(
+        f.canvas, f.container, f.events, { ...options(), environmentId: 'roadside' },
+        f.deps, mode,
+      );
+      f.canvas.focus();
+      void p.requestPointerLock();
+      expect(p.resume()).toBe(true);
+      const body = f.world.bodies.find((candidate) => candidate.mass > 0)!;
+      const front = -deriveGeometry(profiles.sedan).frontAxleZ;
+      body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -Math.PI / 2);
+      body.position.x = 4.05 - 0.1 - front;
+      body.position.z = 0;
+      body.velocity.setZero();
+      body.angularVelocity.setZero();
+      f.frame(20);
+      return p;
+    }
+
+    it('warns in sandbox mode when a tyre goes straight to climbing', () => {
+      const f = fixture();
+      const p = mountCurb(f, { kind: 'sandbox' });
+      expect(f.events.onNotice).toHaveBeenCalledWith('curbTouchWarning');
+      p.dispose();
+    });
+
+    it('fails the lesson without a curb warning when a tyre goes straight to climbing', () => {
+      const f = fixture();
+      const p = mountCurb(f, { kind: 'lesson', scenario: scenarios[3]! });
+      expect(f.events.onAttemptOutcome).toHaveBeenCalled();
+      expect(f.events.onAttemptOutcome.mock.lastCall?.[0]).toMatchObject({
+        outcome: 'fail', failureReason: 'curb-contact', obstacleId: 'roadside-curb-right',
+        curbTouches: 1,
+      });
+      expect(f.events.onNotice).not.toHaveBeenCalledWith('curbTouchWarning');
+      p.dispose();
+    });
+
+    it('warns without failing the lesson', () => {
+      const f = fixture();
+      const p = touchCurb(f, { kind: 'lesson', scenario: scenarios[3]! });
+      expect(f.events.onNotice).toHaveBeenCalledWith('curbTouchWarning');
+      expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
+      p.dispose();
+    });
+
+    it('reports the curb touch in the attempt summary', () => {
+      const f = fixture();
+      const p = touchCurb(f, { kind: 'lesson', scenario: scenarios[3]! });
+      expect(f.events.onAttemptOutcome).not.toHaveBeenCalled();
+      // End the attempt: put the car into the roadside fence (a chassis collision).
+      const body = f.world.bodies.find((candidate) => candidate.mass > 0)!;
+      body.position.x = 7.4;
+      body.velocity.setZero();
+      for (let i = 0; i < 60 && !f.events.onAttemptOutcome.mock.calls.length; i++) f.frame();
+      expect(f.events.onAttemptOutcome).toHaveBeenCalledOnce();
+      expect(f.events.onAttemptOutcome.mock.lastCall?.[0]).toMatchObject({
+        outcome: 'fail', failureReason: 'collision', curbTouches: 1,
+      });
+      p.dispose();
+    });
   });
 
   it('starts each lesson at its authored vehicle spawn', () => {

@@ -418,6 +418,24 @@ function authorClosedShell({ addNode, addMesh }, data, s, shape) {
   return { body, sill, archRadius, aPillarBaseZ: frontEdge(belt) + aWidth };
 }
 
+// Telemetry-driven exterior lamps (issue #11). Each node is one batched mesh of thin bright
+// panels sitting 4 mm outboard of the static lamp details; asset-scene.ts shows them from
+// telemetry and parked clones hide them. They parent to Body (details share its frame), so
+// they stay under Exterior. All panels are original geometry, no extra lights.
+// Authored by default (data.lamps, EXTERIOR_LAMPS_DEFAULT in tools/generate-assets.mjs) since the
+// developer approved them; `{ lamps: false }` leaves them out.
+const litBrake = [1, 0.1, 0.1], litReverse = [1, 1, 0.96], litAmber = [1, 0.62, 0.04];
+function authorLitLamps({ addMesh }, body, part, panels) {
+  const build = (list) => mergeGeometry(list.map(([size, center, color]) => part(size, center, color)));
+  addMesh('BrakeLampsLit', body, build(panels.brake), litBrake);
+  addMesh('ReverseLampsLit', body, build(panels.reverse), litReverse);
+  addMesh('TurnSignalLeftLit', body, build(panels.turn.filter((panel) => panel[1][0] < 0)), litAmber);
+  addMesh('TurnSignalRightLit', body, build(panels.turn.filter((panel) => panel[1][0] > 0)), litAmber);
+}
+const LIT_GAP = 0.004, LIT_DEPTH = 0.006;
+// Centre of a panel whose back sits LIT_GAP beyond a surface at z, facing forward (-1) or rearward (+1).
+const litZ = (surfaceZ, facing) => surfaceZ + facing * (LIT_GAP + LIT_DEPTH / 2);
+
 // Sedan exterior (issue #12 sedan exterior subtask) on the shared closed shell.
 // Inferred from a two-view reference: windshield foot is limited by the dashboard, so the
 // hood/trunk ratio is approximate. The exterior subtask kept the physical profile, eye and
@@ -473,6 +491,18 @@ function authorSedanExterior({ addNode, addMesh }, data, s) {
     detail.push(seamBar(side, doorRearZ, sill + 0.04, doorRearZ, belt - 0.005));
   }
   addMesh('ExteriorDetails', body, mergeGeometry(detail), paint);
+  if (!data.lamps) return;
+  const tailZ = litZ(half + 0.025, 1), noseZ = litZ(-half - 0.025, -1), bumperZ = litZ(half + 0.05, 1);
+  const panels = { brake: [[[0.5, 0.025, 0.02], [0, belt + 0.02, rearFoot + 0.04], litBrake]],
+    reverse: [], turn: [] };
+  for (const side of [-1, 1]) {
+    panels.brake.push([[0.26, 0.13, LIT_DEPTH], [side * 0.5, 0.7, tailZ], litBrake]);
+    panels.reverse.push([[0.12, 0.05, LIT_DEPTH], [side * 0.62, 0.4, bumperZ], litReverse]);
+    panels.turn.push([[0.2, 0.13, LIT_DEPTH], [side * 0.74, 0.7, tailZ], litAmber],
+      [[0.1, 0.06, LIT_DEPTH], [side * 0.68, 0.62, noseZ], litAmber],
+      [[LIT_DEPTH, 0.06, 0.12], [side * (0.915 + LIT_GAP + LIT_DEPTH / 2), 0.7, half - 0.32], litAmber]);
+  }
+  authorLitLamps({ addMesh }, body, part, panels);
 }
 
 // CUV exterior (issue #12 CUV exterior subtask) on the shared closed shell: a two-box
@@ -566,6 +596,18 @@ function authorCuvExterior({ addNode, addMesh }, data, s) {
     }
   }
   addMesh('ExteriorDetails', body, mergeGeometry(detail), paint);
+  if (!data.lamps) return;
+  const tailFace = litZ(half + 0.025, 1), noseFace = litZ(-half - 0.025, -1), bumperFace = litZ(half + 0.05, 1);
+  const panels = { brake: [[[0.5, 0.03, 0.02], [0, 0.88, litZ(half + 0.018, 1)], litBrake]],
+    reverse: [], turn: [] };
+  for (const side of [-1, 1]) {
+    const tailX = side * (widthAt(half) - 0.055);
+    panels.brake.push([[0.12, 0.18, LIT_DEPTH], [tailX, 0.87, tailFace], litBrake]);
+    panels.reverse.push([[0.14, 0.05, LIT_DEPTH], [side * 0.55, 0.4, bumperFace], litReverse]);
+    panels.turn.push([[0.12, 0.12, LIT_DEPTH], [tailX, 0.7, tailFace], litAmber],
+      [[0.08, 0.05, LIT_DEPTH], [side * 0.62, noseTop - 0.08, noseFace], litAmber]);
+  }
+  authorLitLamps({ addMesh }, body, part, panels);
 }
 
 function authorMirrors({ root, addNode, addMesh }, data, exterior, roofY) {

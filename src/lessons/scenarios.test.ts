@@ -11,6 +11,8 @@ import {
   requireScenarioColliderComposer,
   requireScenarioModule,
   scenarioNumbersAreFinite,
+  wheelStops,
+  wheelStopTouchingPose,
 } from './scenario-test-utils';
 
 describe('authored lesson scenarios', () => {
@@ -59,7 +61,8 @@ describe('authored lesson scenarios', () => {
       expect(usableWidth).toBeGreaterThanOrEqual(6);
 
       for (const profile of Object.values(profiles)) {
-        const solids = colliders.filter(({ kind }) => kind !== 'ground');
+        // Wheel stops sit below both ground clearances: the body passes over them.
+        const solids = colliders.filter(({ kind }) => kind !== 'ground' && kind !== 'wheel-stop');
         const spawnPose = poseFromSpawn(scenario.spawnByVehicle[profile.id]);
         const spawnFootprint = footprint(spawnPose, profile);
         const targetFootprint = footprint(poseAtRegion(scenario.target.region, profile), profile);
@@ -74,4 +77,33 @@ describe('authored lesson scenarios', () => {
       }
     }
   });
+
+  it.each([1, 2, 4] as const)('places one 1.8 x 0.11 x 0.15 m wheel stop in garage stage %s', (stageId) => {
+    const { scenarios } = requireScenarioModule();
+    const expected = {
+      1: [0, 0.055, -6.70],
+      2: [0, 0.055, -8.60],
+      4: [5.4, 0.055, -8.60],
+    } as const;
+    const stops = wheelStops(scenarios[stageId]);
+    expect(stops).toEqual([{
+      id: `stage${stageId}-wheel-stop`, kind: 'wheel-stop', centerM: expected[stageId],
+      halfExtentsM: [0.9, 0.055, 0.075], yawRad: 0,
+    }]);
+    for (const other of [3, 5] as const) expect(wheelStops(scenarios[other])).toEqual([]);
+  });
+
+  it.each([1, 2, 4] as const)('puts the stage %s tyre-on-stop pose inside the target for both vehicles',
+    (stageId) => {
+      const { scenarios } = requireScenarioModule();
+      const scenario = scenarios[stageId];
+      const [stop] = wheelStops(scenario);
+      expect(stop).toBeDefined();
+      for (const profile of Object.values(profiles)) {
+        const { pose, leading } = wheelStopTouchingPose(scenario, stop!, profile);
+        expect(leading).toBe(stageId === 1 ? 'front' : 'rear');
+        expect(footprintInsideRegion(footprint(pose, profile), scenario.target.region,
+          scenario.target.insetM), `stage ${stageId}/${profile.id}`).toBe(true);
+      }
+    });
 });

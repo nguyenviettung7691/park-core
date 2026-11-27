@@ -2,7 +2,11 @@ import * as CANNON from 'cannon-es';
 import { describe, expect, it } from 'vitest';
 import type { SensorId } from '../contracts';
 import { profiles } from '../vehicle/profiles';
-import { classifyDistance, createSensors } from './proximity';
+import { classifyDistance, createSensors, wheelStopBodies } from './proximity';
+import { scenarios } from '../lessons/scenarios';
+import { wheelStops, wheelStopTouchingPose } from '../lessons/scenario-test-utils';
+import { addColliderBoxes, collidersForScenario, createWorld } from '../world/colliders';
+import { createVehicleRig } from '../vehicle/rig';
 
 const profile = profiles.sedan;
 const frontIds: readonly SensorId[] = [
@@ -167,4 +171,55 @@ describe('Cannon proximity rays', () => {
     expect(reading.distanceM).toBeCloseTo(2.53, 2);
     expect(reading.band).toBe('green');
   });
+});
+
+describe('garage wheel stops and the parking sensors', () => {
+  it.each([
+    [1, 'sedan'], [1, 'cuv'], [2, 'sedan'], [2, 'cuv'], [4, 'sedan'], [4, 'cuv'],
+  ] as const)('stage %s/%s: no sensor reports the stop while the tyres touch it', (stageId, id) => {
+    const scenario = scenarios[stageId];
+    const [stop] = wheelStops(scenario);
+    expect(stop).toBeDefined();
+    const world = createWorld();
+    const cleanup = addColliderBoxes(world, collidersForScenario(scenario));
+    const stopBody = cleanup.edges.find(({ box }) => box.id === stop!.id)!.body;
+    const rig = createVehicleRig(world, profiles[id], cleanup.idForBody, cleanup.edges);
+    const { pose } = wheelStopTouchingPose(scenario, stop!, profiles[id]);
+    rig.settle({ positionM: pose.positionM, yawRad: scenario.target.region.headingRad });
+    const readings = createSensors(world, rig.body, profiles[id], wheelStopBodies(cleanup.edges))
+      .sample(0).readings;
+    for (const reading of readings) {
+      expect(reading.obstacleId, reading.id).not.toBe(String(stopBody.id));
+    }
+    rig.dispose();
+    cleanup();
+  });
+
+  it.each(['sedan', 'cuv'] as const)('%s: excludes a wheel stop explicitly, even one the rays would hit',
+    (id) => {
+      // A stop raised to sensor height in front of the car, approached from 3 m to 0.2 m: the rays
+      // hit it (proving the geometry), yet it is never reported once it is excluded by kind.
+      const p = profiles[id];
+      const world = makeWorld();
+      const stopBox = { id: 'tall-stop', kind: 'wheel-stop' as const, centerM: [0, 0.45, -5] as const,
+        halfExtentsM: [0.9, 0.2, 0.075] as const, yawRad: 0 };
+      const cleanup = addColliderBoxes(world, [stopBox]);
+      const learner = addLearner(world);
+      const frontZ = -((1 - p.frontWeightFraction) * p.wheelbaseM + p.frontOverhangM);
+      const plain = createSensors(world, learner, p);
+      const excluded = createSensors(world, learner, p, wheelStopBodies(cleanup.edges));
+      const stopBody = cleanup.edges[0]!.body;
+      let hits = 0;
+      for (let i = 0; i <= 28; i++) {
+        const gap = 3 - i * 0.1;
+        learner.position.set(0, p.centerOfMassHeightM, -5 + 0.075 - frontZ + gap);
+        const t = i * 0.05;
+        if (plain.sample(t).readings.some(({ obstacleId }) => obstacleId === String(stopBody.id))) hits += 1;
+        for (const reading of excluded.sample(t).readings) {
+          expect(reading.obstacleId, `${reading.id} at ${gap.toFixed(1)} m`).toBeNull();
+        }
+      }
+      expect(hits).toBeGreaterThan(0);
+      cleanup();
+    });
 });

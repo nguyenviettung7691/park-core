@@ -9,10 +9,11 @@ import { createClock } from '../clock';
 import { createInputController } from '../input/controller';
 import { advanceLesson } from '../lessons/checkpoints';
 import { createAttemptTracker, finishAttempt, updateAttemptTracker } from '../lessons/attempt';
+import { curbTouchBegan } from '../lessons/edge-warnings';
 import { updateFailure } from '../lessons/failure';
 import { updateParking } from '../lessons/parking';
 import { createAudio, type AudioOutput } from '../sensors/audio';
-import { createSensors } from '../sensors/proximity';
+import { createSensors, wheelStopBodies } from '../sensors/proximity';
 import { profiles } from '../vehicle/profiles';
 import { createVehicleRig, GEAR_SPEED_MPS, SimulationStateError } from '../vehicle/rig';
 import {
@@ -215,8 +216,9 @@ export function createPreview(
     const colliderCleanup = addColliderBoxes(world, boxes);
     cleanups.push(colliderCleanup);
     const profile = profiles[prototype.vehicleId];
-    const rig = createVehicleRig(world, profile, colliderCleanup.idForBody);
-    const sensors = createSensors(world, rig.body, profile);
+    const rig = createVehicleRig(world, profile, colliderCleanup.idForBody,
+      colliderCleanup.edges);
+    const sensors = createSensors(world, rig.body, profile, wheelStopBodies(colliderCleanup.edges));
     cleanups.push(() => rig.dispose());
     rig.settle(mode.kind === 'lesson'
       ? mode.scenario.spawnByVehicle[prototype.vehicleId]
@@ -228,7 +230,8 @@ export function createPreview(
     content = sceneContent;
     ownsAssets = true;
     const lessonScene: LessonScene | null = mode.kind === 'lesson'
-      ? createLessonScene(mode.scenario, prototype.sceneAssets.vehicle)
+      ? createLessonScene(mode.scenario, prototype.sceneAssets.vehicle,
+        prototype.sceneAssets.environment.getObjectByName('WheelStopTemplate') ?? null)
       : null;
     const genericMarkings = prototype.sceneAssets.environment.getObjectByName('ParkingMarkings');
     if (genericMarkings) genericMarkings.visible = mode.kind === 'sandbox';
@@ -390,6 +393,10 @@ export function createPreview(
           simulationTime += 1 / 120;
           previous = current;
           current = rig.snapshot(simulationTime);
+          const curbBegan = curbTouchBegan(previous.wheelEdges, current.wheelEdges);
+          const inLesson = mode.kind === 'lesson' && lessonRuntime !== null && attemptTracker !== null;
+          // In a lesson the warning waits for the failure check: a failure takes precedence.
+          if (curbBegan && !inLesson) events.onNotice('curbTouchWarning');
           const sample = sensors.sample(simulationTime);
           if (sample !== latestSensors) {
             latestSensors = sample;
@@ -407,10 +414,12 @@ export function createPreview(
               current.telemetry,
               boxes,
               pendingContactId,
+              current.wheelEdges,
               speedEnvelopeDwellS,
               1 / 120,
             );
             speedEnvelopeDwellS = failure.speedEnvelopeDwellS;
+            if (curbBegan && !failure.event) events.onNotice('curbTouchWarning');
             if (failure.event) {
               attemptTracker = updateAttemptTracker(
                 attemptTracker,
@@ -420,6 +429,7 @@ export function createPreview(
                 activeAids(currentSettings),
                 lessonRuntime,
                 1 / 120,
+                curbBegan,
               );
               completeAttempt(finishAttempt(attemptTracker, {
                 outcome: 'fail',
@@ -468,6 +478,7 @@ export function createPreview(
               activeAids(currentSettings),
               lessonRuntime,
               1 / 120,
+              curbBegan,
             );
             if (parking.complete) {
               completeAttempt(finishAttempt(attemptTracker, { outcome: 'success' }));

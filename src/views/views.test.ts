@@ -134,7 +134,11 @@ function makeFrame(
     indicator: 'off',
     brake: 0,
   };
-  const snapshot = { telemetry, wheelPoses: [pose, pose, pose, pose] as const };
+  const none = { colliderId: null, kind: null, state: 'none' } as const;
+  const snapshot = {
+    telemetry, wheelPoses: [pose, pose, pose, pose] as const,
+    wheelEdges: [none, none, none, none] as const,
+  };
   return { previous: snapshot, current: snapshot, alpha: 0 };
 }
 
