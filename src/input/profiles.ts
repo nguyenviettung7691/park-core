@@ -30,7 +30,7 @@ function hasTokens(id: string, ...tokens: string[]): boolean {
 
 function gamepadCalibration(): CalibrationTemplate {
   return {
-    version: 1,
+    version: 2,
     steeringAxis: 0,
     steeringLeft: -1,
     steeringCenter: 0,
@@ -39,12 +39,13 @@ function gamepadCalibration(): CalibrationTemplate {
     brake: { kind: 'button', index: 6, released: 0, pressed: 1 },
     reverseButton: 4,
     driveButton: 5,
+    lookStick: { xAxis: 2, yAxis: 3 },
   };
 }
 
 function wheelCalibration(): CalibrationTemplate {
   return {
-    version: 1,
+    version: 2,
     steeringAxis: 0,
     steeringLeft: -1,
     steeringCenter: 0,
@@ -112,5 +113,6 @@ export function calibrationForProfile(
     deviceId,
     throttle: { ...profile.calibration.throttle },
     brake: { ...profile.calibration.brake },
+    ...(profile.calibration.lookStick ? { lookStick: { ...profile.calibration.lookStick } } : {}),
   };
 }

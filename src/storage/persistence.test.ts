@@ -27,7 +27,7 @@ const initialSettings: SettingsSaveV1 = {
 };
 
 const calibration: ControllerCalibration = {
-  version: 1,
+  version: 2,
   deviceId: 'wheel-a',
   steeringAxis: 0,
   steeringLeft: -1,
@@ -103,6 +103,23 @@ describe('versioned persistence', () => {
     expect(reopened.progress).toEqual(changedProgress);
     expect(reopened.settings).toEqual(changedSettings);
     expect(reopened.calibrations).toEqual([calibration]);
+  });
+
+  it('round-trips look fields and upgrades stored v1 entries', () => {
+    const storage = memoryStorage();
+    const look: ControllerCalibration = { ...calibration, lookLeftButton: 8, lookRightButton: 9,
+      lookBackButton: 10, recenterButton: 11, lookStick: { xAxis: 2, yAxis: 3 } };
+    const store = createPersistence(() => storage);
+    store.saveCalibrations([look]);
+    expect(JSON.parse(storage.getItem(keys.calibration)!)).toMatchObject({
+      version: 1, entries: [{ version: 2 }] });
+    const snapshot = createPersistence(() => storage).snapshot();
+    expect(snapshot.calibrations).toEqual([look]);
+    expect(store.snapshot().calibrations[0]!.lookStick).not.toBe(look.lookStick);
+
+    const legacy = memoryStorage();
+    legacy.setItem(keys.calibration, JSON.stringify({ version: 1, entries: [{ ...calibration, version: 1 }] }));
+    expect(createPersistence(() => legacy).snapshot().calibrations).toEqual([calibration]);
   });
 
   it.each([

@@ -996,7 +996,7 @@ it('saves explicitly captured endpoints and invalidates them on rebinding or dev
   expect(save.disabled).toBe(false);
   save.click();
   expect(complete).toHaveBeenLastCalledWith({
-    version: 1, deviceId: 'wheel', steeringAxis: 0, steeringLeft: -1, steeringCenter: 0,
+    version: 2, deviceId: 'wheel', steeringAxis: 0, steeringLeft: -1, steeringCenter: 0,
     steeringRight: 1, throttle: { kind: 'button', index: 7, released: 0, pressed: 1 },
     brake: { kind: 'button', index: 6, released: 0, pressed: 1 }, reverseButton: 4, driveButton: 5,
   });

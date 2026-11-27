@@ -409,7 +409,7 @@ export function mountCalibration(
     }
     if (!captured()) return null;
     return validateCalibration({
-      version: 1, deviceId, steeringAxis,
+      version: 2, deviceId, steeringAxis,
       steeringLeft: manualSamples.left, steeringCenter: manualSamples.center,
       steeringRight: manualSamples.right,
       throttle: { ...throttle, released: manualSamples.throttleReleased,

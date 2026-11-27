@@ -121,7 +121,12 @@ function isPersistenceRecord(value: unknown): value is PersistenceRecord {
 }
 
 function copyCalibration(value: ControllerCalibration): ControllerCalibration {
-  return { ...value, throttle: { ...value.throttle }, brake: { ...value.brake } };
+  return {
+    ...value,
+    throttle: { ...value.throttle },
+    brake: { ...value.brake },
+    ...(value.lookStick ? { lookStick: { ...value.lookStick } } : {}),
+  };
 }
 
 export function unlockedStages(progress: ProgressSaveV1): readonly StageId[] {

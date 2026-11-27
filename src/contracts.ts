@@ -212,7 +212,7 @@ export interface PedalBinding {
 }
 
 export interface ControllerCalibration {
-  readonly version: 1;
+  readonly version: 2;
   readonly deviceId: string;
   readonly steeringAxis: number;
   readonly steeringLeft: number;
@@ -222,6 +222,11 @@ export interface ControllerCalibration {
   readonly brake: PedalBinding;
   readonly reverseButton: number;
   readonly driveButton: number;
+  readonly lookLeftButton?: number;
+  readonly lookRightButton?: number;
+  readonly lookBackButton?: number;
+  readonly recenterButton?: number;
+  readonly lookStick?: { readonly xAxis: number; readonly yAxis: number };
 }
 
 export type AppState =

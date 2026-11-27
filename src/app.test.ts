@@ -658,7 +658,7 @@ it('verifies a saved calibration only for the selected stable device ID', async 
   const f = fixture();
   const pad = testGamepad();
   const saved = {
-    version: 1, deviceId: 'wheel', steeringAxis: 0,
+    version: 2, deviceId: 'wheel', steeringAxis: 0,
     steeringLeft: -1, steeringCenter: 0, steeringRight: 1,
     throttle: { kind: 'button', index: 7, released: 0, pressed: 1 },
     brake: { kind: 'button', index: 6, released: 0, pressed: 1 },

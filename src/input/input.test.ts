@@ -6,7 +6,7 @@ import { createInputController, type InputController } from './controller';
 import { calibrationForProfile, controllerProfiles, findControllerProfile } from './profiles';
 import { testGamepad } from '../test/gamepad';
 
-const wheel = { version: 1, deviceId: 'w', steeringAxis: 0, steeringLeft: -0.6,
+const wheel = { version: 2, deviceId: 'w', steeringAxis: 0, steeringLeft: -0.6,
   steeringCenter: 0.1, steeringRight: 0.9,
   throttle: { kind: 'axis', index: 1, released: 1, pressed: -1 },
   brake: { kind: 'button', index: 6, released: 0, pressed: 1 },
@@ -28,6 +28,18 @@ describe('controller profiles', () => {
       expect(calibration.deviceId).toBe('device-17');
       expect(validateCalibration(calibration)).toEqual(calibration);
     }
+
+    for (const profile of controllerProfiles) {
+      const calibration = calibrationForProfile(profile.id, 'd');
+      if (profile.kind === 'gamepad') expect(calibration.lookStick).toEqual({ xAxis: 2, yAxis: 3 });
+      else expect(calibration).not.toHaveProperty('lookStick');
+      for (const key of ['lookLeftButton', 'lookRightButton', 'lookBackButton', 'recenterButton']) {
+        expect(calibration).not.toHaveProperty(key);
+      }
+    }
+    const first = calibrationForProfile('xbox-series-x', 'a');
+    const second = calibrationForProfile('xbox-series-x', 'b');
+    expect(first.lookStick).not.toBe(second.lookStick);
 
     expect(calibrationForProfile('xbox-series-x', 'xbox-pad').throttle)
       .toEqual({ kind: 'button', index: 7, released: 0, pressed: 1 });
@@ -97,9 +109,47 @@ describe('calibration', () => {
     expect(validateCalibration(JSON.parse(JSON.stringify(wheel)))).toEqual(wheel);
   });
 
+  it('upgrades a stored v1 entry to v2 with no look fields', () => {
+    const upgraded = validateCalibration({ ...wheel, version: 1 });
+    expect(upgraded).toEqual(wheel);
+    expect(upgraded).not.toHaveProperty('lookStick');
+    expect(upgraded).not.toHaveProperty('lookLeftButton');
+  });
+
+  it('keeps valid look buttons and stick', () => {
+    const look = { ...wheel, lookLeftButton: 8, lookRightButton: 9, lookBackButton: 10,
+      recenterButton: 11, lookStick: { xAxis: 3, yAxis: 4 } };
+    expect(validateCalibration(look)).toEqual(look);
+  });
+
+  it('drops conflicting look buttons individually and keeps the calibration', () => {
+    const base = { ...wheel, lookStick: undefined };
+    expect(validateCalibration({ ...base, lookLeftButton: 0 })).toEqual(wheel);
+    expect(validateCalibration({ ...base, lookLeftButton: 4, lookRightButton: 5 })).toEqual(wheel);
+    expect(validateCalibration({ ...base, lookBackButton: 64, recenterButton: 1.5 })).toEqual(wheel);
+    expect(validateCalibration({ ...base, lookLeftButton: 8, lookRightButton: 8,
+      lookBackButton: 8, recenterButton: 9 }))
+      .toEqual({ ...wheel, lookLeftButton: 8, recenterButton: 9 });
+  });
+
+  it('drops a conflicting look stick and keeps the calibration', () => {
+    const base = { ...wheel, brake: { kind: 'axis', index: 2, released: -1, pressed: 1 } } as const;
+    const withStick = (lookStick: unknown) => validateCalibration({ ...base, lookStick });
+    expect(withStick({ xAxis: 3, yAxis: 4 })).toEqual({ ...base, lookStick: { xAxis: 3, yAxis: 4 } });
+    for (const stick of [{ xAxis: 0, yAxis: 3 }, { xAxis: 3, yAxis: 0 }, { xAxis: 2, yAxis: 3 },
+      { xAxis: 3, yAxis: 2 }, { xAxis: 3, yAxis: 3 }, { xAxis: 64, yAxis: 3 },
+      { xAxis: 3, yAxis: 1.5 }, { xAxis: 3 }, 'x']) {
+      expect(withStick(stick)).toEqual(base);
+    }
+    // button-kind pedals do not occupy axes
+    expect(validateCalibration({ ...wheel, lookStick: { xAxis: 2, yAxis: 6 } }))
+      .toEqual({ ...wheel, lookStick: { xAxis: 2, yAxis: 6 } });
+    expect(validateCalibration({ ...wheel, lookStick: { xAxis: 1, yAxis: 3 } })).toEqual(wheel);
+  });
+
   const bad: [string, unknown][] = [
     ['null', null], ['string', 'x'], ['array', []], ['empty object', {}],
-    ['wrong version', { ...wheel, version: 2 }],
+    ['wrong version', { ...wheel, version: 3 }],
     ['numeric device id', { ...wheel, deviceId: 7 }],
     ['empty device id', { ...wheel, deviceId: '' }],
     ['missing brake', { ...wheel, brake: undefined }],

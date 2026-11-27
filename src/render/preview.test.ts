@@ -65,7 +65,7 @@ function gamepadOptions() {
     options: {
       ...options(), source: 'gamepad' as const, gamepadIndex: 0, getGamepads: () => [pad],
       calibration: {
-        version: 1, deviceId: 'wheel', steeringAxis: 0, steeringLeft: -1,
+        version: 2, deviceId: 'wheel', steeringAxis: 0, steeringLeft: -1,
         steeringCenter: 0, steeringRight: 1,
         throttle: { kind: 'button', index: 7, released: 0, pressed: 1 },
         brake: { kind: 'button', index: 6, released: 0, pressed: 1 },
