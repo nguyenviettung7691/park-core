@@ -81,9 +81,14 @@ fixed-step clock.
 - Seat offset (my proposal, accepted in conversation): fore/aft ±10 cm (+Z = rearward),
   height −3 cm to +5 cm, 1 cm steps. The eye moves rigidly with the seat.
 - The asset contract validates both seat extremes for each vehicle: the eye (including
-  the maximum head offset) stays inside the head-clearance box; the windshield, rear-view
-  mirror glass and both side glasses stay inside the neutral driver frustum at the default
-  FOV; the eye stays at least a minimum distance from the steering-wheel rim.
+  the maximum head offset) stays inside the head-clearance box and at least a minimum
+  distance from the steering-wheel rim. The existing `views.test.ts` visibility rule is
+  rerun at the seat extremes, unchanged in criterion (my call, after the builder check):
+  glass **centres** in the driver frustum at the default 60° FOV and the test's aspect,
+  rear-view and driver mirror at neutral look, passenger mirror after the existing 30°
+  glance (it sits ~59° right of the eye even at the default seat). If an extreme fails for
+  a vehicle, that vehicle's seat range is narrowed in the contract; cabin geometry is not
+  changed for it.
 - Adjusted in the view settings panel with two sliders and a "reset seat" button, only
   while the car is held (gear P or parking brake on), the same gate as mirror adjustment.
   Otherwise the sliders are disabled with the existing blocked-notice style.
@@ -123,7 +128,15 @@ these left-hand-drive vehicles).
 
 ### Look controller (`src/views/look.ts`, new, pure)
 
-Holds `{ yaw, pitch }` and a "free" pose. Inputs per rendered frame:
+Time base (my call, after the builder check, following #24's "reproducible on the
+fixed-step clock" anti-goal): look state advances **inside the fixed 1/120 s simulation
+step** in `preview.ts`'s `clock.advance` callback, like the rig. Mouse deltas are
+accumulated between steps and consumed by the next step; stick and glance buttons are read
+from the step's input poll. The spring integrates at 1/120 s. Rendering reads the latest
+stepped yaw/pitch (optionally interpolated with the clock's `alpha`); #24 will sample the
+stepped value. While paused nothing advances.
+
+Holds `{ yaw, pitch }` and a "free" pose. Inputs per simulation step:
 
 - Mouse deltas (unchanged sensitivity 0.002 rad/px) and gamepad right-stick rate
   (deadzone 0.15, max 180°/s yaw, 120°/s pitch) update the free pose, clamped to
@@ -135,8 +148,8 @@ Holds `{ yaw, pitch }` and a "free" pose. Inputs per rendered frame:
 - On release the view returns to the free pose it held before the glance. Recenter sets
   the free pose to 0/0.
 - Transitions (glance in/out, recenter) use a critically damped spring with ~0.25 s
-  settle time; free mouse/stick input applies directly (as today). Easing is computed from
-  real frame time, clamped to 0.1 s per step, never snapping.
+  settle time integrated per fixed step; free mouse/stick input applies directly (as
+  today), so nothing snaps.
 - Exposes the current yaw/pitch so `cameras.ts` drives both driver and chase cameras as
   today, and `headEyeLocal` uses the eased yaw so head translation is equally smooth.
 - Keyboard: no new keys in this issue (mouse-look remains the keyboard user's look). Chase
@@ -172,8 +185,13 @@ vector copy).
   action, is rejected with a message. Profiles do not preset look buttons.
 - `src/input/controller.ts`: in `readGamepad`/`poll`, held look buttons produce the
   current glance (if several are held, the latest pressed wins); recenter is an edge
-  action. Right stick axes 2/3 on pads with `mapping === 'standard'` and kind `gamepad`
-  feed free look; wheels get no stick look. Look input is exposed alongside `mirrorInput()`
+  action.
+- Stick look is stored explicitly (my call, after the builder check), not inferred from
+  device kind: v2 gains optional `lookStick: { xAxis, yAxis }`. Gamepad-kind profiles
+  preset axes 2/3; wheel profiles leave it absent. Manual setup adds an optional "move the
+  right stick, or skip" step. An axis already bound to steering or a pedal is rejected
+  for stick look (at setup, and at parse time a conflicting `lookStick` is dropped), so
+  driving input can never move the camera. Look input is exposed alongside `mirrorInput()`
   (e.g. `lookInput()`), not as driving actions.
 - All new UI strings are Vietnamese in `src/messages.ts`.
 
