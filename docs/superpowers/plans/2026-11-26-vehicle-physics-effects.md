@@ -1,6 +1,6 @@
 # Vehicle Physics Effects Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Note: this plan was executed task-by-task with a subagent-driven workflow; steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Correct wheel spin, telemetry-driven exterior lamps, tyre-edge physics with realistic curbs, and garage wheel stops that learners can use, for issue #11.
 
