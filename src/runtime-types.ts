@@ -2,6 +2,8 @@ import type * as THREE from 'three';
 import type { ControllerProfileId } from './input/profiles';
 import type { MirrorId, MirrorSpec } from './vehicle/asset-contract';
 import type { SavedMirrorOffsets } from './views/mirror-adjust';
+import type { SavedSeatPosition } from './views/seat-position';
+import type { HeadClearance } from './views/head-pose';
 import type {
   AppState,
   AttemptSummary,
@@ -59,6 +61,8 @@ export const OVERHEAD_EXCLUDED_LAYER = 2;
 
 export interface VehicleAnchors {
   readonly driverEyeLocalM: Vec3Data;
+  /** Vehicle-local box the driver's eye must stay inside. */
+  readonly headClearance: HeadClearance;
   readonly mirrors: Readonly<Record<MirrorId, MirrorSpec>>;
 }
 
@@ -95,6 +99,8 @@ export interface SettingsSaveV1 extends GraphicsSettings {
   readonly inputSource: InputSource;
   /** Driver mirror adjustments per vehicle (degrees); absent means default aim. */
   readonly mirrorAdjustments?: Readonly<Partial<Record<VehicleId, SavedMirrorOffsets>>>;
+  /** Driver seat position per vehicle (whole cm); absent means the nominal eye point. */
+  readonly seatPositions?: Readonly<Partial<Record<VehicleId, SavedSeatPosition>>>;
 }
 
 export type PersistenceRecord = 'progress' | 'settings' | 'calibration';
@@ -182,6 +188,8 @@ export type ScreenAction =
   | { readonly type: 'update-settings'; readonly settings: SettingsSaveV1 }
   | { readonly type: 'recenter-view' }
   | { readonly type: 'reset-mirrors' }
+  | { readonly type: 'set-seat'; readonly seat: SavedSeatPosition }
+  | { readonly type: 'reset-seat' }
   | { readonly type: 'open-preview' }
   | { readonly type: 'close-preview' }
   | { readonly type: 'pause' }
@@ -209,5 +217,7 @@ export interface ShellView {
   readonly calibrating?: boolean;
   readonly calibrationProfileId?: ControllerProfileId | null;
   readonly pauseReason?: PreviewPauseReason | null;
+  /** Driver seat the settings panel adjusts: the open session's vehicle, movable only while held. */
+  readonly seat?: { readonly vehicleId: VehicleId; readonly adjustable: boolean };
   readonly assetLoadProgress?: AssetLoadProgress | null;
 }

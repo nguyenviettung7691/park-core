@@ -1,3 +1,4 @@
+import type { HeadClearance } from '../views/head-pose';
 import type { BodyPose, QuatData, Vec3Data, VehicleId, VehicleProfile } from '../contracts';
 
 export type MirrorId = 'rear' | 'left' | 'right';
@@ -24,6 +25,10 @@ interface VehicleViewProfile {
   readonly sideGlassRiseM: number;
   /** Forward (-Z) shift of the side-mirror anchors and colliders from frontAxle + 0.35 m. */
   readonly sideMirrorZOffsetM: number;
+  /** Seat adjustment range from the nominal eye point (+Z rearward, height adds to Y). */
+  readonly seatRangeM: { readonly foreAft: readonly [number, number]; readonly height: readonly [number, number] };
+  /** Head clearance box relative to `driverEyeLocalM`; the contract exposes it absolute. */
+  readonly headClearanceM: HeadClearance;
 }
 
 const DEG = Math.PI / 180;
@@ -45,11 +50,26 @@ const cabinView: VehicleViewProfile = {
   // the whole passenger face above the dashboard from the eye (passing band ~4.0-4.8 cm).
   sideGlassRiseM: 0.044,
   sideMirrorZOffsetM: -0.585,
+  seatRangeM: { foreAft: [-0.1, 0.1], height: [-0.03, 0.05] },
+  // Issue #23: the box holds every raw eye (seat range + head lean, up to +0.03 m when looking
+  // back) with >= 1 cm margin; src/world/head-clearance.test.ts keeps each sampled eye >= 0.12 m
+  // from every triangle of the exported vehicle.
+  headClearanceM: { minM: [-0.2, -0.06, -0.2], maxM: [0.3, 0.09, 0.16] },
+};
+
+// The CUV headliner is only 0.19 m above its default eye (sedan 0.275 m), so at +5 cm seat
+// height with the +3 cm look-back lean the eye came within 0.110 m of it. The cabin geometry is
+// not changed for the seat: the CUV seat rises at most 3 cm (eye >= 0.13 m from the headliner)
+// and its box top stays 0.12 m below the headliner, so even a clamped eye clears it.
+const cuvCabinView: VehicleViewProfile = {
+  ...cabinView,
+  seatRangeM: { foreAft: [-0.1, 0.1], height: [-0.03, 0.03] },
+  headClearanceM: { minM: [-0.2, -0.06, -0.2], maxM: [0.3, 0.07, 0.16] },
 };
 
 export const vehicleViews: Readonly<Record<VehicleId, VehicleViewProfile>> = {
   sedan: cabinView,
-  cuv: cabinView,
+  cuv: cuvCabinView,
 };
 
 export const vehicleNodeNames = [
@@ -266,6 +286,16 @@ export function deriveVehicleAssetContract(profile: VehicleProfile) {
     eye[1] + view.rearCameraOffsetM[1],
     eye[2] + view.rearCameraOffsetM[2],
   ];
+  const { minM, maxM } = view.headClearanceM;
+  for (let axis = 0; axis < 3; axis++) {
+    if (!Number.isFinite(minM[axis]) || !Number.isFinite(maxM[axis]) || !(minM[axis]! < maxM[axis]!)) {
+      throw new RangeError(`${profile.id}.headClearanceM: bounds must be finite with min < max`);
+    }
+  }
+  const headClearance: HeadClearance = {
+    minM: [eye[0] + minM[0], eye[1] + minM[1], eye[2] + minM[2]],
+    maxM: [eye[0] + maxM[0], eye[1] + maxM[1], eye[2] + maxM[2]],
+  };
   const mirrors: Readonly<Record<MirrorId, MirrorSpec>> = {
     rear: {
       positionM: rear,
@@ -286,6 +316,8 @@ export function deriveVehicleAssetContract(profile: VehicleProfile) {
   return {
     driverEyeLocalM: profile.driverEyeLocalM,
     mirrors,
+    seatRangeM: view.seatRangeM,
+    headClearance,
     rearDisplayM: rear,
     bodyVisualZ: [-profile.bodySizeM[2] / 2, profile.bodySizeM[2] / 2] as const,
     bodyPhysicalZ: [

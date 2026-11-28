@@ -47,7 +47,7 @@ it('explains braking rather than reversing and does not claim an unverified game
   mountOnboarding(document.body, { kind: 'onboarding', step: 1, origin: 'menu' },
     { ...context, settings: { ...context.settings, inputSource: 'gamepad' } },
     {
-      source: 'gamepad', index: null, devices: [], ready: false, savedCalibrationAvailable: false,
+      source: 'gamepad', index: null, devices: [], ready: false, savedCalibrationAvailable: false, lookButtonsMissing: false,
       profiles: controllerProfiles, matchedProfileId: null,
     }, vi.fn());
   expect(document.body.textContent).toContain('chưa được hiệu chỉnh');

@@ -17,6 +17,8 @@ export interface InputSetup {
   readonly devices: readonly { readonly index: number; readonly id: string }[];
   readonly ready: boolean;
   readonly savedCalibrationAvailable: boolean;
+  /** The selected device has a saved calibration without any of the four look buttons. */
+  readonly lookButtonsMissing: boolean;
   readonly profiles: readonly ControllerProfile[];
   readonly matchedProfileId: ControllerProfileId | null;
 }
@@ -270,6 +272,11 @@ export function mountScreen(
         verify.id = 'verify-saved-calibration';
       }
       if (!input.ready) text('p', vi.controllerNeedsSetup, parent);
+      if (input.lookButtonsMissing) {
+        const lookNotice = text('p', vi.lookButtonsNotice, parent);
+        lookNotice.id = 'look-buttons-notice';
+        lookNotice.setAttribute('role', 'status');
+      }
       const setup = button(vi.calibrate, () => onAction({ type: 'open-calibration' }), parent);
       setup.id = 'calibrate-device';
       setup.disabled = input.index === null;
@@ -310,6 +317,7 @@ export function mountScreen(
           (overlay.returnTo.kind === 'onboarding' && overlay.returnTo.origin === 'paused');
         settingsMount = mountViewSettings(screen, context.settings, overlay.tab, onAction, {
           graphicsDisabled,
+          seat: view?.seat ?? { vehicleId: context.selectedVehicleId, adjustable: true },
         });
         if (!graphicsDisabled) {
           const benchmarkRoot = screen.querySelector<HTMLElement>('#graphics-benchmark-root');

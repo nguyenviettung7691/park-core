@@ -61,9 +61,19 @@ export function buildPrototypeScene(
   // Wheel sits ahead of the eye, as in the authored cockpits (eye z - 0.5 m).
   steeringWheel.position.set(-0.36, 0.42, profile.driverEyeLocalM[2] - 0.5);
   chassis.add(steeringWheel);
+  // Driver seat group: its origin is the cushion top under the eye (0.62 m below it, as in the
+  // authored cockpits), so asset-scene's setSeatOffset moves it like the GLB `DriverSeat`.
+  const driverSeat = new Group();
+  driverSeat.name = 'DriverSeat';
+  const [eyeX, eyeY, eyeZ] = profile.driverEyeLocalM;
+  driverSeat.position.set(eyeX, eyeY - 0.62, eyeZ + 0.045);
+  chassis.add(driverSeat);
+  box(driverSeat, 'prototype-seat-cushion', [0.19, 0.05, 0.25], [0, -0.05, 0], materials[1]!);
+  box(driverSeat, 'prototype-seat-back', [0.19, 0.3, 0.05], [0, 0.3, 0.3], materials[1]!);
 
   // Glass faces sit at the shared contract poses; side housings sit just behind them.
-  const mirrorSpecs = deriveVehicleAssetContract(profile).mirrors;
+  const contract = deriveVehicleAssetContract(profile);
+  const mirrorSpecs = contract.mirrors;
   for (const id of ['rear', 'left', 'right'] as const) {
     const spec = mirrorSpecs[id];
     const surface = new Mesh(
@@ -101,6 +111,7 @@ export function buildPrototypeScene(
   const look = new Vector3();
   const anchors: VehicleAnchors = {
     driverEyeLocalM: geometry.driverEyeLocalM,
+    headClearance: contract.headClearance,
     mirrors: mirrorSpecs,
   };
   let disposed = false;

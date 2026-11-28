@@ -604,3 +604,130 @@ test('repeatedly opens and closes the preview without uncaught errors', async ({
   await expect.poll(() => page.evaluate(() => window.testAudioStats.closes)).toBe(3);
   expect(errors).toEqual([]);
 });
+
+interface Crop { x: number; y: number; width: number; height: number }
+
+/** Mean absolute per-channel difference (0-255) between two PNG captures, optionally cropped. */
+async function meanPixelDiff(page: Page, a: Buffer, b: Buffer, crop?: Crop): Promise<number> {
+  return page.evaluate(async ({ a, b, crop }) => {
+    async function pixels(base64: string) {
+      const image = new Image();
+      image.src = `data:image/png;base64,${base64}`;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width; canvas.height = image.height;
+      const context = canvas.getContext('2d')!;
+      context.drawImage(image, 0, 0);
+      const area = crop ?? { x: 0, y: 0, width: image.width, height: image.height };
+      return context.getImageData(area.x, area.y, area.width, area.height).data;
+    }
+    const [first, second] = [await pixels(a), await pixels(b)];
+    let total = 0;
+    for (let i = 0; i < first.length; i += 4) {
+      total += Math.abs(first[i]! - second[i]!) + Math.abs(first[i + 1]! - second[i + 1]!) +
+        Math.abs(first[i + 2]! - second[i + 2]!);
+    }
+    return total / (first.length / 4 * 3);
+  }, { a: a.toString('base64'), b: b.toString('base64'), crop });
+}
+
+/** Feeds the app's own pointer-locked mousemove handler. Headless Chromium echoes each synthetic move back. */
+async function lookByMouse(page: Page, movementX: number, movementY = 0) {
+  await page.evaluate(([movementX, movementY]) => {
+    document.dispatchEvent(new MouseEvent('mousemove', { movementX, movementY }));
+  }, [movementX, movementY]);
+}
+
+/**
+ * Re-acquiring pointer lock after a pause can turn the view, so pin the look at its yaw and pitch
+ * limits first and then travel back the exact distance (0.002 rad per pixel; 110 degrees = 960 px,
+ * 45 degrees = 392.7 px) to land on the neutral pose.
+ */
+async function centerLook(page: Page) {
+  await lookByMouse(page, -5000, 5000);
+  await page.waitForTimeout(300);
+  await lookByMouse(page, 960, -392.7);
+  await page.waitForTimeout(500);
+}
+
+test('moves the driver seat in P, locks it while rolling in D, and restores it on reset', async ({ page }) => {
+  test.setTimeout(60000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await installAudioMock(page);
+  await open(page);
+  await waitForPointerLock(page);
+  const canvas = page.locator('#simulation');
+  const resume = page.getByRole('button', { name: 'Tiếp tục lái thử', exact: true });
+  const savedSeat = () => page.evaluate(() =>
+    JSON.parse(localStorage.getItem('park-core.settings.v1') ?? '{}').seatPositions?.sedan);
+  await centerLook(page);
+  const original = await canvas.screenshot();
+
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
+  await openSettings(page, 'view');
+  await expect(page.locator('#seat-height')).toBeEnabled();
+  await expect(page.locator('#seat-fore-aft')).toBeEnabled();
+  await expect(page.locator('#seat-adjust-hint')).toBeHidden();
+  await page.locator('#seat-height').fill('4');
+  await expect.poll(savedSeat).toEqual({ foreAftCm: 0, heightCm: 4 });
+  await closeSettings(page);
+  await resume.click();
+  await waitForPointerLock(page);
+  await centerLook(page);
+  const raised = await canvas.screenshot();
+  expect(await meanPixelDiff(page, original, raised)).toBeGreaterThan(1);
+
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
+  await openSettings(page, 'view');
+  await page.locator('#reset-seat').click();
+  await expect.poll(savedSeat).toEqual({ foreAftCm: 0, heightCm: 0 });
+  await closeSettings(page);
+  await resume.click();
+  await waitForPointerLock(page);
+  await centerLook(page);
+  const back = await canvas.screenshot();
+  expect(await meanPixelDiff(page, original, back)).toBeLessThan(0.5);
+
+  // Rolling in D: the seat is not adjustable, like the mirrors.
+  await keyboardDrive(page);
+  await expect(page.locator('#telemetry')).toContainText('3 km/h', { timeout: 10000 });
+  await page.keyboard.press('Escape');
+  await expect(resume).toBeVisible();
+  await openSettings(page, 'view');
+  await expect(page.locator('#seat-height')).toBeDisabled();
+  await expect(page.locator('#seat-fore-aft')).toBeDisabled();
+  await expect(page.locator('#reset-seat')).toBeDisabled();
+  await expect(page.locator('#seat-adjust-hint')).toBeVisible();
+  expect(await savedSeat()).toEqual({ foreAftCm: 0, heightCm: 0 });
+  expect(errors).toEqual([]);
+});
+
+test('shoulder check by mouse moves the head and releases it on return', async ({ page }) => {
+  test.setTimeout(60000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await installAudioMock(page);
+  await open(page);
+  await waitForPointerLock(page);
+  const canvas = page.locator('#simulation');
+  await centerLook(page);
+  const neutral = await canvas.screenshot();
+  const leftMirror = { x: 40, y: 390, width: 260, height: 140 };
+
+  // 0.002 rad per pixel: 960 px is the 110 degree left limit; the extra travel clamps there.
+  await lookByMouse(page, -1100);
+  await page.waitForTimeout(600);
+  const shoulder = await canvas.screenshot();
+  expect(await meanPixelDiff(page, neutral, shoulder)).toBeGreaterThan(5);
+  // The mirror has left the frame at the limit, so its crop shows the cabin side instead.
+  expect(await meanPixelDiff(page, neutral, shoulder, leftMirror)).toBeGreaterThan(5);
+
+  // Coming back 960 px releases both the rotation and the head lean.
+  await lookByMouse(page, 960);
+  await page.waitForTimeout(600);
+  expect(await meanPixelDiff(page, neutral, await canvas.screenshot())).toBeLessThan(0.5);
+  expect(errors).toEqual([]);
+});

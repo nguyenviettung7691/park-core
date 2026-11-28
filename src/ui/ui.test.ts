@@ -295,7 +295,7 @@ it('offers explicit verification for a saved calibration matching the selected d
   }, action, undefined, {
     source: 'gamepad', index: 0, devices: [{ index: 0, id: 'wheel' }],
     ready: false, savedCalibrationAvailable: true,
-    profiles: controllerProfiles, matchedProfileId: null,
+    lookButtonsMissing: false, profiles: controllerProfiles, matchedProfileId: null,
   });
 
   element.querySelector<HTMLButtonElement>('#verify-saved-calibration')?.click();
@@ -309,7 +309,7 @@ it('offers named profiles, marks an exact match as a suggestion, and keeps manua
     source: 'gamepad' as const, index: 0,
     devices: [{ index: 0, id: 'Xbox Wireless Controller Series X' }],
     ready: false, savedCalibrationAvailable: false,
-    profiles: controllerProfiles, matchedProfileId: 'xbox-series-x' as const,
+    lookButtonsMissing: false, profiles: controllerProfiles, matchedProfileId: 'xbox-series-x' as const,
   };
   const view: ShellView = {
     state: { kind: 'menu' }, preview: 'closed',
@@ -338,7 +338,7 @@ it('keeps named profile choice and manual calibration available for an unmatched
     source: 'gamepad' as const, index: 0,
     devices: [{ index: 0, id: 'Unknown Controller' }],
     ready: false, savedCalibrationAvailable: false,
-    profiles: controllerProfiles, matchedProfileId: null,
+    lookButtonsMissing: false, profiles: controllerProfiles, matchedProfileId: null,
   };
   const view: ShellView = {
     state: { kind: 'menu' }, preview: 'closed',
@@ -825,8 +825,10 @@ it('guides manual calibration one illustrated capture at a time in the nine-cont
     if (index === expected.length - 1) capture.focus();
     capture.click();
     if (index === expected.length - 1) {
-      expect(document.activeElement).toBe([...element.querySelectorAll('button')]
-        .find((button) => button.textContent === messages.saveCalibration));
+      // The optional look-button steps follow; saving is already possible.
+      expect(document.activeElement).toBe(element.querySelector('[data-look-skip]'));
+      expect([...element.querySelectorAll('button')]
+        .find((button) => button.textContent === messages.saveCalibration)?.disabled).toBe(false);
     }
   });
   expect(element.querySelector('[data-capture-progress]')?.textContent).toContain('9 / 9');
@@ -996,7 +998,7 @@ it('saves explicitly captured endpoints and invalidates them on rebinding or dev
   expect(save.disabled).toBe(false);
   save.click();
   expect(complete).toHaveBeenLastCalledWith({
-    version: 1, deviceId: 'wheel', steeringAxis: 0, steeringLeft: -1, steeringCenter: 0,
+    version: 2, deviceId: 'wheel', steeringAxis: 0, steeringLeft: -1, steeringCenter: 0,
     steeringRight: 1, throttle: { kind: 'button', index: 7, released: 0, pressed: 1 },
     brake: { kind: 'button', index: 6, released: 0, pressed: 1 }, reverseButton: 4, driveButton: 5,
   });
@@ -1160,6 +1162,179 @@ it('invalidates preset verification on missing samples and device replacement', 
   vi.restoreAllMocks();
 });
 
+function captureManualRequired(element: HTMLElement, pad: ReturnType<typeof testGamepad>) {
+  const samples = [
+    () => { pad.axes[0] = -1; },
+    () => { pad.axes[0] = 0; },
+    () => { pad.axes[0] = 1; },
+    () => { pad.buttons[7]!.value = 0; },
+    () => { pad.buttons[7]!.value = 1; },
+    () => { pad.buttons[6]!.value = 0; },
+    () => { pad.buttons[6]!.value = 1; },
+    () => { pad.buttons[4]!.value = 1; },
+    () => { pad.buttons[5]!.value = 1; },
+  ];
+  for (const setSample of samples) {
+    setSample();
+    element.querySelector<HTMLButtonElement>('[data-calibration-capture]')!.click();
+  }
+  pad.axes[0] = 0;
+  for (const value of pad.buttons) value.value = 0;
+}
+
+function calibrationStep(element: HTMLElement) {
+  return element.querySelector('[data-calibration-step]')?.getAttribute('data-calibration-step');
+}
+
+it('captures optional look buttons and the look stick, rejecting controls already in use', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = testGamepad();
+  pad.axes.splice(0, pad.axes.length, 0, 0, 0, 0);
+  const complete = vi.fn();
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn());
+  const alert = () => element.querySelector('[role="alert"]')?.textContent;
+  const skip = element.querySelector<HTMLButtonElement>('[data-look-skip]')!;
+  expect(skip.hidden).toBe(true);
+  captureManualRequired(element, pad);
+  expect(calibrationStep(element)).toBe('look-left');
+  expect(skip.hidden).toBe(false);
+  expect(element.querySelector('[data-calibration-step]')?.textContent).toBe(messages.lookLeftStep);
+
+  function press(index: number) {
+    pad.buttons[index]!.value = 0;
+    clock.tick();
+    pad.buttons[index]!.value = 1;
+    clock.tick();
+    pad.buttons[index]!.value = 0;
+  }
+  press(0);
+  expect(alert()).toBe(messages.lookButtonParkingBrake);
+  expect(calibrationStep(element)).toBe('look-left');
+  for (const used of [4, 5, 6, 7]) {
+    press(used);
+    expect(alert()).toBe(messages.lookButtonInUse);
+    expect(calibrationStep(element)).toBe('look-left');
+  }
+  press(1);
+  expect(alert()).toBe('');
+  expect(calibrationStep(element)).toBe('look-right');
+  press(1);
+  expect(alert()).toBe(messages.lookButtonInUse);
+  expect(calibrationStep(element)).toBe('look-right');
+  press(2);
+  expect(calibrationStep(element)).toBe('look-back');
+  skip.click();
+  expect(calibrationStep(element)).toBe('recenter');
+  press(3);
+  expect(calibrationStep(element)).toBe('look-stick');
+  expect(element.querySelector('[data-calibration-step]')?.textContent)
+    .toBe(messages.lookStickHorizontal);
+
+  clock.tick(2);
+  pad.axes[0] = 1;
+  clock.tick();
+  expect(alert()).toBe(messages.lookAxisInUse);
+  expect(element.querySelector('[data-calibration-step]')?.textContent)
+    .toBe(messages.lookStickHorizontal);
+  pad.axes[0] = 0;
+  clock.tick();
+  pad.axes[2] = 1;
+  clock.tick();
+  expect(element.querySelector('[data-calibration-step]')?.textContent)
+    .toBe(messages.lookStickVertical);
+  pad.axes[2] = 0;
+  clock.tick();
+  pad.axes[3] = -1;
+  clock.tick();
+  pad.axes[3] = 0;
+  expect(calibrationStep(element)).toBe('complete');
+  expect(element.querySelector('[data-calibration-step]')?.textContent).toBe(messages.lookSetupComplete);
+  expect(skip.hidden).toBe(true);
+  const save = [...element.querySelectorAll('button')]
+    .find((button) => button.textContent === messages.saveCalibration)!;
+  expect(document.activeElement).toBe(save);
+  save.click();
+  expect(complete).toHaveBeenCalledWith(expect.objectContaining({
+    lookLeftButton: 1, lookRightButton: 2, recenterButton: 3, lookStick: { xAxis: 2, yAxis: 3 },
+  }));
+  expect(complete.mock.lastCall![0]).not.toHaveProperty('lookBackButton');
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('skips every optional look step on the manual path without saving look controls', () => {
+  animationClock();
+  const element = root();
+  const pad = testGamepad();
+  const complete = vi.fn();
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn());
+  captureManualRequired(element, pad);
+  const skip = element.querySelector<HTMLButtonElement>('[data-look-skip]')!;
+  for (const step of ['look-left', 'look-right', 'look-back', 'recenter', 'look-stick']) {
+    expect(calibrationStep(element)).toBe(step);
+    skip.click();
+  }
+  expect(calibrationStep(element)).toBe('complete');
+  [...element.querySelectorAll('button')]
+    .find((button) => button.textContent === messages.saveCalibration)!.click();
+  const saved = complete.mock.lastCall![0];
+  for (const key of ['lookLeftButton', 'lookRightButton', 'lookBackButton', 'recenterButton', 'lookStick']) {
+    expect(saved).not.toHaveProperty(key);
+  }
+  unmount();
+  vi.restoreAllMocks();
+});
+
+it('offers the four look-button steps after a verified profile, without a stick step', () => {
+  const clock = animationClock();
+  const element = root();
+  const pad = profileGamepad();
+  const complete = vi.fn();
+  const profile = controllerProfiles.find(({ id }) => id === 'xbox-series-x')!;
+  const unmount = mountCalibration(element, 0, () => [pad], complete, vi.fn(), profile);
+  clock.tick();
+  for (const [index, value] of [[0, -1], [0, 1]] as const) {
+    clock.tick();
+    pad.axes[index] = value;
+    clock.tick(3);
+    pad.axes[index] = 0;
+    clock.tick();
+  }
+  for (const index of [7, 6, 4, 5]) {
+    clock.tick();
+    pad.buttons[index]!.value = 1;
+    pad.buttons[index]!.pressed = true;
+    clock.tick(3);
+    pad.buttons[index]!.value = 0;
+    pad.buttons[index]!.pressed = false;
+    clock.tick();
+  }
+  expect(calibrationStep(element)).toBe('look-left');
+  clock.tick();
+  pad.buttons[5]!.value = 1;
+  clock.tick();
+  expect(element.querySelector('[role="alert"]')?.textContent).toBe(messages.lookButtonInUse);
+  pad.buttons[5]!.value = 0;
+  clock.tick();
+  pad.buttons[1]!.value = 1;
+  clock.tick();
+  pad.buttons[1]!.value = 0;
+  const skip = element.querySelector<HTMLButtonElement>('[data-look-skip]')!;
+  for (const step of ['look-right', 'look-back', 'recenter']) {
+    expect(calibrationStep(element)).toBe(step);
+    skip.click();
+  }
+  expect(calibrationStep(element)).toBe('complete');
+  [...element.querySelectorAll('button')]
+    .find((button) => button.textContent === messages.saveCalibration)!.click();
+  expect(complete).toHaveBeenCalledWith({
+    ...calibrationForProfile('xbox-series-x', pad.id), lookLeftButton: 1,
+  });
+  unmount();
+  vi.restoreAllMocks();
+});
+
 it('focuses explicit resume without exposing menu controls while paused', () => {
   const element = root();
   const action = vi.fn();
@@ -1201,4 +1376,70 @@ it('lists the mirror adjustment key in the paused controls help', () => {
 it('tells the driver the car must be stopped before adjusting a mirror', () => {
   expect(messages.mirrorAdjustBlocked).toContain('dừng');
   expect(messages.controlsHelp).toContain('khi xe đã dừng');
+});
+
+it('commits seat sliders on release and resets the seat from view settings', () => {
+  const element = root();
+  const action = vi.fn();
+  const view = mountViewSettings(element, {
+    ...context.settings, seatPositions: { sedan: { foreAftCm: 4, heightCm: -2 } },
+  }, 'view', action, { seat: { vehicleId: 'sedan', adjustable: true } });
+  const foreAft = element.querySelector<HTMLInputElement>('#seat-fore-aft')!;
+  const height = element.querySelector<HTMLInputElement>('#seat-height')!;
+  expect(element.querySelector('label[for="seat-fore-aft"]')?.textContent).toBe(messages.seatForeAft);
+  expect([foreAft.min, foreAft.max, foreAft.step, foreAft.value]).toEqual(['-10', '10', '1', '4']);
+  expect([height.min, height.max, height.value]).toEqual(['-3', '5', '-2']);
+  expect(element.querySelector<HTMLElement>('#seat-adjust-hint')!.hidden).toBe(true);
+
+  foreAft.value = '-7';
+  foreAft.dispatchEvent(new Event('input'));
+  expect(action).not.toHaveBeenCalled();
+  foreAft.dispatchEvent(new Event('change'));
+  expect(action).toHaveBeenLastCalledWith({ type: 'set-seat', seat: { foreAftCm: -7, heightCm: -2 } });
+  height.value = '5';
+  height.dispatchEvent(new Event('change'));
+  expect(action).toHaveBeenLastCalledWith({ type: 'set-seat', seat: { foreAftCm: -7, heightCm: 5 } });
+
+  element.querySelector<HTMLButtonElement>('#reset-seat')!.click();
+  expect(action).toHaveBeenLastCalledWith({ type: 'reset-seat' });
+  expect([foreAft.value, height.value]).toEqual(['0', '0']);
+  view.dispose();
+
+  mountViewSettings(element, context.settings, 'view', action,
+    { seat: { vehicleId: 'cuv', adjustable: true } });
+  expect(element.querySelector<HTMLInputElement>('#seat-height')!.max).toBe('3');
+});
+
+it('disables the seat controls with a hint when the car is not held', () => {
+  const element = root();
+  mountViewSettings(element, context.settings, 'view', vi.fn(),
+    { seat: { vehicleId: 'sedan', adjustable: false } });
+  for (const id of ['#seat-fore-aft', '#seat-height', '#reset-seat']) {
+    expect(element.querySelector<HTMLInputElement>(id)!.disabled).toBe(true);
+  }
+  const hint = element.querySelector<HTMLElement>('#seat-adjust-hint')!;
+  expect(hint.hidden).toBe(false);
+  expect(hint.textContent).toBe(messages.seatAdjustBlocked);
+  expect(element.querySelector('#driver-fov')?.hasAttribute('disabled')).toBe(false);
+});
+
+it('suggests setting up look buttons for a calibration that has none', () => {
+  const element = root();
+  const setup = {
+    source: 'gamepad' as const, index: 0, devices: [{ index: 0, id: 'wheel' }],
+    ready: true, savedCalibrationAvailable: false,
+    lookButtonsMissing: true, profiles: controllerProfiles, matchedProfileId: null,
+  };
+  const view: ShellView = {
+    state: { kind: 'menu' }, preview: 'closed',
+    overlay: { kind: 'settings', tab: 'input', returnTo: { kind: 'menu' } },
+  };
+  const settings = { ...context, settings: { ...context.settings, inputSource: 'gamepad' as const } };
+  const unmount = mountScreen(element, view.state, settings, vi.fn(), view, setup);
+  const notice = element.querySelector('#look-buttons-notice');
+  expect(notice?.textContent).toBe(messages.lookButtonsNotice);
+  expect(notice?.getAttribute('role')).toBe('status');
+  unmount();
+  mountScreen(element, view.state, settings, vi.fn(), view, { ...setup, lookButtonsMissing: false });
+  expect(element.querySelector('#look-buttons-notice')).toBeNull();
 });

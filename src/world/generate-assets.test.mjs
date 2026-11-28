@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkAssets, reviewAssets } from '../../tools/asset-workflow.mjs';
-import { EXTERIOR_LAMPS_DEFAULT, buildGlb } from '../../tools/generate-assets.mjs';
+import { DRIVER_SEAT_DEFAULT, EXTERIOR_LAMPS_DEFAULT, buildGlb } from '../../tools/generate-assets.mjs';
 import { profiles } from '../vehicle/profiles.ts';
 
 const projectRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -209,6 +209,47 @@ describe('phase 5 original GLB generator', () => {
     const root = mkdtempSync(join(tmpdir(), 'park-core-lamps-'));
     temporaryRoots.push(root);
     const result = spawnSync(process.execPath, [generator, '--lamps', '--vehicle', 'sedan', '--out', root],
+      { encoding: 'utf8' });
+    expect(result.status).not.toBe(0);
+    expect(existsSync(assetPath(root, 'sedan'))).toBe(false);
+  });
+
+  const triangleCount = (json) => json.meshes.reduce((sum, mesh) => sum + mesh.primitives.reduce(
+    (part, primitive) => part + json.accessors[primitive.indices].count / 3, 0), 0);
+
+  it.each(['sedan', 'cuv'])('authors a movable DriverSeat under Cockpit for %s by default', (id) => {
+    // The adjustable seat was approved and promoted (issue #23), so default generation authors it.
+    expect(DRIVER_SEAT_DEFAULT).toBe(true);
+    expect(buildGlb(id, { driverSeat: true })).toEqual(buildGlb(id));
+    const plain = readGlbBytes(buildGlb(id, { driverSeat: false }));
+    expect(plain.nodes.map((node) => node.name)).not.toContain('DriverSeat');
+    const glb = readGlbBytes(buildGlb(id));
+    const seatIndex = glb.nodes.findIndex((node) => node.name === 'DriverSeat');
+    expect(seatIndex).toBeGreaterThan(0);
+    expect(glb.nodes.filter((node) => node.name === 'DriverSeat')).toHaveLength(1);
+    const cockpit = glb.nodes.find((node) => node.name === 'Cockpit');
+    expect(cockpit.children).toContain(seatIndex);
+    const seat = glb.nodes[seatIndex];
+    // asset-scene sets the seat position outright, so it rests unrotated and unscaled.
+    expect(seat.rotation).toBeUndefined();
+    expect(seat.scale).toBeUndefined();
+    expect(seat.translation[0]).toBeCloseTo(-0.31, 6);
+    const meshes = (seat.children ?? []).map((index) => glb.nodes[index]);
+    expect(meshes.map((node) => node.name)).toEqual(['DriverSeatParts']);
+    // Driver seat geometry spans the seat (x about -0.31 +/- 0.2) and never reaches the passenger side.
+    const accessor = glb.accessors[glb.meshes[meshes[0].mesh].primitives[0].attributes.POSITION];
+    const offset = meshes[0].translation ?? [0, 0, 0];
+    expect(seat.translation[0] + offset[0] + accessor.min[0]).toBeGreaterThan(-0.55);
+    expect(seat.translation[0] + offset[0] + accessor.max[0]).toBeLessThan(-0.05);
+    const seated = triangleCount(glb), fixed = triangleCount(plain);
+    expect(Math.abs(seated - fixed)).toBeLessThanOrEqual(12);
+    expect(seated).toBeLessThanOrEqual(10_000);
+  });
+
+  it('no longer accepts the retired --driver-seat candidate flag', () => {
+    const root = mkdtempSync(join(tmpdir(), 'park-core-driver-seat-'));
+    temporaryRoots.push(root);
+    const result = spawnSync(process.execPath, [generator, '--driver-seat', '--vehicle', 'sedan', '--out', root],
       { encoding: 'utf8' });
     expect(result.status).not.toBe(0);
     expect(existsSync(assetPath(root, 'sedan'))).toBe(false);
