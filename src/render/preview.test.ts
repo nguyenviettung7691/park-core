@@ -1362,6 +1362,7 @@ describe('preview look and seat wiring', () => {
         f.mouseMove(-120 / frames, 0);
         f.frame(20 + i * 100 / frames);
       }
+      f.frame(130); // one idle step so the interpolated render shows the stepped pose
       expect(f.events.onFault).not.toHaveBeenCalled();
       const yaw = driverYaw(f);
       p.dispose();
@@ -1380,7 +1381,27 @@ describe('preview look and seat wiring', () => {
     f.frame(22);
     expect(driverYaw(f)).toBeCloseTo(0, 9);
     f.frame(30);
+    expect(driverYaw(f)).toBeGreaterThan(0); // consumed; rendered between steps
+    f.frame(40);
     expect(driverYaw(f)).toBeCloseTo(50 * 0.002, 6);
+    p.dispose();
+  });
+
+  it('interpolates the rendered look between fixed steps, also on frames with zero steps', () => {
+    const f = fixture();
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
+    f.frame(20); // 2 steps, 3.33 ms left over
+    f.mouseMove(-100, 0);
+    f.frame(26); // 1 step consumes the mouse (0 -> 0.2 rad), alpha 0.12
+    const atStep = driverYaw(f);
+    expect(atStep).toBeCloseTo(0.2 * 0.12, 6);
+    f.frame(30); // 0 steps, alpha 0.6: the view still moves
+    const between = driverYaw(f);
+    expect(between).toBeGreaterThan(atStep);
+    expect(between).toBeCloseTo(0.2 * 0.6, 6);
+    f.frame(40); // 1 idle step: previous and current stepped poses agree
+    expect(driverYaw(f)).toBeCloseTo(0.2, 6);
+    expect(f.events.onFault).not.toHaveBeenCalled();
     p.dispose();
   });
 
@@ -1429,9 +1450,10 @@ describe('preview look and seat wiring', () => {
     f.frame(20);
     f.mouseMove(-400, 0);
     f.frame(30);
+    f.frame(40);
     expect(driverYaw(f)).toBeCloseTo(0.8, 6);
     p.recenterView();
-    let t = 30;
+    let t = 40;
     f.frame(t += 1000 / 60);
     expect(driverYaw(f)).toBeLessThan(0.8);
     expect(driverYaw(f)).toBeGreaterThan(0.2);
@@ -1473,6 +1495,19 @@ describe('preview look and seat wiring', () => {
     p.dispose();
   });
 
+  it('reports seat adjustment from the state after the latest step, not the frame start', () => {
+    const f = fixture();
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
+    f.frame(20);
+    expect(p.seatAdjustAllowed()).toBe(true);
+    f.key('KeyS'); f.key('Digit4'); f.key('Space');
+    f.frame();
+    expect(p.seatAdjustAllowed()).toBe(false);
+    p.pause();
+    expect(p.seatAdjustAllowed()).toBe(false);
+    p.dispose();
+  });
+
   it('re-renders the moved camera when the seat changes while paused', () => {
     const f = fixture();
     const p = startPreview(f.canvas, f.container, f.events, options(), f.deps);
@@ -1483,6 +1518,22 @@ describe('preview look and seat wiring', () => {
     p.setSeatOffset({ foreAftM: 0.1, heightM: 0 });
     expect(f.renderer.render.mock.calls.length).toBeGreaterThan(renders);
     expect(cameraAt().distanceTo(before)).toBeCloseTo(0.1, 3);
+    p.dispose();
+  });
+
+  it('refreshes the mirrors in the paused re-render after a seat change', () => {
+    const f = fixture();
+    const p = startPreview(f.canvas, f.container, f.events, options(), f.deps);
+    const mirrorCalls = () => f.renderer.render.mock.calls.filter(([, camera]) =>
+      camera.name.startsWith('mirror-'));
+    const mirrorsBefore = mirrorCalls().length;
+    const leftBefore = mirrorCalls().filter(([, camera]) =>
+      camera.name === 'mirror-left-camera').at(-1)![1].position.clone();
+    p.setSeatOffset({ foreAftM: 0.1, heightM: 0 });
+    expect(mirrorCalls().length).toBe(mirrorsBefore + 3);
+    const leftAfter = mirrorCalls().filter(([, camera]) =>
+      camera.name === 'mirror-left-camera').at(-1)![1].position;
+    expect(leftAfter.distanceTo(leftBefore)).toBeGreaterThan(0.01);
     p.dispose();
   });
 });

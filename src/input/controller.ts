@@ -93,6 +93,8 @@ export function createInputController(
   let look: LookInput = NEUTRAL_LOOK;
   let lookOrder: Glance[] = [];
   let recenterHeld: boolean | null = null;
+  /** Glance buttons held at the last reset; null until the first poll after it records them. */
+  let glanceBlocked: Set<Glance> | null = null;
   let mirrorAllowed = false;
   let mirrorSelected: MirrorId | null = null;
   let mirrorBlocked = false;
@@ -129,6 +131,7 @@ export function createInputController(
     look = NEUTRAL_LOOK;
     lookOrder = [];
     recenterHeld = null;
+    glanceBlocked = null;
   }
   const fail = (issue: MessageKey): InputPoll => {
     queue = [];
@@ -322,9 +325,14 @@ export function createInputController(
     gamepadEdges = {
       reverse: read.reverse, drive: read.drive, parkingBrake: read.parkingBrake,
     };
+    // Like recenter, a glance button already held at a reset stays inert until released.
+    if (glanceBlocked === null) glanceBlocked = new Set(read.glances);
+    for (const glance of glanceBlocked) if (!read.glances.includes(glance)) glanceBlocked.delete(glance);
+    const blocked = glanceBlocked;
+    const glances = read.glances.filter((glance) => !blocked.has(glance));
     // Latest pressed wins: keep still-held glances in press order, append new ones.
-    lookOrder = lookOrder.filter((glance) => read.glances.includes(glance));
-    for (const glance of read.glances) if (!lookOrder.includes(glance)) lookOrder.push(glance);
+    lookOrder = lookOrder.filter((glance) => glances.includes(glance));
+    for (const glance of glances) if (!lookOrder.includes(glance)) lookOrder.push(glance);
     look = {
       glance: lookOrder[lookOrder.length - 1] ?? null,
       recenter: recenterHeld === false && read.recenter,

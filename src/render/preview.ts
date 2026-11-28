@@ -25,7 +25,7 @@ import {
 } from '../world/colliders';
 import { createViews, type ViewSystem } from '../views/cameras';
 import type { SeatOffset } from '../views/head-pose';
-import { createLookController } from '../views/look';
+import { createLookController, type LookPose } from '../views/look';
 import {
   clampMirrorOffsets, stepMirrorOffsets, ZERO_MIRROR_OFFSETS, type MirrorOffsets,
 } from '../views/mirror-adjust';
@@ -272,6 +272,18 @@ export function createPreview(
     let currentSettings = prototype.settings;
     const seatRange = deriveVehicleAssetContract(profile).seatRangeM;
     const look = createLookController();
+    /**
+     * Stepped look poses before and after the latest fixed step. The look controller holds the
+     * authoritative stepped pose; only the render interpolates between these with `alpha`.
+     */
+    let lookPrevious: LookPose = look.pose();
+    let lookCurrent: LookPose = lookPrevious;
+    function renderedLookPose(alpha: number): LookPose {
+      return {
+        yawRad: lookPrevious.yawRad + (lookCurrent.yawRad - lookPrevious.yawRad) * alpha,
+        pitchRad: lookPrevious.pitchRad + (lookCurrent.pitchRad - lookPrevious.pitchRad) * alpha,
+      };
+    }
     let mouseDx = 0;
     let mouseDy = 0;
     /** Latched recenter request (button edge or recenterView), fed to exactly one fixed step. */
@@ -281,7 +293,6 @@ export function createPreview(
       return current.telemetry.totalSpeedMps < GEAR_SPEED_MPS &&
         (current.telemetry.gear === 'P' || current.telemetry.parkingBrake);
     }
-    let seatAllowed = carHeld();
     function applySettings(value: SettingsSaveV1) {
       views.setCamera(value.cameraMode);
       views.setOverhead(value.overhead);
@@ -377,9 +388,7 @@ export function createPreview(
       frameId = null;
       if (!running || disposed || faulted) return;
       try {
-        const held = carHeld();
-        input.setMirrorAdjustAllowed(held);
-        seatAllowed = held;
+        input.setMirrorAdjustAllowed(carHeld());
         const poll = input.poll();
         if (poll.issue) {
           pause(prototype.source === 'gamepad' ? 'controller' : 'focus');
@@ -406,10 +415,12 @@ export function createPreview(
           pending = [];
           // Mouse movement of the whole frame (and any recenter) goes to the first step only.
           const lookInput = input.lookInput();
+          lookPrevious = lookCurrent;
           look.step({
             mouseDx, mouseDy, stickX: lookInput.stickX, stickY: lookInput.stickY,
             glance: lookInput.glance, recenter: recenterPending,
           }, 1 / 120);
+          lookCurrent = look.pose();
           mouseDx = 0;
           mouseDy = 0;
           recenterPending = false;
@@ -524,7 +535,7 @@ export function createPreview(
         const frameRateCap = currentSettings.frameRateCap;
         if (frameRateCap === 'display' || time - lastRenderTime >= 1000 / frameRateCap) {
           sceneContent.apply({ previous, current, alpha });
-          views.setLookPose(look.pose());
+          views.setLookPose(renderedLookPose(alpha));
           views.render({ previous, current, alpha }, time);
           lastRenderTime = time;
           events.onFrame?.({
@@ -650,6 +661,8 @@ export function createPreview(
         pending = [];
         mouseDx = 0;
         mouseDy = 0;
+        // The clock restarts at alpha 0, so continue from the stepped pose the paused view shows.
+        lookPrevious = lookCurrent;
         clock.reset();
         lastTime = deps.now();
         lastRenderTime = Number.NEGATIVE_INFINITY;
@@ -722,11 +735,13 @@ export function createPreview(
           sceneContent.setSeatOffset(clamped);
           if (!running) {
             views.setLookPose(look.pose());
+            views.invalidateMirrors();
             views.render({ previous, current, alpha: 0 }, lastTime);
           }
         } catch (error) { fault('runtime-error', error); }
       },
-      seatAdjustAllowed: () => seatAllowed,
+      // Read from the latest stepped snapshot so it is never a frame behind the hold state.
+      seatAdjustAllowed: () => carHeld(),
       setMirrorOffsets(offsets) {
         if (disposed || faulted) return;
         try {

@@ -83,7 +83,7 @@ describe('look controller', () => {
     expect(c.pose().pitchRad).toBeCloseTo(0, 9);
   });
 
-  it('recenter eases to 0/0 and mouse cancels the ease', () => {
+  it('recenter eases to 0/0; mouse during the ease moves the target instead of cancelling', () => {
     const c = createLookController();
     c.step({ ...idle, mouseDx: -400, mouseDy: -100 }, DT);
     c.step({ ...idle, recenter: true }, DT);
@@ -95,10 +95,30 @@ describe('look controller', () => {
     d.step({ ...idle, mouseDx: -400 }, DT);
     d.step({ ...idle, recenter: true }, DT);
     run(d, {}, 10);
-    const mid = d.pose().yawRad;
     d.step({ ...idle, mouseDx: 10 }, DT);
+    expect(d.pose().yawRad).toBeGreaterThan(0.1); // still easing, not frozen or snapped
     run(d, {}, 240);
-    expect(d.pose().yawRad).toBeCloseTo(mid - 0.02, 6);
+    expect(d.pose().yawRad).toBeCloseTo(-0.02, 6);
+  });
+
+  it('a small mouse twitch after a glance release still lets the view return', () => {
+    const c = createLookController();
+    c.step({ ...idle, mouseDx: -(20 * DEG) / 0.002 }, DT);
+    run(c, { glance: 'left' }, 120);
+    run(c, {}, 2);
+    c.step({ ...idle, mouseDx: 1 }, DT);
+    run(c, {}, 240);
+    expect(Math.abs(c.pose().yawRad - (20 * DEG - 0.002)) / DEG).toBeLessThan(1);
+    expect(c.pose().yawRad).toBeCloseTo(20 * DEG - 0.002, 6);
+  });
+
+  it('stick input during an ease moves the free target, clamped to the limits', () => {
+    const c = createLookController();
+    c.step({ ...idle, mouseDx: -(100 * DEG) / 0.002 }, DT);
+    run(c, { glance: 'right' }, 120);
+    run(c, { stickX: -1 }, 60); // +90 deg wanted on a 100 deg free pose, clamped to 110
+    run(c, {}, 240);
+    expect(c.pose().yawRad).toBeCloseTo(110 * DEG, 6);
   });
 
   it('recenter during a held glance resets the free pose so the release eases to centre', () => {

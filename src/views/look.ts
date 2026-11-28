@@ -92,15 +92,9 @@ export function createLookController(): {
       } else if (glance === null) {
         const dYaw = -input.mouseDx * MOUSE_RAD_PER_PX - stickAxis(input.stickX) * STICK_YAW_RATE_RAD_S * dtS;
         const dPitch = -input.mouseDy * MOUSE_RAD_PER_PX - stickAxis(input.stickY) * STICK_PITCH_RATE_RAD_S * dtS;
+        // During an ease (glance release, recenter) input moves the spring's target, the free
+        // pose, so small mouse/stick noise never cancels the return.
         if (dYaw !== 0 || dPitch !== 0) {
-          if (!tracking) {
-            // New input cancels an ease back to the free pose and continues from where the view is.
-            freeYaw = yaw;
-            freePitch = pitch;
-            yawVel = 0;
-            pitchVel = 0;
-            tracking = true;
-          }
           freeYaw = clampYaw(freeYaw + dYaw);
           freePitch = clampPitch(freePitch + dPitch);
         }

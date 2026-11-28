@@ -762,6 +762,7 @@ describe('controller look input', () => {
 
   it('reports a held look button as a glance', () => {
     const { controller, world } = lookController();
+    controller.poll(); // released at the reset, so the next press counts
     world.pads = [padWith([8])];
     controller.poll();
     expect(controller.lookInput().glance).toBe('left');
@@ -772,6 +773,7 @@ describe('controller look input', () => {
 
   it('lets the latest pressed button win and falls back to a still-held one', () => {
     const { controller, world } = lookController();
+    controller.poll(); // released at the reset, so the next press counts
     world.pads = [padWith([8])];
     controller.poll();
     world.pads = [padWith([8, 10])];
@@ -802,6 +804,31 @@ describe('controller look input', () => {
     expect(controller.lookInput().recenter).toBe(true);
     controller.poll();
     expect(controller.lookInput().recenter).toBe(false);
+  });
+
+  it.each([
+    ['clear', (c: ReturnType<typeof lookController>['controller']) => c.clear()],
+    ['setCalibration', (c: ReturnType<typeof lookController>['controller']) => c.setCalibration(lookCal)],
+    ['selectSource', (c: ReturnType<typeof lookController>['controller']) => c.selectSource('gamepad', 0)],
+  ] as const)('does not glance from a button held across %s until it is released and pressed again', (_name, reset) => {
+    const { controller, world } = lookController();
+    controller.poll();
+    world.pads = [padWith([8])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('left');
+    reset(controller);
+    controller.poll();
+    expect(controller.lookInput().glance).toBeNull();
+    world.pads = [padWith([8, 9])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('right'); // a fresh press still works
+    world.pads = [padWith([9])];
+    controller.poll();
+    world.pads = [padWith([])];
+    controller.poll();
+    world.pads = [padWith([8])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('left');
   });
 
   it('passes raw stick axes through, treating missing and non-finite as 0', () => {

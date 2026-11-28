@@ -53,6 +53,8 @@ export interface ViewSystem {
   setLookPose(pose: LookPose): void;
   /** Moves the driver's seat from its nominal position (clamped by the head clearance box). */
   setSeatOffset(seat: SeatOffset): void;
+  /** Makes the next render capture the mirrors regardless of the 15 FPS mirror cap. */
+  invalidateMirrors(): void;
   /** Current vehicle-local eye point after seat, head lean and clearance clamp. */
   driverEyeLocal(): Vec3Data;
   setCamera(mode: CameraMode): void;
@@ -487,6 +489,9 @@ export function createViews(
         throw new RangeError('Seat offset must be finite');
       }
       seat = next;
+    },
+    invalidateMirrors() {
+      lastMirrorTime = Number.NEGATIVE_INFINITY;
     },
     driverEyeLocal() {
       return eyeLocal;

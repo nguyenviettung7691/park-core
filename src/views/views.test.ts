@@ -375,6 +375,21 @@ describe('camera and auxiliary views', () => {
       .every((call) => (call.layerMask & (1 << 1)) === 0)).toBe(true);
   });
 
+  it('captures the mirrors on the next render after invalidateMirrors, keeping the cap otherwise', () => {
+    const fixture = makeFixture();
+    fixtures.push(fixture);
+    const mirrorCount = () => fixture.renderer.calls.filter((call) =>
+      call.camera.name.startsWith('mirror-')).length;
+    fixture.draw(0);
+    fixture.draw(10);
+    expect(mirrorCount()).toBe(3);
+    fixture.views.invalidateMirrors();
+    fixture.draw(10);
+    expect(mirrorCount()).toBe(6);
+    fixture.draw(20);
+    expect(mirrorCount()).toBe(6);
+  });
+
   it('halves mirror and overhead render-target dimensions at low quality', () => {
     const fixture = makeFixture([], { mirrorQuality: 'low', overheadQuality: 'low' });
     fixtures.push(fixture);
