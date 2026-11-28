@@ -11,6 +11,7 @@ import { profiles } from '../vehicle/profiles.ts';
 const projectRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const generator = join(projectRoot, 'tools', 'generate-assets.mjs');
 const assetIds = ['sedan', 'cuv', 'roadside', 'garage'];
+const allIds = assetIds;
 const temporaryRoots = [];
 
 function generate(root) {
@@ -316,5 +317,84 @@ describe('phase 5 original GLB generator', () => {
       expect(names).toContain('Ceiling');
       expect(json.nodes.find((node) => node.name === 'Ceiling').children.length).toBeGreaterThan(0);
     }
+  });
+
+  describe('opt-in pedestrian template (issue #25)', () => {
+    const NODES = ['PedestrianBody', 'PedestrianHead', 'PedestrianLegL', 'PedestrianLegR',
+      'PedestrianArmL', 'PedestrianArmR'];
+    const inspect = (json) => {
+      const parents = new Map();
+      json.nodes.forEach((node, parent) => node.children?.forEach((child) => parents.set(child, parent)));
+      const isUnder = (index, rootIndex) => {
+        for (let at = index; at !== undefined; at = parents.get(at)) if (at === rootIndex) return true;
+        return false;
+      };
+      const worldTranslation = (index) => {
+        const sum = [0, 0, 0];
+        for (let at = index; at !== undefined; at = parents.get(at)) {
+          (json.nodes[at].translation ?? [0, 0, 0]).forEach((v, axis) => { sum[axis] += v; });
+        }
+        return sum;
+      };
+      const rootIndex = json.nodes.findIndex((node) => node.name === 'PedestrianTemplate');
+      let triangles = 0, minY = Infinity, maxY = -Infinity;
+      json.nodes.forEach((node, index) => {
+        if (node.mesh === undefined || !isUnder(index, rootIndex)) return;
+        for (const primitive of json.meshes[node.mesh].primitives) {
+          triangles += json.accessors[primitive.indices].count / 3;
+          const bounds = json.accessors[primitive.attributes.POSITION];
+          const offset = worldTranslation(index)[1];
+          minY = Math.min(minY, bounds.min[1] + offset);
+          maxY = Math.max(maxY, bounds.max[1] + offset);
+        }
+      });
+      return { rootIndex, triangles, minY, maxY, isUnder };
+    };
+
+    it.each(['roadside', 'garage'])('adds a 1.7 m, 300-800 triangle PedestrianTemplate to %s', (id) => {
+      const json = readGlbBytes(buildGlb(id, { pedestrians: true }));
+      const { rootIndex, triangles, minY, maxY, isUnder } = inspect(json);
+      expect(rootIndex).toBeGreaterThanOrEqual(0);
+      for (const name of NODES) {
+        const index = json.nodes.findIndex((node) => node.name === name);
+        expect(index, name).toBeGreaterThanOrEqual(0);
+        expect(json.nodes[index].mesh, name).toBeTypeOf('number');
+        expect(isUnder(index, rootIndex), name).toBe(true);
+      }
+      const pivot = (name) => json.nodes.find((node) => node.name === name).translation;
+      expect(pivot('PedestrianLegL')[1]).toBeCloseTo(0.8, 6);
+      expect(pivot('PedestrianLegR')[1]).toBeCloseTo(0.8, 6);
+      expect(pivot('PedestrianArmL')[1]).toBeCloseTo(1.4, 6);
+      expect(pivot('PedestrianArmR')[1]).toBeCloseTo(1.4, 6);
+      expect(triangles).toBeGreaterThanOrEqual(300);
+      expect(triangles).toBeLessThanOrEqual(800);
+      expect(minY).toBeCloseTo(0, 2);
+      expect(maxY - minY).toBeGreaterThan(1.65);
+      expect(maxY - minY).toBeLessThan(1.75);
+      const total = json.meshes.reduce((sum, mesh) => sum + mesh.primitives.reduce((part, primitive) =>
+        part + json.accessors[primitive.indices].count / 3, 0), 0);
+      expect(total).toBeLessThanOrEqual(30_000);
+    });
+
+    it.each(allIds)('keeps default generation free of the template for %s', (id) => {
+      const names = readGlbBytes(buildGlb(id)).nodes.map((node) => node.name);
+      expect(names).not.toContain('PedestrianTemplate');
+      expect(buildGlb(id, { pedestrians: false })).toEqual(buildGlb(id));
+    });
+
+    it.each(['sedan', 'cuv'])('does not change vehicle %s with the option on', (id) => {
+      expect(buildGlb(id, { pedestrians: true })).toEqual(buildGlb(id));
+    });
+
+    it('accepts --pedestrians on the CLI and writes the template', () => {
+      const root = mkdtempSync(join(tmpdir(), 'park-core-pedestrians-'));
+      temporaryRoots.push(root);
+      const result = spawnSync(process.execPath, [generator, '--pedestrians', '--out', root], { encoding: 'utf8' });
+      expect(result.status, result.stderr).toBe(0);
+      for (const id of ['roadside', 'garage']) {
+        const names = readGlb(assetPath(root, id)).nodes.map((node) => node.name);
+        expect(names).toContain('PedestrianTemplate');
+      }
+    });
   });
 });

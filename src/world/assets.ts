@@ -476,6 +476,9 @@ async function loadAsset(
     } else {
       if (id !== 'garage' && id !== 'roadside') throw failure(resource, 'invalid-contract');
       validateEnvironmentScene(root, id);
+      // Optional: the actors scene clones the pedestrian when present, else uses its placeholder.
+      const pedestrian = root.getObjectByName('PedestrianTemplate');
+      if (pedestrian) pedestrian.visible = false;
       requiredObject(root, 'Ground', resource);
       requiredObject(root, 'ParkingMarkings', resource);
       requiredObject(root, 'WallsAndCurbs', resource);

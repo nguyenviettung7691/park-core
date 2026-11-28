@@ -26,7 +26,7 @@ const vehicleNames = new Set(['sedan', 'cuv']);
 const allAssetIds = ['sedan', 'cuv', 'roadside', 'garage'];
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-function createGltf(assetId, dimensionsM, origin, lamps) {
+function createGltf(assetId, dimensionsM, origin, lamps, pedestrians) {
   const binaryParts = [];
   const nodes = [];
   const meshes = [];
@@ -120,7 +120,7 @@ function createGltf(assetId, dimensionsM, origin, lamps) {
   const root = addNode(`${assetId} asset`, null, { extras: { dimensionsM, origin } });
   const writer = { root, addNode, addMesh, box };
   if (vehicleNames.has(assetId)) authorVehicle(writer, assetId, authoringProfile(assetId, lamps));
-  else authorEnvironment(writer, assetId);
+  else authorEnvironment(writer, assetId, { pedestrians });
 
   const binary = Buffer.concat(binaryParts);
   const json = {
@@ -159,21 +159,23 @@ function createGltf(assetId, dimensionsM, origin, lamps) {
 
 /**
  * @param {'sedan' | 'cuv' | 'roadside' | 'garage'} assetId
- * @param {{ lamps?: boolean }} [options] lamps: author the exterior lit-lamp nodes (vehicles only)
+ * @param {{ lamps?: boolean, pedestrians?: boolean }} [options] lamps: author the exterior lit-lamp
+ *   nodes (vehicles only); pedestrians: add the hidden `PedestrianTemplate` (environments only; an
+ *   unapproved candidate, off by default so plain generation reproduces the public GLBs)
  * @returns {Uint8Array}
  */
-export function buildGlb(assetId, { lamps = EXTERIOR_LAMPS_DEFAULT } = {}) {
+export function buildGlb(assetId, { lamps = EXTERIOR_LAMPS_DEFAULT, pedestrians = false } = {}) {
   if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);
   const dimensionsM = vehicleNames.has(assetId)
     ? profiles[assetId].bodySizeM
     : assetId === 'garage' ? [30, 6, 30] : [50, 3, 32];
   return createGltf(assetId, dimensionsM,
-    vehicleNames.has(assetId) ? 'center-of-mass' : 'world-ground', lamps);
+    vehicleNames.has(assetId) ? 'center-of-mass' : 'world-ground', lamps, pedestrians);
 }
 
 /** @param {string} outputRoot
  * @param {readonly string[]} assetIds
- * @param {{ lamps?: boolean }} [options] */
+ * @param {{ lamps?: boolean, pedestrians?: boolean }} [options] */
 export function writeAssets(outputRoot, assetIds = allAssetIds, options = {}) {
   for (const assetId of assetIds) {
     if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);
@@ -187,7 +189,7 @@ export function writeAssets(outputRoot, assetIds = allAssetIds, options = {}) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { vehicle: { type: 'string' }, out: { type: 'string' } },
+    options: { vehicle: { type: 'string' }, out: { type: 'string' }, pedestrians: { type: 'boolean' } },
   });
   if (positionals.length > 1 || (positionals.length && values.out)) {
     throw new Error('Use one output root: --out <directory> or the legacy positional directory');
@@ -196,5 +198,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     throw new RangeError('--vehicle must be sedan or cuv');
   }
   const outputRoot = resolve(values.out ?? positionals[0] ?? projectRoot);
-  writeAssets(outputRoot, values.vehicle ? [values.vehicle] : allAssetIds);
+  writeAssets(outputRoot, values.vehicle ? [values.vehicle] : allAssetIds,
+    { pedestrians: values.pedestrians ?? false });
 }

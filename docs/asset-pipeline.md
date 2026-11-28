@@ -124,6 +124,17 @@ programmatic opt-out. Promoted vehicle GLB SHA-256: sedan
 `e409a8961635fad8fea9a355979baf46e9546d45f774177a0ea5a9ff624d9a5b`, CUV
 `7cb934d717dc51da168959d9a3876324bec6a8e21b48eed1917b39ea3133276b`.
 
+The pedestrian template (issue #25) is the current unapproved candidate. `node
+tools\generate-assets.mjs --pedestrians` (or `buildGlb(id, { pedestrians: true })`) adds a
+hidden `PedestrianTemplate` to both environment GLBs: a ~460-triangle, 1.7 m, flat-shaded
+adult built from six mesh nodes (`PedestrianBody`, `PedestrianHead`, `PedestrianLegL/R` and
+`PedestrianArmL/R`, legs pivoting at the hip y = 0.8 and arms at the shoulder y = 1.4,
+facing -Z) that match `createPlaceholderPedestrian` in `src\render\actors-scene.ts`.
+`assets.ts` hides it and does not require it; the actors scene clones it when present and
+otherwise keeps the placeholder. It is original artwork with no external reference. Default
+generation and `npm run assets:check` do not include it; promotion follows the steps above
+once the developer approves the candidate hash and captures.
+
 Use your session workspace in place of `C:\asset-work`. Choose an empty output
 directory for each review: existing evidence is never overwritten or mixed with
 another run. The review output must be outside the repository or inside

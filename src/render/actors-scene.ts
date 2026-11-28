@@ -91,7 +91,12 @@ export function createActorsScene(
       body = createParkedVehicle(vehicleTemplate, { id: definition.id, kind: 'obstacle',
         centerM: [0, halfHeight, 0], halfExtentsM: definition.halfExtentsM, yawRad: 0 });
     } else {
-      body = pedestrianTemplate ? cloneOwned(pedestrianTemplate) : createPlaceholderPedestrian();
+      if (pedestrianTemplate) {
+        body = cloneOwned(pedestrianTemplate);
+        body.visible = true; // the environment hides its template; the wrapper controls visibility
+      } else {
+        body = createPlaceholderPedestrian();
+      }
     }
     wrapper.add(body);
     group.add(wrapper);

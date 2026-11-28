@@ -37,6 +37,18 @@ describe('actors scene', () => {
     expect(box.max.y).toBeCloseTo(1.7);
   });
 
+  it('shows a pedestrian cloned from the environment\'s hidden template', () => {
+    const template = createPlaceholderPedestrian();
+    template.name = 'PedestrianTemplate';
+    template.visible = false; // assets.ts hides the template in the environment
+    const scene = createActorsScene([definitions[0]], vehicleTemplate(), template);
+    scene.update([pose('ped-1')], [pose('ped-1')], 1);
+    const clone = scene.group.children[0].children[0];
+    expect(clone.name).toBe('PedestrianTemplate');
+    expect(clone.visible).toBe(true);
+    expect(template.visible).toBe(false);
+  });
+
   it('is named lesson-actors and hides invisible poses', () => {
     const scene = build();
     expect(scene.group.name).toBe('lesson-actors');

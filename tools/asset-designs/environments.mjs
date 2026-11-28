@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: CC-BY-NC-4.0
 import { boxGeometry, facesGeometry, mergeGeometry, transformGeometry } from '../asset-geometry.mjs';
 import { palette } from './palette.mjs';
+import { authorPedestrianTemplate } from './pedestrian.mjs';
 
 // Wheel-stop cross-section (z, y), centred: 0.15 m deep, 0.11 m tall, 0.025 m top chamfers.
 const STOP_PROFILE = [[-0.075, -0.055], [0.075, -0.055], [0.075, 0.03], [0.05, 0.055],
@@ -26,7 +27,8 @@ function wheelStopGeometry() {
     stopPrism(x0, x1, color, [index === 0, index === bands.length - 1])));
 }
 
-export function authorEnvironment({ root, addNode, addMesh, box }, assetId) {
+/** @param {{ pedestrians?: boolean }} [options] pedestrians: add the hidden `PedestrianTemplate` (opt-in candidate) */
+export function authorEnvironment({ root, addNode, addMesh, box }, assetId, { pedestrians = false } = {}) {
   const garage = assetId === 'garage';
   const concrete = [0.57, 0.54, 0.51], dark = [0.22, 0.21, 0.24];
   const groundSize = garage ? [30, 0.24, 30] : [50, 0.24, 32];
@@ -141,4 +143,5 @@ export function authorEnvironment({ root, addNode, addMesh, box }, assetId) {
     batch('FenceDetails', walls, fence);
     batch('BackgroundFrontage', root, frontage);
   }
+  if (pedestrians) authorPedestrianTemplate({ addNode, addMesh }, root);
 }
