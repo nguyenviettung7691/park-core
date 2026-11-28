@@ -1,6 +1,8 @@
 import * as CANNON from 'cannon-es';
 import type { SensorBand, SensorId, SensorReading, SensorSnapshot, VehicleProfile } from '../contracts';
 import type { ColliderEdge } from '../world/colliders';
+import type { ActorBox } from '../world/actors';
+import { rayBoxDistance } from './actor-rays';
 
 const MAX_DISTANCE_M = 2.5;
 const RAY_DISTANCE_M = 2.55;
@@ -52,6 +54,7 @@ export function wheelStopBodies(edges: readonly ColliderEdge[]): ReadonlySet<CAN
 export function createSensors(
   world: CANNON.World, body: CANNON.Body, profile: VehicleProfile,
   ignored: ReadonlySet<CANNON.Body> = new Set(),
+  actorBoxes: () => readonly ActorBox[] = () => [],
 ): ProximitySensors {
   const halfWidth = profile.bodySizeM[0] / 2;
   const frontZ = -((1 - profile.frontWeightFraction) * profile.wheelbaseM +
@@ -88,6 +91,7 @@ export function createSensors(
       if (previousSnapshot && simulationTimeS - lastSampleS < SAMPLE_INTERVAL_S) {
         return previousSnapshot;
       }
+      const boxes = actorBoxes();
       const readings = rays.map(({ id, origin, direction, ray }): SensorReading => {
         const from = new CANNON.Vec3();
         const worldDirection = new CANNON.Vec3();
@@ -109,6 +113,14 @@ export function createSensors(
             obstacleId = String(result.body.id);
           },
         });
+        if (boxes.length > 0) {
+          const unit: readonly [number, number, number] =
+            [worldDirection.x / worldDirection.length(), 0, worldDirection.z / worldDirection.length()];
+          for (const box of boxes) {
+            const hit = rayBoxDistance([from.x, from.y, from.z], unit, RAY_DISTANCE_M, box);
+            if (hit !== null && hit < closestDistance) { closestDistance = hit; obstacleId = box.id; }
+          }
+        }
         const distanceM = obstacleId === null ? null : closestDistance;
         const band = classifyDistance(distanceM, bands.get(id) ?? 'clear');
         bands.set(id, band);

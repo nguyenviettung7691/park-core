@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { scenarios } from '../../src/lessons/scenarios';
 import { vi } from '../../src/messages';
 import { closeSettings, enterLessonMenu, openSettings } from '../ui-journey';
 import type {} from './fixtures/phase-8';
@@ -93,6 +94,59 @@ for (const vehicle of ['sedan', 'cuv']) {
     for (const shot of ['chase', 'driver-neutral', 'driver-right', 'curb-closeup'] as const) {
       await page.evaluate((value) => window.phase8Capture.setShot(value), shot);
       await page.screenshot({ path: info.outputPath(`roadside-curb-${vehicle}-${shot}.png`) });
+    }
+    expect(errors).toEqual([]);
+  });
+}
+
+const mirrorShot = { left: 'mirror-left', right: 'mirror-right', rear: 'mirror-rear' } as const;
+
+for (const stage of [1, 2, 3, 4, 5] as const) {
+  test(`stage ${stage} scripted actors render within the lesson budget at the check moment`, async ({ page }, info) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    const scenario = scenarios[stage];
+    // Triggers forced at 0: the check moment + 1 s is the latest entry's delay + 1 s.
+    const actorsAtS = Math.max(...scenario.actors.map((entry) => entry.delayS)) + 1;
+    await page.goto(`/tests/browser/fixtures/phase-8.html?vehicle=cuv&environment=${scenario.environmentId}` +
+      `&stage=${stage}&actorsAtS=${actorsAtS}`);
+    await expect.poll(() => page.evaluate(() => window.phase8Capture?.ready)).toBe(true);
+    const report = await page.evaluate(() => window.phase8Capture.report());
+    expect(report.actorsVisible).toBeGreaterThanOrEqual(1);
+    expect(report.actorsVisible).toBeLessThanOrEqual(2);
+    expect(report.actorsMaxVisible).toBeLessThanOrEqual(2);
+    for (const frame of report.frames) {
+      expect(frame.find((pass) => pass.name === 'main')!.calls).toBeLessThanOrEqual(140);
+    }
+    await info.attach('lesson-actors-report', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
+    // The overhead shows every actor, including ones still outside the mirror frusta.
+    const shots = ['driver-neutral', ...new Set(scenario.actors.map((entry) => mirrorShot[entry.side])),
+      'overhead'] as const;
+    for (const shot of shots) {
+      await page.evaluate((value) => window.phase8Capture.setShot(value), shot);
+      await info.attach(`stage-${stage}-actors-${shot}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+    }
+    expect(errors).toEqual([]);
+  });
+}
+
+// Busiest ambient moments: three actors on the roadside at 19 s, two in the garage at 22 s.
+for (const [environment, actorsAtS, busiest] of [['garage', 22, 2], ['roadside', 19, 3]] as const) {
+  test(`${environment} ambient actors stay within the sandbox budget`, async ({ page }, info) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(`/tests/browser/fixtures/phase-8.html?vehicle=cuv&environment=${environment}&actorsAtS=${actorsAtS}`);
+    await expect.poll(() => page.evaluate(() => window.phase8Capture?.ready)).toBe(true);
+    const report = await page.evaluate(() => window.phase8Capture.report());
+    expect(report.actorsVisible).toBe(busiest);
+    expect(report.actorsMaxVisible).toBeLessThanOrEqual(3);
+    for (const frame of report.frames) {
+      expect(frame.find((pass) => pass.name === 'main')!.calls).toBeLessThanOrEqual(100);
+    }
+    await info.attach('ambient-actors-report', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
+    for (const shot of ['driver-neutral', 'environment'] as const) {
+      await page.evaluate((value) => window.phase8Capture.setShot(value), shot);
+      await info.attach(`${environment}-ambient-${shot}.png`, { body: await page.screenshot(), contentType: 'image/png' });
     }
     expect(errors).toEqual([]);
   });

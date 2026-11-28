@@ -7,6 +7,7 @@ import {
 import type { ScenarioDefinition, SpawnPose, StageId, VehicleProfile } from '../../../src/contracts';
 import { scenarios } from '../../../src/lessons/scenarios';
 import { createAssetScene } from '../../../src/render/asset-scene';
+import { createActorsScene } from '../../../src/render/actors-scene';
 import { createLessonScene } from '../../../src/render/lesson-scene';
 import { profiles } from '../../../src/vehicle/profiles';
 import { deriveVehicleAssetContract, type MirrorId } from '../../../src/vehicle/asset-contract';
@@ -15,6 +16,10 @@ import { createVehicleRig } from '../../../src/vehicle/rig';
 import { TYRE_HALF_WIDTH_M } from '../../../src/vehicle/tyre-edges';
 import { createViews } from '../../../src/views/cameras';
 import { loadSceneAssets } from '../../../src/world/assets';
+import {
+  activeActorCount, actorPoses, createActorWorld, stepActors, type LearnerState,
+} from '../../../src/world/actors';
+import { scheduleForMode } from '../../../src/world/actor-schedules';
 import { wheelStops, wheelStopTouchingPose } from '../../../src/test/wheel-stop-pose';
 import {
   addColliderBoxes, collidersForEnvironment, collidersForScenario, createWorld, prototypeSpawn,
@@ -41,6 +46,10 @@ interface CaptureReport {
   wheelEdges: string[];
   renderer: string | null;
   mirrorVisibility: Record<MirrorId, number>;
+  /** Actors visible at `actorsAtS` (null without the parameter). */
+  actorsVisible: number | null;
+  /** Most actors visible on any step up to `actorsAtS` (null without the parameter). */
+  actorsMaxVisible: number | null;
 }
 /** Seat offset (metres, +Z rearward) and look pose (radians, +yaw left) for seat review shots. */
 export interface DriverPose { foreAftM: number; heightM: number; yawRad: number; pitchRad: number }
@@ -89,6 +98,10 @@ async function setup() {
   if (stage !== null && ![1, 2, 3, 4, 5].includes(stage)) throw new Error('Invalid capture stage');
   const atStop = params.get('pose') === 'stop-touch';
   const atCurb = params.get('pose') === 'curb-touch';
+  const actorsAtS = params.has('actorsAtS') ? Number(params.get('actorsAtS')) : null;
+  if (actorsAtS !== null && !(Number.isFinite(actorsAtS) && actorsAtS >= 0 && actorsAtS <= 300)) {
+    throw new Error('Invalid capture actorsAtS');
+  }
   const scenario = stage === null ? null : scenarios[stage as StageId];
   if (scenario && scenario.environmentId !== environment) throw new Error('Capture stage/environment mismatch');
   const assets = await loadSceneAssets(environment, vehicle, new AbortController().signal);
@@ -134,6 +147,34 @@ async function setup() {
       parkingDwellS: 0, acknowledgedStepIds: [] });
     assets.environment.getObjectByName('ParkingMarkings')!.visible = false;
   }
+  // Scripted actors: triggers forced at 0, stepped to actorsAtS with the learner held at the spawn.
+  let actorsVisible: number | null = null;
+  let actorsMaxVisible: number | null = null;
+  const actors = actorsAtS === null ? null : (() => {
+    const plan = scheduleForMode(scenario
+      ? { kind: 'lesson', scenario } : { kind: 'sandbox', environmentId: environment });
+    let state = createActorWorld(plan.schedule, plan.rules, { forceTriggersAtS: 0 });
+    const telemetry = current.telemetry;
+    const learnerAtSpawn = (): LearnerState => ({
+      footprint: vehicleFootprint(telemetry.pose, profiles[vehicle]),
+      headingRad: telemetry.headingRad, signedSpeedMps: telemetry.signedSpeedMps,
+      gear: telemetry.gear, parkingBrake: telemetry.parkingBrake, indicator: telemetry.indicator,
+    });
+    let maxVisible = activeActorCount(state);
+    const steps = Math.round(actorsAtS * 120);
+    for (let step = 0; step < steps; step++) {
+      state = stepActors(state, learnerAtSpawn(), 1 / 120).state;
+      maxVisible = Math.max(maxVisible, activeActorCount(state));
+    }
+    actorsVisible = activeActorCount(state);
+    actorsMaxVisible = maxVisible;
+    const scene = createActorsScene(plan.schedule.entries.map((entry) => entry.actor), assets.vehicle,
+      assets.environment.getObjectByName('PedestrianTemplate') ?? null);
+    const poses = actorPoses(state);
+    scene.update(poses, poses, 1);
+    content.scene.add(scene.group);
+    return scene;
+  })();
   const views = createViews(renderer, content.scene, assets, profiles[vehicle], boxes, {
     mirrorQuality: quality,
     overheadQuality: 'high',
@@ -193,7 +234,7 @@ async function setup() {
   const gpu: unknown = debug ? context.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null;
   const report: CaptureReport = { passes: frames[2]!, frames, parkedTriangles, wheelStopTriangles, wheelEdges,
     renderer: typeof gpu === 'string' ? gpu : null,
-    mirrorVisibility: { rear: 0, left: 0, right: 0 } };
+    mirrorVisibility: { rear: 0, left: 0, right: 0 }, actorsVisible, actorsMaxVisible };
   const contract = deriveVehicleAssetContract(profiles[vehicle]);
   function mirrorVisibility() {
     assets.vehicle.updateMatrixWorld(true);
@@ -359,6 +400,7 @@ async function setup() {
         shot === 'alignment' || shot === 'steering' || shot === 'lamps-rear' || shot === 'lamps-front';
       assets.environment.visible = !studio;
       if (lesson) lesson.group.visible = !studio;
+      if (actors) actors.group.visible = !studio;
       studioFloor.visible = studio;
       alignment.visible = shot === 'alignment';
       alignment.position.copy(assets.vehicle.position);
@@ -433,6 +475,7 @@ async function setup() {
   window.addEventListener('beforeunload', () => {
     views.dispose();
     lesson?.dispose();
+    actors?.dispose();
     studioFloor.geometry.dispose();
     studioFloor.material.dispose();
     occluder.geometry.dispose();

@@ -23,6 +23,12 @@ import {
   createWorld,
   prototypeSpawn,
 } from '../world/colliders';
+import {
+  activeActorCount, actorPoses, createActorWorld, sensorBoxes, stepActors,
+  type ActorPose, type ActorWorldState, type LearnerState,
+} from '../world/actors';
+import { scheduleForMode } from '../world/actor-schedules';
+import { vehicleFootprint } from '../vehicle/geometry';
 import { createViews, type ViewSystem } from '../views/cameras';
 import type { SeatOffset } from '../views/head-pose';
 import { createLookController, type LookPose } from '../views/look';
@@ -31,6 +37,7 @@ import {
 } from '../views/mirror-adjust';
 import { deriveVehicleAssetContract, type MirrorId } from '../vehicle/asset-contract';
 import type { RendererPort } from '../views/auxiliary';
+import { createActorsScene } from './actors-scene';
 import { createAssetScene, type AssetScene } from './asset-scene';
 import { fitDrawingBuffer } from './fit';
 import { createLessonScene, type LessonScene } from './lesson-scene';
@@ -81,6 +88,8 @@ export interface PreviewEvents {
   onAttemptOutcome?(summary: AttemptSummary): void;
   /** The driver finished adjusting (or reset) the mirrors of this vehicle. */
   onMirrorOffsets?(vehicleId: VehicleId, offsets: MirrorOffsets): void;
+  /** The number of visible scripted actors changed (starts at 0, not reported). */
+  onActors?(activeCount: number): void;
 }
 export type PreviewSessionMode =
   | { readonly kind: 'sandbox' }
@@ -225,13 +234,31 @@ export function createPreview(
     const profile = profiles[prototype.vehicleId];
     const rig = createVehicleRig(world, profile, colliderCleanup.idForBody,
       colliderCleanup.edges);
-    const sensors = createSensors(world, rig.body, profile, wheelStopBodies(colliderCleanup.edges));
     cleanups.push(() => rig.dispose());
     rig.settle(mode.kind === 'lesson'
       ? mode.scenario.spawnByVehicle[prototype.vehicleId]
       : prototypeSpawn(profile));
     let current = rig.snapshot(0);
     let previous = current;
+    // A fresh object every step: the actor world keeps the previous one for trigger edges.
+    const learnerOf = (telemetry: VehicleTelemetry): LearnerState => ({
+      footprint: vehicleFootprint(telemetry.pose, profile),
+      headingRad: telemetry.headingRad,
+      signedSpeedMps: telemetry.signedSpeedMps,
+      gear: telemetry.gear,
+      parkingBrake: telemetry.parkingBrake,
+      indicator: telemetry.indicator,
+    });
+    const actorPlan = scheduleForMode(mode.kind === 'lesson'
+      ? { kind: 'lesson', scenario: mode.scenario }
+      : { kind: 'sandbox', environmentId: prototype.environmentId });
+    let actorState: ActorWorldState = createActorWorld(actorPlan.schedule, actorPlan.rules);
+    let learner = learnerOf(current.telemetry);
+    let currentPoses: readonly ActorPose[] = actorPoses(actorState);
+    let previousPoses = currentPoses;
+    let activeActors = activeActorCount(actorState);
+    const sensors = createSensors(world, rig.body, profile, wheelStopBodies(colliderCleanup.edges),
+      () => sensorBoxes(actorState, learner));
     let simulationTime = 0;
     const sceneContent = createAssetScene(prototype.sceneAssets);
     content = sceneContent;
@@ -240,6 +267,14 @@ export function createPreview(
       ? createLessonScene(mode.scenario, prototype.sceneAssets.vehicle,
         prototype.sceneAssets.environment.getObjectByName('WheelStopTemplate') ?? null)
       : null;
+    const actorsScene = createActorsScene(
+      actorPlan.schedule.entries.map((entry) => entry.actor),
+      prototype.sceneAssets.vehicle,
+      prototype.sceneAssets.environment.getObjectByName('PedestrianTemplate') ?? null,
+    );
+    sceneContent.scene.add(actorsScene.group);
+    cleanups.push(() => actorsScene.dispose());
+    actorsScene.update(previousPoses, currentPoses, 0);
     const genericMarkings = prototype.sceneAssets.environment.getObjectByName('ParkingMarkings');
     if (genericMarkings) genericMarkings.visible = mode.kind === 'sandbox';
     let lessonRuntime: LessonRuntime | null = mode.kind === 'lesson'
@@ -433,6 +468,17 @@ export function createPreview(
           simulationTime += 1 / 120;
           previous = current;
           current = rig.snapshot(simulationTime);
+          learner = learnerOf(current.telemetry);
+          const actorStep = stepActors(actorState, learner, 1 / 120);
+          actorState = actorStep.state;
+          previousPoses = currentPoses;
+          currentPoses = actorPoses(actorState);
+          const nextActive = activeActorCount(actorState);
+          if (nextActive !== activeActors) {
+            activeActors = nextActive;
+            events.onActors?.(activeActors);
+            if (!running || disposed || faulted) return;
+          }
           const curbBegan = curbTouchBegan(previous.wheelEdges, current.wheelEdges);
           const inLesson = mode.kind === 'lesson' && lessonRuntime !== null && attemptTracker !== null;
           // In a lesson the warning waits for the failure check: a failure takes precedence.
@@ -453,7 +499,8 @@ export function createPreview(
               profile,
               current.telemetry,
               boxes,
-              pendingContactId,
+              // Actor contacts reach only lessons; in the sandbox they cause no failure.
+              pendingContactId ?? actorStep.contactId,
               current.wheelEdges,
               speedEnvelopeDwellS,
               1 / 120,
@@ -470,6 +517,7 @@ export function createPreview(
                 lessonRuntime,
                 1 / 120,
                 curbBegan,
+                actorStep.nearMissIds,
               );
               completeAttempt(finishAttempt(attemptTracker, {
                 outcome: 'fail',
@@ -519,6 +567,7 @@ export function createPreview(
               lessonRuntime,
               1 / 120,
               curbBegan,
+              actorStep.nearMissIds,
             );
             if (parking.complete) {
               completeAttempt(finishAttempt(attemptTracker, { outcome: 'success' }));
@@ -535,6 +584,7 @@ export function createPreview(
         const frameRateCap = currentSettings.frameRateCap;
         if (frameRateCap === 'display' || time - lastRenderTime >= 1000 / frameRateCap) {
           sceneContent.apply({ previous, current, alpha });
+          actorsScene.update(previousPoses, currentPoses, alpha);
           views.setLookPose(renderedLookPose(alpha));
           views.render({ previous, current, alpha }, time);
           lastRenderTime = time;

@@ -10,7 +10,7 @@ const snapshot: ObservationSnapshot = {
     steeringWheelRad: 0, frontWheelAnglesRad: [0, 0], gear: 'R', parkingBrake: false, indicator: 'right', brake: 0,
   },
   lesson: { stageId: 3, stepIndex: 2, stepDwellS: 0, parkingDwellS: 0, acknowledgedStepIds: [] },
-  outcome: null, paused: null, closed: false, telemetryAgeMs: 5, sinceStartMs: 4000, telemetryCount: 10, ignored: 0,
+  outcome: null, paused: null, closed: false, actorsActive: 0, telemetryAgeMs: 5, sinceStartMs: 4000, telemetryCount: 10, ignored: 0,
 };
 
 // Test double: the first poll answers, every later poll never settles (frozen browser).
@@ -68,3 +68,31 @@ for (const stageId of [3, 4] as const) {
     else expect(sent[3].brake).toBe(0);
   });
 }
+
+test('the drive phase waits on the brake while scripted actors are active', async () => {
+  const at = (bodyZ: number, speed: number, actorsActive: number): ObservationSnapshot => ({
+    ...snapshot,
+    session: { generation: 1, stageId: 3, vehicleId: 'sedan' },
+    telemetry: {
+      ...snapshot.telemetry!, vehicleId: 'sedan', gear: 'R', parkingBrake: false, indicator: 'off',
+      pose: { positionM: [2.9, 0.52, bodyZ], rotation: [0, 0, 0, 1] },
+      headingRad: 0, signedSpeedMps: -speed, totalSpeedMps: speed,
+    },
+    lesson: { stageId: 3, stepIndex: 3, stepDwellS: 0, parkingDwellS: 0, acknowledgedStepIds: [] },
+    actorsActive,
+  });
+  const frames = [at(-7, 0, 0), at(-6, 0.3, 1), at(-6, 0, 0)];
+  const sent: { steering: number; throttle: number; brake: number }[] = [];
+  let calls = 0;
+  const page = {
+    evaluate: (_fn: unknown, input: { steering: number; throttle: number; brake: number }) => {
+      sent.push(input);
+      return calls < frames.length ? Promise.resolve(frames[calls++]) : new Promise(() => undefined);
+    },
+    keyboard: { press: () => Promise.resolve() },
+  } as unknown as Page;
+  await driveLesson(page, 3, 'sedan', undefined, 100).catch(() => undefined);
+  expect(sent[2]).toEqual({ steering: 0, throttle: 0, brake: 1 });
+  expect(sent[3].throttle).toBeGreaterThan(0);
+  expect(sent[3].brake).toBe(0);
+});

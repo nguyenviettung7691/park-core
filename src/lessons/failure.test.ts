@@ -91,6 +91,13 @@ describe('lesson failure evaluation', () => {
     });
   });
 
+  it('an actor contact id is a collision', () => {
+    expect(update(scenarios[1], telemetry(), 'ped-stage2-crossing').event).toEqual({
+      reason: 'collision',
+      obstacleId: 'ped-stage2-crossing',
+    });
+  });
+
   it('does not treat ordinary wheel-ground support as chassis contact', () => {
     const result = update(scenarios[1], telemetry(), null);
 

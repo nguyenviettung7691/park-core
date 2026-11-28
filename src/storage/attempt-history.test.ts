@@ -16,6 +16,7 @@ const summary: AttemptSummary = {
   peakSpeedMps: 0,
   directionChanges: 0,
   curbTouches: 0,
+  nearMisses: [],
   acknowledgedStepIds: [],
   usedAids: [],
 };
@@ -69,7 +70,8 @@ async function seedRecord(factory: IDBFactory, record: unknown): Promise<void> {
 
 afterEach(() => vi.restoreAllMocks());
 
-const { curbTouches: _omitted, ...v1Summary } = summary;
+const { curbTouches: _omitted, nearMisses: _omittedMisses, ...v1Summary } = summary;
+const { nearMisses: _omittedNearMisses, ...preNearMissSummary } = summary;
 
 describe('completed attempt history', () => {
   it('migrates v1 records to v2 with curbTouches 0 and keeps them listed', async () => {
@@ -80,7 +82,39 @@ describe('completed attempt history', () => {
     const listed = await createStore(factory, ['new']).list();
 
     expect(listed.status).toBe('persistent');
-    expect(listed.records).toEqual([{ ...record, summary: { ...v1Summary, curbTouches: 0 } }]);
+    expect(listed.records).toEqual([{ ...record, summary: { ...v1Summary, curbTouches: 0, nearMisses: [] } }]);
+  });
+
+  it('loads a record without nearMisses as an empty list', async () => {
+    const factory = new IDBFactory();
+    await seedRecord(factory, { id: 'old', completedAt: '2026-11-04T10:00:00.000Z', summary: preNearMissSummary });
+    const listed = await createStore(factory, ['new']).list();
+    expect(listed.status).toBe('persistent');
+    expect(listed.records[0]?.summary.nearMisses).toEqual([]);
+  });
+
+  it('round-trips valid nearMisses', async () => {
+    const store = createStore(new IDBFactory(), ['misses']);
+    const nearMisses = [{ actorId: 'ped-stage2-crossing', atS: 1.5 }, { actorId: 'car-stage3-behind', atS: 4 }];
+    await store.append({ ...summary, nearMisses });
+    expect((await store.list()).records[0]?.summary.nearMisses).toEqual(nearMisses);
+  });
+
+  it.each([
+    [{ actorId: '', atS: 1 }],
+    [{ actorId: 'ped-a', atS: -1 }],
+    [{ actorId: 'ped-a', atS: Number.NaN }],
+    [{ actorId: 'ped-a' }],
+  ])('rejects the malformed near miss %j for that record only', async (bad) => {
+    const factory = new IDBFactory();
+    await seedRecord(factory, { id: 'good', completedAt: '2026-11-04T10:00:00.000Z', summary });
+    await seedRecord(factory, {
+      id: 'bad', completedAt: '2026-11-04T11:00:00.000Z',
+      summary: { ...summary, nearMisses: [bad] },
+    });
+    const listed = await createStore(factory, ['new']).list();
+    expect(listed.records.map((r) => r.id)).toEqual(['good']);
+    expect(listed.status).toBe('reset-required');
   });
 
   it('closes its connection on versionchange so a newer schema is not blocked', async () => {

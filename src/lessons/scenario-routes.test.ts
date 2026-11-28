@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { BodyPose, StageId, Vec3Data, VehicleProfile } from '../contracts';
 import type { ColliderBox } from '../runtime-types';
+import { activeActorCount, createActorWorld, stepActors, type LearnerState } from '../world/actors';
+import { scheduleForMode } from '../world/actor-schedules';
 import { TYRE_HALF_WIDTH_M } from '../vehicle/tyre-edges';
 import { profiles } from '../vehicle/profiles';
 import { rearAxleCenter, rotate, vehicleFootprint } from '../vehicle/geometry';
@@ -180,4 +182,74 @@ describe('geometric lesson route witnesses', () => {
       }
     }
   });
+});
+
+describe('timed actor witnesses', () => {
+  const DT = 1 / 120;
+  const SPEED_MPS = 1;
+
+  for (const stageId of stages) {
+    for (const profile of Object.values(profiles)) {
+      it(`stage ${stageId} vehicle ${profile.id}: waiting route completes without actor contact`,
+        () => {
+          const scenario = requireScenarioModule().scenarios[stageId];
+          const { schedule, rules } = scheduleForMode({ kind: 'lesson', scenario });
+          let world = createActorWorld(schedule, rules);
+          const route = routePoses(scenario, profile);
+          const triggers = scenario.actors.map((entry) => entry.trigger);
+          const wantsMotion = triggers.includes('moving-off') || triggers.includes('first-stop');
+          const gear = triggers.includes('reverse-selected') ? 'R'
+            : triggers.includes('moving-off') ? 'D' : 'P';
+          const indicator = triggers.includes('indicator-right') ? 'right' : 'off';
+          let contacts = 0;
+          let steps = 0;
+          const advance = (pose: BodyPose, signedSpeedMps: number, nextGear: 'R' | 'D' | 'P') => {
+            const learner: LearnerState = {
+              footprint: vehicleFootprint(pose, profile),
+              headingRad: 2 * Math.atan2(pose.rotation[1], pose.rotation[3]),
+              signedSpeedMps,
+              gear: nextGear,
+              parkingBrake: nextGear === 'P',
+              indicator,
+            };
+            const result = stepActors(world, learner, DT);
+            world = result.state;
+            steps += 1;
+            if (result.contactId !== null) contacts += 1;
+          };
+
+          // Triggers: motion for 0.5 s then a stop (first-stop lands at t = 1 s), then hold.
+          for (let i = 0; i < 0.5 / DT; i += 1) {
+            advance(route[0], wantsMotion ? SPEED_MPS : 0, gear);
+          }
+          // Triggers land by t = 1 s and entries appear after their delay, so the hold cannot end earlier.
+          const minHoldS = 1.1 + Math.max(...scenario.actors.map((entry) => entry.delayS));
+          while ((activeActorCount(world) > 0 || steps * DT < minHoldS)
+            && steps * DT <= 15 + DT) {
+            advance(route[0], 0, gear);
+          }
+          expect(activeActorCount(world), 'hold ends with no active actor').toBe(0);
+          expect(steps * DT, 'hold duration').toBeLessThanOrEqual(15);
+
+          const forwardSign = (index: number) => {
+            const a = route[Math.max(index - 1, 0)].positionM;
+            const b = route[Math.min(index + 1, route.length - 1)].positionM;
+            const f = rotate(route[index].rotation, [0, 0, -1]);
+            return Math.sign((b[0] - a[0]) * f[0] + (b[2] - a[2]) * f[2]) || 1;
+          };
+          let carry = 0;
+          route.forEach((pose, index) => {
+            if (index === 0) return;
+            const sign = forwardSign(index);
+            const stepsPerPose = routeSpacingM / (SPEED_MPS * DT) + carry;
+            const count = Math.max(1, Math.round(stepsPerPose));
+            carry = stepsPerPose - count;
+            for (let i = 0; i < count; i += 1) {
+              advance(pose, sign * SPEED_MPS, sign > 0 ? 'D' : 'R');
+            }
+          });
+          expect(contacts).toBe(0);
+        });
+    }
+  }
 });

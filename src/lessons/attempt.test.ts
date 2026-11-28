@@ -58,6 +58,7 @@ describe('attempt tracking', () => {
       peakSpeedMps: 0,
       directionChanges: 0,
       curbTouches: 0,
+      nearMisses: [],
       acknowledgedStepIds: [],
       usedAids: [],
       previousDirectionSign: 0,
@@ -137,6 +138,7 @@ describe('attempt tracking', () => {
       peakSpeedMps: 1.5,
       directionChanges: 0,
       curbTouches: 0,
+      nearMisses: [],
       acknowledgedStepIds: ['reverse'],
       usedAids: ['360'],
     });
@@ -174,5 +176,18 @@ describe('attempt tracking', () => {
     }
     expect(tracker.curbTouches).toBe(2);
     expect(finishAttempt(tracker, { outcome: 'success' }).curbTouches).toBe(2);
+  });
+
+  it('accumulates near misses with the post-step time and copies them into the summary', () => {
+    let tracker = createAttemptTracker(2, 'sedan');
+    tracker = updateAttemptTracker(tracker, telemetry(), null, [], [], runtime(), 0.5, false, ['ped-stage2-crossing']);
+    tracker = updateAttemptTracker(tracker, telemetry(), null, [], [], runtime(), 0.5);
+    tracker = updateAttemptTracker(tracker, telemetry(), null, [], [], runtime(), 0.5, false, ['car-stage3-behind', 'ped-x']);
+    expect(tracker.nearMisses).toEqual([
+      { actorId: 'ped-stage2-crossing', atS: 0.5 },
+      { actorId: 'car-stage3-behind', atS: 1.5 },
+      { actorId: 'ped-x', atS: 1.5 },
+    ]);
+    expect(finishAttempt(tracker, { outcome: 'success' }).nearMisses).toEqual(tracker.nearMisses);
   });
 });

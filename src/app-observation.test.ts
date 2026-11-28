@@ -10,7 +10,7 @@ it('dispatches a named window CustomEvent with detached detail', () => {
     summary: {
       stageId: 1, vehicleId: 'sedan', outcome: 'success', failureReason: null, obstacleId: null,
       elapsedSimulationS: 4, closestSampledClearanceM: null, peakSpeedMps: 0.5,
-      directionChanges: 0, curbTouches: 0, acknowledgedStepIds: ['a'], usedAids: [],
+      directionChanges: 0, curbTouches: 0, nearMisses: [], acknowledgedStepIds: ['a'], usedAids: [],
     },
   };
   const received: AppObservation[] = [];

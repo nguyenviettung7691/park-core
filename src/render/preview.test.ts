@@ -11,6 +11,7 @@ import { testGamepad } from '../test/gamepad';
 import { wheelStopTemplate } from '../test/vehicle-template';
 import type { SensorReading } from '../contracts';
 import { scenarios } from '../lessons/scenarios';
+import { pedestrian, turnBackDetour } from '../world/actor-schedules';
 import {
   createPreview as startPreview,
   PreviewStartError,
@@ -129,7 +130,7 @@ function fixture() {
   const events = {
     onPaused: vi.fn(), onFault: vi.fn(), onTelemetry: vi.fn(), onNotice: vi.fn(),
     onSensors: vi.fn(), onLessonUpdate: vi.fn(), onAttemptOutcome: vi.fn(),
-    onMirrorOffsets: vi.fn(),
+    onMirrorOffsets: vi.fn(), onActors: vi.fn(),
   };
   vi.spyOn(container, 'getBoundingClientRect').mockImplementation(() =>
     new DOMRect(0, 0, width, height));
@@ -1327,6 +1328,88 @@ describe('preview mirror adjustment while rolling', () => {
     f.key('KeyM');
     f.frame();
     expect(f.events.onNotice).toHaveBeenLastCalledWith('mirrorAdjustBlocked');
+    p.dispose();
+  });
+});
+
+describe('preview actors', () => {
+  type ActorPath = Parameters<typeof pedestrian>[1];
+  function actorLesson(id: string, path: ActorPath, cruiseMps?: number) {
+    const base = scenarios[1]!;
+    const actor = pedestrian(id, path, turnBackDetour);
+    return {
+      ...base,
+      actors: [{
+        actor: cruiseMps === undefined ? actor : { ...actor, cruiseMps },
+        trigger: 'moving-off' as const, delayS: 0, checkMoment: 'moving-off' as const,
+        side: 'left' as const,
+      }],
+    };
+  }
+  function startLesson(f: ReturnType<typeof fixture>, scenario: ReturnType<typeof actorLesson>) {
+    const config = { ...options(), environmentId: scenario.environmentId };
+    const p = startPreview(f.canvas, f.container, f.events, config, f.deps,
+      { kind: 'lesson', scenario });
+    f.canvas.focus();
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    return { p, scene: config.sceneAssets.vehicle.parent! };
+  }
+  /** Shifts to D, releases the parking brake and holds the throttle (fires 'moving-off'). */
+  function driveOff(f: ReturnType<typeof fixture>) {
+    f.key('KeyS'); f.key('Digit4'); f.key('Space');
+    f.frame(20);
+    f.key('KeyS', 'keyup'); f.key('KeyW');
+  }
+
+  it('a lesson actor contact fails the attempt as collision with the actor id', () => {
+    const f = fixture();
+    // Stationary pedestrian 2 m ahead of the stage 1 spawn (0, 9), heading -z.
+    const { p } = startLesson(f, actorLesson('ped-test-blocker', [[0, 4], [0, 3]], 0));
+    driveOff(f);
+    for (let i = 1; i <= 600 && !f.events.onAttemptOutcome.mock.calls.length; i++) {
+      f.frame(20 + i * 1000 / 120);
+    }
+
+    expect(f.events.onAttemptOutcome).toHaveBeenCalledOnce();
+    expect(f.events.onAttemptOutcome.mock.lastCall?.[0]).toMatchObject({
+      stageId: 1, outcome: 'fail', failureReason: 'collision', obstacleId: 'ped-test-blocker',
+    });
+    expect(f.frames.size).toBe(0);
+    p.dispose();
+  });
+
+  it('actors do not advance while paused', () => {
+    const f = fixture();
+    const { p, scene } = startLesson(f, actorLesson('ped-test-walker', [[-9, -12], [9, -12]]));
+    driveOff(f);
+    for (let i = 1; i <= 60; i++) f.frame(20 + i * 1000 / 120);
+    f.key('KeyW', 'keyup');
+    const walker = scene.getObjectByName('ped-test-walker')!;
+    expect(walker.visible).toBe(true);
+    const before = walker.position.x;
+    expect(before).toBeGreaterThan(-9);
+
+    p.pause();
+    f.setTime(60_000);
+    void p.requestPointerLock();
+    expect(p.resume()).toBe(true);
+    f.frame(60_000 + 1000 / 120);
+
+    // One fixed step of travel at 1.4 m/s, plus render interpolation within that step.
+    expect(Math.abs(walker.position.x - before)).toBeLessThanOrEqual(2 * 1.4 / 120 + 1e-9);
+    p.dispose();
+  });
+
+  it('onActors reports the active count', () => {
+    const f = fixture();
+    const { p } = startLesson(f, actorLesson('ped-test-short', [[-9, -12], [-8, -12]]));
+    f.frame(10);
+    expect(f.events.onActors).not.toHaveBeenCalled();
+    driveOff(f);
+    for (let i = 1; i <= 360; i++) f.frame(20 + i * 1000 / 120);
+
+    expect(f.events.onActors.mock.calls).toEqual([[1], [0]]);
     p.dispose();
   });
 });

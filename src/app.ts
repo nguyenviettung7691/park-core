@@ -459,6 +459,10 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
           observe(token, { kind: 'lesson', lesson: runtime });
           hud.updateLesson(runtime);
         },
+        onActors(active) {
+          if (disposed || token !== generation) return;
+          observe(token, { kind: 'actors', active });
+        },
         onAttemptOutcome(summary) {
           if (disposed || token !== generation || mode.kind !== 'lesson' || attemptRecorded) return;
           attemptRecorded = true;

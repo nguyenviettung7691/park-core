@@ -22,6 +22,13 @@ export const EXTERIOR_LAMPS_DEFAULT = true;
  */
 export const DRIVER_SEAT_DEFAULT = true;
 
+/**
+ * The hidden `PedestrianTemplate` (issue #25) was approved by the developer (2026-11-28, PR #29)
+ * and is authored into both environment GLBs by default; the former opt-in `--pedestrians` flag is
+ * retired. `buildGlb(id, { pedestrians: false })` remains as a programmatic opt-out.
+ */
+export const PEDESTRIAN_TEMPLATE_DEFAULT = true;
+
 function authoringProfile(id, { lamps, driverSeat }) {
   const profile = profiles[id];
   return { ...profile, clearanceM: profile.groundClearanceM,
@@ -127,7 +134,7 @@ function createGltf(assetId, dimensionsM, origin, options) {
   const root = addNode(`${assetId} asset`, null, { extras: { dimensionsM, origin } });
   const writer = { root, addNode, addMesh, box };
   if (vehicleNames.has(assetId)) authorVehicle(writer, assetId, authoringProfile(assetId, options));
-  else authorEnvironment(writer, assetId);
+  else authorEnvironment(writer, assetId, { pedestrians: options.pedestrians });
 
   const binary = Buffer.concat(binaryParts);
   const json = {
@@ -166,23 +173,24 @@ function createGltf(assetId, dimensionsM, origin, options) {
 
 /**
  * @param {'sedan' | 'cuv' | 'roadside' | 'garage'} assetId
- * @param {{ lamps?: boolean, driverSeat?: boolean }} [options] lamps: author the exterior lit-lamp
- *   nodes; driverSeat: author the movable DriverSeat node (vehicles only)
+ * @param {{ lamps?: boolean, driverSeat?: boolean, pedestrians?: boolean }} [options] lamps: author
+ *   the exterior lit-lamp nodes; driverSeat: author the movable DriverSeat node (vehicles only);
+ *   pedestrians: add the hidden `PedestrianTemplate` (environments only)
  * @returns {Uint8Array}
  */
-export function buildGlb(assetId,
-  { lamps = EXTERIOR_LAMPS_DEFAULT, driverSeat = DRIVER_SEAT_DEFAULT } = {}) {
+export function buildGlb(assetId, { lamps = EXTERIOR_LAMPS_DEFAULT, driverSeat = DRIVER_SEAT_DEFAULT,
+  pedestrians = PEDESTRIAN_TEMPLATE_DEFAULT } = {}) {
   if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);
   const dimensionsM = vehicleNames.has(assetId)
     ? profiles[assetId].bodySizeM
     : assetId === 'garage' ? [30, 6, 30] : [50, 3, 32];
   return createGltf(assetId, dimensionsM,
-    vehicleNames.has(assetId) ? 'center-of-mass' : 'world-ground', { lamps, driverSeat });
+    vehicleNames.has(assetId) ? 'center-of-mass' : 'world-ground', { lamps, driverSeat, pedestrians });
 }
 
 /** @param {string} outputRoot
  * @param {readonly string[]} assetIds
- * @param {{ lamps?: boolean, driverSeat?: boolean }} [options] */
+ * @param {{ lamps?: boolean, driverSeat?: boolean, pedestrians?: boolean }} [options] */
 export function writeAssets(outputRoot, assetIds = allAssetIds, options = {}) {
   for (const assetId of assetIds) {
     if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);
