@@ -8,7 +8,8 @@ import { profiles } from '../../src/vehicle/profiles';
 import { rearAxleCenter } from '../../src/vehicle/geometry';
 import { wheelStops, wheelStopTouchingPose } from '../../src/test/wheel-stop-pose';
 
-export const STAGE_DRIVE_DEADLINE_MS = 90_000;
+// 90 s plus 20 s for yielding to scripted actors (the driver brakes while any is active).
+export const STAGE_DRIVE_DEADLINE_MS = 110_000;
 const STALE_MS = 2000;
 const BROWSER_OPERATION_TIMEOUT_MS = 5000;
 
@@ -43,6 +44,8 @@ export interface ObservationSnapshot {
   readonly outcome: AttemptSummary | null;
   readonly paused: string | null;
   readonly closed: boolean;
+  /** Scripted actors currently visible (0 until the first 'actors' observation). */
+  readonly actorsActive: number;
   readonly telemetryAgeMs: number | null;
   readonly sinceStartMs: number;
   readonly telemetryCount: number;
@@ -72,6 +75,7 @@ export async function installObservationAndPad(page: Page): Promise<void> {
     let outcome: AttemptSummary | null = null;
     let paused: string | null = null;
     let closed = false;
+    let actorsActive = 0;
     let lastSeq = -1;
     let startedAt = performance.now();
     let telemetryCount = 0;
@@ -85,11 +89,13 @@ export async function installObservationAndPad(page: Page): Promise<void> {
       if (event.kind === 'session') {
         session = { generation: event.generation, stageId: event.stageId, vehicleId: event.vehicleId };
         telemetry = null; lesson = null; outcome = null; paused = null; closed = false;
+        actorsActive = 0;
         startedAt = performance.now();
         return;
       }
       if (event.kind === 'closed') {
         session = null; telemetry = null; lesson = null; outcome = null; paused = null; closed = true;
+        actorsActive = 0;
         return;
       }
       if (!session || event.generation !== session.generation) { ignored++; return; }
@@ -100,6 +106,7 @@ export async function installObservationAndPad(page: Page): Promise<void> {
           waiter?.();
           break;
         case 'lesson': lesson = event.lesson; break;
+        case 'actors': actorsActive = event.active; break;
         case 'outcome': outcome = event.summary; break;
         case 'paused': paused = event.reason; break;
         case 'resumed': paused = null; telemetry = null; startedAt = performance.now(); break;
@@ -122,7 +129,7 @@ export async function installObservationAndPad(page: Page): Promise<void> {
         waiter = null;
         const now = performance.now();
         return {
-          session, telemetry: telemetry?.t ?? null, lesson, outcome, paused, closed,
+          session, telemetry: telemetry?.t ?? null, lesson, outcome, paused, closed, actorsActive,
           telemetryAgeMs: telemetry ? now - telemetry.at : null,
           sinceStartMs: now - startedAt, telemetryCount, ignored,
         };
@@ -271,7 +278,7 @@ function describe(stageId: StageId, vehicleId: VehicleId, phase: string, snap: O
   return `stage=${stageId} vehicle=${vehicleId} phase=${phase} step=${step}` +
     (tel ? ` simT=${tel.simulationTimeS.toFixed(1)} pos=${fmt(tel.pose.positionM)} heading=${tel.headingRad.toFixed(3)}` +
       ` speed=${tel.signedSpeedMps.toFixed(2)} gear=${tel.gear} PB=${tel.parkingBrake} ind=${tel.indicator}` : ' telemetry=none') +
-    ` age=${snap.telemetryAgeMs?.toFixed(0) ?? 'n/a'}ms ${extra}`;
+    ` actors=${snap.actorsActive} age=${snap.telemetryAgeMs?.toFixed(0) ?? 'n/a'}ms ${extra}`;
 }
 
 export interface DriveResult {
@@ -304,7 +311,7 @@ export async function driveLesson(
     const remainingMs = STAGE_DRIVE_DEADLINE_MS - (Date.now() - started);
     const limitMs = Math.max(1, Math.min(operationTimeoutMs, remainingMs));
     return boundedStep(work, limitMs, () => new Error(
-      `${label} unresponsive after ${limitMs}ms (${remainingMs <= operationTimeoutMs ? '90s drive deadline' : 'browser operation limit'}); last known: ${lastKnown}`));
+      `${label} unresponsive after ${limitMs}ms (${remainingMs <= operationTimeoutMs ? `${STAGE_DRIVE_DEADLINE_MS / 1000}s drive deadline` : 'browser operation limit'}); last known: ${lastKnown}`));
   };
 
   const press = async (code: string, now: number, gapMs = 700) => {
@@ -318,7 +325,7 @@ export async function driveLesson(
     const snap = await bounded(page.evaluate((value) => window.parkObs.poll(value), input), 'observation poll');
     const where = (extra = '') => describe(stageId, vehicleId, phase, snap, extra);
     lastKnown = where();
-    if (now - started > STAGE_DRIVE_DEADLINE_MS) throw new Error(`90s drive deadline exceeded: ${where()}`);
+    if (now - started > STAGE_DRIVE_DEADLINE_MS) throw new Error(`${STAGE_DRIVE_DEADLINE_MS / 1000}s drive deadline exceeded: ${where()}`);
     if (snap.outcome) {
       if (snap.outcome.outcome === 'success') {
         await releasePad(page);
@@ -377,6 +384,11 @@ export async function driveLesson(
     // Calibrated axis: +1 steers right; normalisation removes a 2% dead zone.
     const axis = Math.abs(wheel) < 1e-3 ? 0 : Math.sign(wheel) * (STEERING_DEAD_ZONE + (1 - STEERING_DEAD_ZONE) * Math.abs(wheel));
 
+    if (phase === 'drive' && snap.actorsActive > 0) {
+      // Yield to scripted actors: wait on the brake until every one has gone.
+      input = { steering: 0, throttle: 0, brake: 1 };
+      continue;
+    }
     if (phase === 'drive') {
       if (near >= route.length - 3) phase = 'stop';
       else {
