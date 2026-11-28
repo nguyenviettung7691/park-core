@@ -1,4 +1,7 @@
+import type { VehicleId } from '../contracts';
 import { vi } from '../messages';
+import { deriveVehicleAssetContract } from '../vehicle/asset-contract';
+import { profiles } from '../vehicle/profiles';
 import type { ScreenAction, SettingsSaveV1 } from '../runtime-types';
 import {
   applyGraphicsPreset,
@@ -172,7 +175,11 @@ function mountGraphicsSettings(
 export function mountViewSettings(
   root: HTMLElement, initial: SettingsSaveV1, tab: 'view' | 'audio',
   onAction: (action: ScreenAction) => void,
-  options: { readonly graphicsDisabled?: boolean } = {},
+  options: {
+    readonly graphicsDisabled?: boolean;
+    /** Driver seat controls for this vehicle; adjustable only while the car is held. */
+    readonly seat?: { readonly vehicleId: VehicleId; readonly adjustable: boolean };
+  } = {},
 ): MountedViewSettings {
   let settings = { ...initial };
   const listeners = new AbortController();
@@ -208,6 +215,44 @@ export function mountViewSettings(
     input.addEventListener('change', () => update(input.valueAsNumber), { signal: listeners.signal });
     field(id, text, input);
   }
+  function seatControls(vehicleId: VehicleId, adjustable: boolean) {
+    const rangeM = deriveVehicleAssetContract(profiles[vehicleId]).seatRangeM;
+    const saved = settings.seatPositions?.[vehicleId];
+    const hint = document.createElement('p');
+    hint.id = 'seat-adjust-hint';
+    hint.textContent = vi.seatAdjustBlocked;
+    hint.setAttribute('role', 'status');
+    hint.hidden = adjustable;
+    function slider(id: string, text: string, [minM, maxM]: readonly [number, number], valueCm: number) {
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = String(Math.round(minM * 100)); input.max = String(Math.round(maxM * 100));
+      input.step = '1';
+      input.value = String(valueCm);
+      input.disabled = !adjustable;
+      input.setAttribute('aria-describedby', hint.id);
+      input.addEventListener('change', commit, { signal: listeners.signal });
+      field(id, text, input);
+      return input;
+    }
+    function commit() {
+      onAction({ type: 'set-seat', seat: {
+        foreAftCm: foreAft.valueAsNumber, heightCm: height.valueAsNumber,
+      } });
+    }
+    const foreAft = slider('seat-fore-aft', vi.seatForeAft, rangeM.foreAft, saved?.foreAftCm ?? 0);
+    const height = slider('seat-height', vi.seatHeight, rangeM.height, saved?.heightCm ?? 0);
+    const reset = document.createElement('button');
+    reset.type = 'button'; reset.id = 'reset-seat'; reset.textContent = vi.resetSeat;
+    reset.disabled = !adjustable;
+    reset.setAttribute('aria-describedby', hint.id);
+    reset.addEventListener('click', () => {
+      foreAft.value = '0';
+      height.value = '0';
+      onAction({ type: 'reset-seat' });
+    }, { signal: listeners.signal });
+    group.append(reset, hint);
+  }
   if (tab === 'view') {
     const camera = document.createElement('select');
     for (const [value, text] of [['driver', vi.driverCamera], ['chase', vi.chaseCamera]]) {
@@ -232,6 +277,7 @@ export function mountViewSettings(
     resetMirrors.type = 'button'; resetMirrors.id = 'reset-mirrors'; resetMirrors.textContent = vi.resetMirrors;
     resetMirrors.addEventListener('click', () => onAction({ type: 'reset-mirrors' }), { signal: listeners.signal });
     group.append(resetMirrors);
+    if (options.seat) seatControls(options.seat.vehicleId, options.seat.adjustable);
   } else {
     range('volume', vi.warningVolume, settings.volume, 0, 1, 0.05, (volume) => change({ volume }));
     checkbox('mute-audio', vi.muteWarnings, settings.muted, (muted) => change({ muted }));

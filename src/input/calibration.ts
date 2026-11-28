@@ -49,11 +49,27 @@ function validatePedal(value: unknown): PedalBinding | null {
   return { kind, index, released, pressed };
 }
 
+const LOOK_BUTTON_KEYS = ['lookLeftButton', 'lookRightButton', 'lookBackButton',
+  'recenterButton'] as const;
+type LookButtonKey = typeof LOOK_BUTTON_KEYS[number];
+
+function validateLookStick(
+  value: unknown, steeringAxis: number, throttle: PedalBinding, brake: PedalBinding,
+): { xAxis: number; yAxis: number } | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { xAxis, yAxis } = value as Record<string, unknown>;
+  if (!isIndex(xAxis) || !isIndex(yAxis) || xAxis === yAxis) return null;
+  const used = new Set<number>([steeringAxis]);
+  for (const pedal of [throttle, brake]) if (pedal.kind === 'axis') used.add(pedal.index);
+  if (used.has(xAxis) || used.has(yAxis)) return null;
+  return { xAxis, yAxis };
+}
+
 export function validateCalibration(value: unknown): ControllerCalibration | null {
   try {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
     const v = value as Record<string, unknown>;
-    if (v.version !== 1 || typeof v.deviceId !== 'string' || v.deviceId === '') return null;
+    if ((v.version !== 1 && v.version !== 2) || typeof v.deviceId !== 'string' || v.deviceId === '') return null;
     const { steeringAxis, steeringLeft, steeringCenter, steeringRight,
       reverseButton, driveButton } = v;
     if (!isIndex(steeringAxis) || !isIndex(reverseButton) || !isIndex(driveButton)) return null;
@@ -65,8 +81,19 @@ export function validateCalibration(value: unknown): ControllerCalibration | nul
     const throttle = validatePedal(v.throttle);
     const brake = validatePedal(v.brake);
     if (!throttle || !brake) return null;
-    return { version: 1, deviceId: v.deviceId, steeringAxis, steeringLeft, steeringCenter,
-      steeringRight, throttle, brake, reverseButton, driveButton };
+    const taken = new Set<number>([0, reverseButton, driveButton]);
+    for (const pedal of [throttle, brake]) if (pedal.kind === 'button') taken.add(pedal.index);
+    const look: { -readonly [K in LookButtonKey]?: number } = {};
+    for (const key of LOOK_BUTTON_KEYS) {
+      const button = v[key];
+      if (!isIndex(button) || taken.has(button)) continue;
+      taken.add(button);
+      look[key] = button;
+    }
+    const lookStick = validateLookStick(v.lookStick, steeringAxis, throttle, brake);
+    return { version: 2, deviceId: v.deviceId, steeringAxis, steeringLeft, steeringCenter,
+      steeringRight, throttle, brake, reverseButton, driveButton, ...look,
+      ...(lookStick ? { lookStick } : {}) };
   } catch {
     return null;
   }

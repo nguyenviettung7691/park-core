@@ -53,6 +53,8 @@ function fixture() {
       requestPointerLock: vi.fn(() => lockRequest()),
       updateSettings: vi.fn(),
       recenterView: vi.fn(),
+      setSeatOffset: vi.fn(),
+      seatAdjustAllowed: vi.fn(() => true),
       setMirrorOffsets: vi.fn(),
       resetMirrors: vi.fn(),
       selectSource: vi.fn(),
@@ -658,7 +660,7 @@ it('verifies a saved calibration only for the selected stable device ID', async 
   const f = fixture();
   const pad = testGamepad();
   const saved = {
-    version: 1, deviceId: 'wheel', steeringAxis: 0,
+    version: 2, deviceId: 'wheel', steeringAxis: 0,
     steeringLeft: -1, steeringCenter: 0, steeringRight: 1,
     throttle: { kind: 'button', index: 7, released: 0, pressed: 1 },
     brake: { kind: 'button', index: 6, released: 0, pressed: 1 },
@@ -1403,5 +1405,122 @@ it('restores another record warning, not the mirror prompt, when adjustment ends
   f.events.onNotice('mirrorAdjustDone');
   expect(status()).not.toContain('Đang chỉnh gương');
   expect(status()).toContain('Tiến trình');
+  app.dispose();
+});
+
+it('shows the look-button setup notice only for a saved calibration without look buttons', () => {
+  const base = {
+    deviceId: 'wheel', steeringAxis: 0,
+    steeringLeft: -1, steeringCenter: 0, steeringRight: 1,
+    throttle: { kind: 'button', index: 7, released: 0, pressed: 1 },
+    brake: { kind: 'button', index: 6, released: 0, pressed: 1 },
+    reverseButton: 4, driveButton: 5,
+  };
+  for (const [entry, shown] of [
+    [{ ...base, version: 1 }, true],
+    [{ ...base, version: 2, lookLeftButton: 1 }, false],
+  ] as const) {
+    const f = fixture();
+    const persistence = appPersistence({
+      calibration: JSON.stringify({ version: 1, entries: [entry] }),
+    });
+    const app = f.app({
+      createPersistence: () => persistence.store,
+      getGamepads: () => [testGamepad()],
+    });
+    const source = f.root.querySelector<HTMLSelectElement>('#input-source')!;
+    source.value = 'gamepad';
+    source.dispatchEvent(new Event('change'));
+    const device = f.root.querySelector<HTMLSelectElement>('#input-device')!;
+    device.value = '0';
+    device.dispatchEvent(new Event('change'));
+    const notice = f.root.querySelector('#look-buttons-notice');
+    if (shown) expect(notice?.textContent).toContain('nút liếc trái');
+    else expect(notice).toBeNull();
+    app.dispose();
+    document.body.replaceChildren();
+  }
+});
+
+function changeSlider(root: HTMLElement, id: string, value: string) {
+  const slider = root.querySelector<HTMLInputElement>(`#${id}`)!;
+  slider.value = value;
+  slider.dispatchEvent(new Event('change'));
+  return slider;
+}
+
+it('saves the driver seat per vehicle and applies it to the next preview', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  expect(f.previews[0]!.setSeatOffset).toHaveBeenLastCalledWith({ foreAftM: 0, heightM: 0 });
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
+  changeSlider(f.root, 'seat-fore-aft', '6');
+  changeSlider(f.root, 'seat-height', '2');
+  expect(vi.mocked(f.previews[0]!.setSeatOffset).mock.lastCall![0]).toEqual({
+    foreAftM: 0.06, heightM: 0.02,
+  });
+  let saved = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(saved.seatPositions).toEqual({ sedan: { foreAftCm: 6, heightCm: 2 } });
+
+  // Another view setting saved afterwards keeps the seat.
+  changeSlider(f.root, 'driver-fov', '70');
+  saved = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(saved.seatPositions).toEqual({ sedan: { foreAftCm: 6, heightCm: 2 } });
+
+  f.click('Quay lại');
+  f.click('Quay lại menu');
+  await f.openPreview();
+  expect(vi.mocked(f.previews[1]!.setSeatOffset).mock.lastCall![0]).toEqual({
+    foreAftM: 0.06, heightM: 0.02,
+  });
+
+  f.click('Quay lại menu');
+  const select = f.root.querySelector<HTMLSelectElement>('#vehicle')!;
+  select.value = 'cuv';
+  select.dispatchEvent(new Event('change'));
+  await f.openPreview();
+  expect(f.previews[2]!.setSeatOffset).toHaveBeenLastCalledWith({ foreAftM: 0, heightM: 0 });
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
+  // The CUV seat rises at most 3 cm, so its slider stops there.
+  expect(f.root.querySelector<HTMLInputElement>('#seat-height')!.max).toBe('3');
+  expect(f.root.querySelector<HTMLInputElement>('#seat-fore-aft')!.min).toBe('-10');
+  changeSlider(f.root, 'seat-height', '3');
+  f.root.querySelector<HTMLButtonElement>('#reset-seat')!.click();
+  expect(f.previews[2]!.setSeatOffset).toHaveBeenLastCalledWith({ foreAftM: 0, heightM: 0 });
+  saved = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(saved.seatPositions).toEqual({
+    sedan: { foreAftCm: 6, heightCm: 2 }, cuv: { foreAftCm: 0, heightCm: 0 },
+  });
+  app.dispose();
+});
+
+it('keeps the seat controls locked while the car is not held', async () => {
+  const f = fixture();
+  const app = f.app();
+  await f.openPreview();
+  vi.mocked(f.previews[0]!.seatAdjustAllowed).mockReturnValue(false);
+  f.events.onPaused('focus');
+  f.click('Cài đặt');
+  const foreAft = f.root.querySelector<HTMLInputElement>('#seat-fore-aft')!;
+  expect(foreAft.disabled).toBe(true);
+  expect(f.root.querySelector<HTMLButtonElement>('#reset-seat')!.disabled).toBe(true);
+  expect(f.root.querySelector<HTMLElement>('#seat-adjust-hint')!.hidden).toBe(false);
+  changeSlider(f.root, 'seat-fore-aft', '5');
+  expect(f.previews[0]!.setSeatOffset).toHaveBeenCalledTimes(1);
+  expect(localStorage.getItem('park-core.settings.v1') ?? '').not.toContain('seatPositions');
+  app.dispose();
+});
+
+it('saves the selected vehicle seat from the main menu settings', () => {
+  const f = fixture();
+  const app = f.app();
+  f.click('Cài đặt');
+  expect(f.root.querySelector<HTMLInputElement>('#seat-height')!.disabled).toBe(false);
+  changeSlider(f.root, 'seat-fore-aft', '-4');
+  const saved = JSON.parse(localStorage.getItem('park-core.settings.v1')!);
+  expect(saved.seatPositions).toEqual({ sedan: { foreAftCm: -4, heightCm: 0 } });
   app.dispose();
 });

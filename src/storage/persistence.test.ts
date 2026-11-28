@@ -27,7 +27,7 @@ const initialSettings: SettingsSaveV1 = {
 };
 
 const calibration: ControllerCalibration = {
-  version: 1,
+  version: 2,
   deviceId: 'wheel-a',
   steeringAxis: 0,
   steeringLeft: -1,
@@ -103,6 +103,23 @@ describe('versioned persistence', () => {
     expect(reopened.progress).toEqual(changedProgress);
     expect(reopened.settings).toEqual(changedSettings);
     expect(reopened.calibrations).toEqual([calibration]);
+  });
+
+  it('round-trips look fields and upgrades stored v1 entries', () => {
+    const storage = memoryStorage();
+    const look: ControllerCalibration = { ...calibration, lookLeftButton: 8, lookRightButton: 9,
+      lookBackButton: 10, recenterButton: 11, lookStick: { xAxis: 2, yAxis: 3 } };
+    const store = createPersistence(() => storage);
+    store.saveCalibrations([look]);
+    expect(JSON.parse(storage.getItem(keys.calibration)!)).toMatchObject({
+      version: 1, entries: [{ version: 2 }] });
+    const snapshot = createPersistence(() => storage).snapshot();
+    expect(snapshot.calibrations).toEqual([look]);
+    expect(store.snapshot().calibrations[0]!.lookStick).not.toBe(look.lookStick);
+
+    const legacy = memoryStorage();
+    legacy.setItem(keys.calibration, JSON.stringify({ version: 1, entries: [{ ...calibration, version: 1 }] }));
+    expect(createPersistence(() => legacy).snapshot().calibrations).toEqual([calibration]);
   });
 
   it.each([
@@ -241,6 +258,43 @@ describe('mirror adjustments in settings', () => {
     expect(snapshot.settings.mirrorAdjustments).toEqual({
       sedan: { rear: { yawDeg: 0, pitchDeg: 12 }, left: { yawDeg: -12, pitchDeg: 0 },
         right: { yawDeg: 0, pitchDeg: 0 } },
+    });
+  });
+});
+
+describe('seat positions in settings', () => {
+  it('round-trips seat positions per vehicle', () => {
+    const storage = memoryStorage();
+    const store = createPersistence(() => storage);
+    const seatPositions = { sedan: { foreAftCm: 4, heightCm: -2 }, cuv: { foreAftCm: -10, heightCm: 5 } };
+    expect(store.saveSettings({ ...initialSettings, seatPositions }).status).toBe('persistent');
+    expect(createPersistence(() => storage).snapshot().settings.seatPositions).toEqual(seatPositions);
+  });
+
+  it('loads older saves without seat positions unchanged', () => {
+    const storage = memoryStorage([[keys.settings, JSON.stringify(initialSettings)]]);
+    const snapshot = createPersistence(() => storage).snapshot();
+    expect(snapshot.settings).toEqual(initialSettings);
+    expect(snapshot.settings.seatPositions).toBeUndefined();
+  });
+
+  it('keeps the rest of the settings when seatPositions is malformed', () => {
+    for (const bad of ['broken', 7, [1], { sedan: 'x', truck: { foreAftCm: 1, heightCm: 1 } }]) {
+      const raw = { ...initialSettings, volume: 0.3, seatPositions: bad };
+      const storage = memoryStorage([[keys.settings, JSON.stringify(raw)]]);
+      const snapshot = createPersistence(() => storage).snapshot();
+      expect(snapshot.recordStatus.settings).toBe('persistent');
+      expect(snapshot.settings.volume).toBe(0.3);
+      expect(snapshot.settings.seatPositions).toBeUndefined();
+    }
+  });
+
+  it('clamps and rounds out-of-range entries', () => {
+    const raw = { ...initialSettings, seatPositions: { sedan: { foreAftCm: 99, heightCm: -99 },
+      cuv: { foreAftCm: 'x', heightCm: 2.4 } } };
+    const storage = memoryStorage([[keys.settings, JSON.stringify(raw)]]);
+    expect(createPersistence(() => storage).snapshot().settings.seatPositions).toEqual({
+      sedan: { foreAftCm: 10, heightCm: -3 }, cuv: { foreAftCm: 0, heightCm: 2 },
     });
   });
 });

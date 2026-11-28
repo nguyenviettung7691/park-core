@@ -272,21 +272,27 @@ describe('camera and auxiliary views', () => {
     content.dispose();
   });
 
-  it('bounds driver FOV and mouse look, then recenters', () => {
+  it('bounds driver FOV and look pose, then recenters', () => {
     const fixture = makeFixture();
     fixtures.push(fixture);
     fixture.views.setCamera('driver');
     fixture.views.setFov(100);
-    fixture.views.look(100_000, 100_000);
+    fixture.views.setLookPose({ yawRad: -10, pitchRad: -10 });
     fixture.draw(0);
 
     const camera = lastCameraCall(fixture.renderer, 'driver-camera').camera as PerspectiveCamera;
     const direction = camera.getWorldDirection(new Vector3());
     expect(camera.fov).toBe(80);
-    expect(Math.atan2(-direction.x, -direction.z)).toBeCloseTo(-110 * Math.PI / 180, 2);
+    expect(Math.atan2(-direction.x, -direction.z)).toBeCloseTo(-160 * Math.PI / 180, 2);
     expect(Math.asin(direction.y)).toBeCloseTo(-45 * Math.PI / 180, 2);
 
-    fixture.views.recenter();
+    fixture.views.setLookPose({ yawRad: 10, pitchRad: 10 });
+    fixture.draw(8);
+    const left = lastCameraCall(fixture.renderer, 'driver-camera').camera.getWorldDirection(new Vector3());
+    expect(Math.atan2(-left.x, -left.z)).toBeCloseTo(110 * Math.PI / 180, 2);
+    expect(Math.asin(left.y)).toBeCloseTo(35 * Math.PI / 180, 2);
+
+    fixture.views.setLookPose({ yawRad: 0, pitchRad: 0 });
     fixture.views.setFov(40);
     fixture.draw(16);
     const centered = lastCameraCall(fixture.renderer, 'driver-camera').camera as PerspectiveCamera;
@@ -325,7 +331,7 @@ describe('camera and auxiliary views', () => {
     expect(camera.position.distanceTo(new Vector3(0, 0.52, 0))).toBeCloseTo(desiredArm, 1);
   });
 
-  it('uses mouse-look to orbit the chase camera and resets its orbit on recenter', () => {
+  it('orbits the chase camera with the look pose and resets it at zero pose', () => {
     const fixture = makeFixture();
     fixtures.push(fixture);
     fixture.views.setCamera('chase');
@@ -333,11 +339,11 @@ describe('camera and auxiliary views', () => {
     const camera = lastCameraCall(fixture.renderer, 'chase-camera').camera as PerspectiveCamera;
     const initialPosition = camera.position.clone();
 
-    fixture.views.look(200, 100);
+    fixture.views.setLookPose({ yawRad: -0.4, pitchRad: -0.2 });
     fixture.draw(16);
     expect(camera.position.distanceTo(initialPosition)).toBeGreaterThan(0.1);
     const orbitedPosition = camera.position.clone();
-    fixture.views.recenter();
+    fixture.views.setLookPose({ yawRad: 0, pitchRad: 0 });
     fixture.draw(32);
     expect(camera.position.distanceTo(orbitedPosition)).toBeGreaterThan(0.1);
   });
@@ -367,6 +373,21 @@ describe('camera and auxiliary views', () => {
     expect(overhead.every((call) => (call.layerMask & (1 << 2)) === 0)).toBe(true);
     expect(calls.filter((call) => call.camera.name.startsWith('mirror-'))
       .every((call) => (call.layerMask & (1 << 1)) === 0)).toBe(true);
+  });
+
+  it('captures the mirrors on the next render after invalidateMirrors, keeping the cap otherwise', () => {
+    const fixture = makeFixture();
+    fixtures.push(fixture);
+    const mirrorCount = () => fixture.renderer.calls.filter((call) =>
+      call.camera.name.startsWith('mirror-')).length;
+    fixture.draw(0);
+    fixture.draw(10);
+    expect(mirrorCount()).toBe(3);
+    fixture.views.invalidateMirrors();
+    fixture.draw(10);
+    expect(mirrorCount()).toBe(6);
+    fixture.draw(20);
+    expect(mirrorCount()).toBe(6);
   });
 
   it('halves mirror and overhead render-target dimensions at low quality', () => {
@@ -401,7 +422,7 @@ describe('camera and auxiliary views', () => {
     inView('rear');
     inView('left');
     // The passenger mirror sits ~59° right of the eye: a glance (30° look) brings it in.
-    fixture.views.look(30 * Math.PI / 180 / 0.002, 0);
+    fixture.views.setLookPose({ yawRad: -30 * Math.PI / 180, pitchRad: 0 });
     fixture.draw(100);
     inView('right');
     const eye = new Vector3(...fixture.content.assets.anchors.driverEyeLocalM);
@@ -412,6 +433,77 @@ describe('camera and auxiliary views', () => {
       expect(eye.clone().sub(surface.position).dot(normal), id).toBeGreaterThan(0);
       expect(housing.position.clone().sub(surface.position).dot(normal), id).toBeLessThan(-0.01);
     }
+  });
+
+  it('keeps the mirror frustum rule at both seat extremes', () => {
+    const fixture = makeFixture();
+    fixtures.push(fixture);
+    fixture.views.resize(1280, 720, 1);
+    const centre = (id: 'rear' | 'left' | 'right') => {
+      const camera = lastCameraCall(fixture.renderer, 'driver-camera').camera as PerspectiveCamera;
+      const surface = fixture.content.scene.getObjectByName(`mirror-surface-${id}`) as Mesh;
+      return surface.getWorldPosition(new Vector3()).project(camera);
+    };
+    let time = 0;
+    for (const seat of [
+      { foreAftM: -0.1, heightM: -0.03 }, { foreAftM: 0.1, heightM: 0.05 },
+      { foreAftM: -0.1, heightM: 0.05 }, { foreAftM: 0.1, heightM: -0.03 },
+    ]) {
+      fixture.views.setSeatOffset(seat);
+      fixture.views.setLookPose({ yawRad: 0, pitchRad: 0 });
+      fixture.draw(time += 100);
+      for (const id of ['rear', 'left'] as const) {
+        const c = centre(id);
+        expect(Math.abs(c.x), `${id} ${JSON.stringify(seat)}`).toBeLessThan(1);
+        expect(Math.abs(c.y), `${id} ${JSON.stringify(seat)}`).toBeLessThan(1);
+      }
+      fixture.views.setLookPose({ yawRad: -30 * Math.PI / 180, pitchRad: 0 });
+      fixture.draw(time += 100);
+      const right = centre('right');
+      expect(Math.abs(right.x), JSON.stringify(seat)).toBeLessThan(1);
+      expect(Math.abs(right.y), JSON.stringify(seat)).toBeLessThan(1);
+    }
+  });
+
+  it('moves the eye with the seat offset', () => {
+    const fixture = makeFixture();
+    fixtures.push(fixture);
+    fixture.draw(0);
+    const camera = lastCameraCall(fixture.renderer, 'driver-camera').camera as PerspectiveCamera;
+    const before = camera.position.clone();
+    fixture.views.setSeatOffset({ foreAftM: 0.1, heightM: 0.05 });
+    fixture.draw(16);
+    const delta = camera.position.clone().sub(before);
+    expect(delta.x).toBeCloseTo(0, 6);
+    expect(delta.y).toBeCloseTo(0.05, 6);
+    expect(delta.z).toBeCloseTo(0.1, 6);
+    expect(fixture.views.driverEyeLocal()[2]).toBeCloseTo(before.z + 0.1, 6);
+  });
+
+  it('translates the eye for a shoulder check', () => {
+    const fixture = makeFixture();
+    fixtures.push(fixture);
+    fixture.draw(0);
+    const camera = lastCameraCall(fixture.renderer, 'driver-camera').camera as PerspectiveCamera;
+    const before = camera.position.clone();
+    fixture.views.setLookPose({ yawRad: 110 * Math.PI / 180, pitchRad: 0 });
+    fixture.draw(16);
+    const delta = camera.position.clone().sub(before);
+    expect(delta.x).toBeCloseTo(-0.06, 6);
+    expect(delta.y).toBeCloseTo(0, 6);
+    expect(delta.z).toBeCloseTo(-0.05, 6);
+  });
+
+  it('shifts mirror cameras with head parallax and keeps three mirror passes per tick', () => {
+    const fixture = makeFixture();
+    fixtures.push(fixture);
+    fixture.draw(0);
+    const before = lastCameraCall(fixture.renderer, 'mirror-left-camera').camera.position.clone();
+    fixture.views.setLookPose({ yawRad: 110 * Math.PI / 180, pitchRad: 0 });
+    fixture.draw(100);
+    const after = lastCameraCall(fixture.renderer, 'mirror-left-camera').camera.position;
+    expect(after.distanceTo(before)).toBeGreaterThan(0.05);
+    expect(fixture.renderer.calls.filter((call) => call.camera.name.startsWith('mirror-'))).toHaveLength(6);
   });
 
   it('sizes mirror targets from glass aspect', () => {

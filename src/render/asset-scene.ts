@@ -1,6 +1,7 @@
 import { Color, Quaternion, Scene, Vector3, type Object3D } from 'three';
 import type { BodyPose, VehicleTelemetry } from '../contracts';
 import type { RenderFrame, SceneAssets } from '../runtime-types';
+import type { SeatOffset } from '../views/head-pose';
 
 export const SPEEDOMETER_MAX_KMH = 120;
 const SPEEDOMETER_ZERO_RAD = 120 * Math.PI / 180;
@@ -51,6 +52,7 @@ function cockpitControls(vehicle: Object3D) {
     reverseLit: find('ReverseLampsLit'),
     leftLit: find('TurnSignalLeftLit'),
     rightLit: find('TurnSignalRightLit'),
+    driverSeat: find('DriverSeat'),
   };
   for (const lamp of [controls.left, controls.right, controls.parking, controls.brakeLit,
     controls.reverseLit, controls.leftLit, controls.rightLit]) if (lamp) lamp.visible = false;
@@ -60,6 +62,8 @@ function cockpitControls(vehicle: Object3D) {
 export interface AssetScene {
   readonly scene: Scene;
   apply(frame: RenderFrame): void;
+  /** Moves the optional `DriverSeat` to its authored position plus the seat offset. */
+  setSeatOffset(seat: SeatOffset): void;
   dispose(): void;
 }
 
@@ -73,6 +77,7 @@ export function createAssetScene(assets: SceneAssets): AssetScene {
   const currentRotation = new Quaternion();
   const parentRotation = new Quaternion();
   const controls = cockpitControls(assets.vehicle);
+  const authoredSeat = controls.driverSeat?.position.clone() ?? null;
   let disposed = false;
 
   function interpolate(node: { position: Vector3; quaternion: Quaternion },
@@ -121,6 +126,12 @@ export function createAssetScene(assets: SceneAssets): AssetScene {
       controls.brake?.rotation.set(PEDAL_TRAVEL_RAD * mix(was.brake, now.brake), 0, 0);
       controls.accelerator?.rotation.set(
         PEDAL_TRAVEL_RAD * mix(was.throttle ?? 0, now.throttle ?? 0), 0, 0);
+    },
+    setSeatOffset(seat) {
+      if (!controls.driverSeat || !authoredSeat) return;
+      // Seat +Z is rearward and height adds to Y, in the seat's (unrotated) parent frame.
+      controls.driverSeat.position.set(authoredSeat.x, authoredSeat.y + seat.heightM,
+        authoredSeat.z + seat.foreAftM);
     },
     dispose() {
       if (disposed) return;

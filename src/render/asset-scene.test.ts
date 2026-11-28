@@ -44,6 +44,7 @@ it('composes loaded groups, converts wheel world poses into vehicle space, and r
     wheelNodes: wheels,
     anchors: {
       driverEyeLocalM: [0, 1, 0],
+      headClearance: { minM: [-1, 0, -1], maxM: [1, 2, 1] },
       mirrors: {
         rear: { positionM: [0, 1, 0], rotation: [0, 0, 0, 1], halfSizeM: [0.1, 0.05], convexity: 1 },
         left: { positionM: [0, 1, 0], rotation: [0, 0, 0, 1], halfSizeM: [0.1, 0.05], convexity: 1 },
@@ -91,7 +92,7 @@ function cockpitAssets() {
   vehicle.add(...wheels);
   const pose = { positionM: [0, 1, 0], rotation: [0, 0, 0, 1], halfSizeM: [0.1, 0.05], convexity: 1 } as const;
   const assets: SceneAssets = { environment: new Group(), vehicle, wheelNodes: wheels,
-    anchors: { driverEyeLocalM: [0, 1, 0], mirrors: { rear: pose, left: pose, right: pose } },
+    anchors: { driverEyeLocalM: [0, 1, 0], headClearance: { minM: [-1, 0, -1], maxM: [1, 2, 1] }, mirrors: { rear: pose, left: pose, right: pose } },
     dispose: () => {} };
   return { assets, node: (name: string) => vehicle.getObjectByName(name)! };
 }
@@ -180,4 +181,27 @@ it('toggles the exterior lit lamp nodes from current telemetry and tolerates the
   const bare = cockpitAssets();
   const bareScene = createAssetScene(bare.assets);
   expect(() => bareScene.apply({ previous: frame, current: frame, alpha: 1 })).not.toThrow();
+});
+
+it('places DriverSeat at its authored position plus the seat offset and tolerates its absence', () => {
+  const { assets, node } = cockpitAssets();
+  const seat = new Object3D();
+  seat.name = 'DriverSeat';
+  seat.position.set(-0.31, 0.5, -0.6);
+  assets.vehicle.add(seat);
+  const sceneContent = createAssetScene(assets);
+  sceneContent.setSeatOffset({ foreAftM: 0.1, heightM: 0.05 });
+  expect(node('DriverSeat').position.x).toBeCloseTo(-0.31, 9);
+  expect(node('DriverSeat').position.y).toBeCloseTo(0.55, 9);
+  expect(node('DriverSeat').position.z).toBeCloseTo(-0.5, 9);
+  // Offsets are absolute from the authored pose, not cumulative.
+  sceneContent.setSeatOffset({ foreAftM: -0.1, heightM: -0.03 });
+  expect(node('DriverSeat').position.toArray().map((v) => Number(v.toFixed(9)))).toEqual([-0.31, 0.47, -0.7]);
+  const frame = telemetryFrame({ steeringWheelRad: 1 });
+  sceneContent.apply({ previous: frame, current: frame, alpha: 1 });
+  expect(node('DriverSeat').position.y).toBeCloseTo(0.47, 9);
+  sceneContent.setSeatOffset({ foreAftM: 0, heightM: 0 });
+  expect(node('DriverSeat').position.toArray()).toEqual([-0.31, 0.5, -0.6]);
+  const bare = createAssetScene(cockpitAssets().assets);
+  expect(() => bare.setSeatOffset({ foreAftM: 0.1, heightM: 0.05 })).not.toThrow();
 });

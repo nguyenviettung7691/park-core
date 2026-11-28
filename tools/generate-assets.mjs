@@ -16,24 +16,31 @@ import { deriveVehicleAssetContract, MIRROR_HOUSING } from '../src/vehicle/asset
 export const EXTERIOR_LAMPS_DEFAULT = true;
 
 /**
+ * The movable `DriverSeat` node (issue #23) was approved by the developer (2026-11-28, PR #28) and
+ * is authored by default, so default generation reproduces the promoted public vehicle GLBs.
+ * `buildGlb(id, { driverSeat: false })` remains as a programmatic opt-out.
+ */
+export const DRIVER_SEAT_DEFAULT = true;
+
+/**
  * The hidden `PedestrianTemplate` (issue #25) was approved by the developer (2026-11-28, PR #29)
  * and is authored into both environment GLBs by default; the former opt-in `--pedestrians` flag is
  * retired. `buildGlb(id, { pedestrians: false })` remains as a programmatic opt-out.
  */
 export const PEDESTRIAN_TEMPLATE_DEFAULT = true;
 
-function authoringProfile(id, lamps) {
+function authoringProfile(id, { lamps, driverSeat }) {
   const profile = profiles[id];
   return { ...profile, clearanceM: profile.groundClearanceM,
     comHeightM: profile.centerOfMassHeightM,
-    contract: deriveVehicleAssetContract(profile), mirrorHousing: MIRROR_HOUSING, lamps };
+    contract: deriveVehicleAssetContract(profile), mirrorHousing: MIRROR_HOUSING, lamps, driverSeat };
 }
 
 const vehicleNames = new Set(['sedan', 'cuv']);
 const allAssetIds = ['sedan', 'cuv', 'roadside', 'garage'];
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-function createGltf(assetId, dimensionsM, origin, lamps, pedestrians) {
+function createGltf(assetId, dimensionsM, origin, options) {
   const binaryParts = [];
   const nodes = [];
   const meshes = [];
@@ -126,8 +133,8 @@ function createGltf(assetId, dimensionsM, origin, lamps, pedestrians) {
 
   const root = addNode(`${assetId} asset`, null, { extras: { dimensionsM, origin } });
   const writer = { root, addNode, addMesh, box };
-  if (vehicleNames.has(assetId)) authorVehicle(writer, assetId, authoringProfile(assetId, lamps));
-  else authorEnvironment(writer, assetId, { pedestrians });
+  if (vehicleNames.has(assetId)) authorVehicle(writer, assetId, authoringProfile(assetId, options));
+  else authorEnvironment(writer, assetId, { pedestrians: options.pedestrians });
 
   const binary = Buffer.concat(binaryParts);
   const json = {
@@ -166,23 +173,24 @@ function createGltf(assetId, dimensionsM, origin, lamps, pedestrians) {
 
 /**
  * @param {'sedan' | 'cuv' | 'roadside' | 'garage'} assetId
- * @param {{ lamps?: boolean, pedestrians?: boolean }} [options] lamps: author the exterior lit-lamp
- *   nodes (vehicles only); pedestrians: add the hidden `PedestrianTemplate` (environments only;
- *   approved and on by default, so plain generation reproduces the public GLBs)
+ * @param {{ lamps?: boolean, driverSeat?: boolean, pedestrians?: boolean }} [options] lamps: author
+ *   the exterior lit-lamp nodes; driverSeat: author the movable DriverSeat node (vehicles only);
+ *   pedestrians: add the hidden `PedestrianTemplate` (environments only)
  * @returns {Uint8Array}
  */
-export function buildGlb(assetId, { lamps = EXTERIOR_LAMPS_DEFAULT, pedestrians = PEDESTRIAN_TEMPLATE_DEFAULT } = {}) {
+export function buildGlb(assetId, { lamps = EXTERIOR_LAMPS_DEFAULT, driverSeat = DRIVER_SEAT_DEFAULT,
+  pedestrians = PEDESTRIAN_TEMPLATE_DEFAULT } = {}) {
   if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);
   const dimensionsM = vehicleNames.has(assetId)
     ? profiles[assetId].bodySizeM
     : assetId === 'garage' ? [30, 6, 30] : [50, 3, 32];
   return createGltf(assetId, dimensionsM,
-    vehicleNames.has(assetId) ? 'center-of-mass' : 'world-ground', lamps, pedestrians);
+    vehicleNames.has(assetId) ? 'center-of-mass' : 'world-ground', { lamps, driverSeat, pedestrians });
 }
 
 /** @param {string} outputRoot
  * @param {readonly string[]} assetIds
- * @param {{ lamps?: boolean, pedestrians?: boolean }} [options] */
+ * @param {{ lamps?: boolean, driverSeat?: boolean, pedestrians?: boolean }} [options] */
 export function writeAssets(outputRoot, assetIds = allAssetIds, options = {}) {
   for (const assetId of assetIds) {
     if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);

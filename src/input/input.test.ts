@@ -6,7 +6,7 @@ import { createInputController, type InputController } from './controller';
 import { calibrationForProfile, controllerProfiles, findControllerProfile } from './profiles';
 import { testGamepad } from '../test/gamepad';
 
-const wheel = { version: 1, deviceId: 'w', steeringAxis: 0, steeringLeft: -0.6,
+const wheel = { version: 2, deviceId: 'w', steeringAxis: 0, steeringLeft: -0.6,
   steeringCenter: 0.1, steeringRight: 0.9,
   throttle: { kind: 'axis', index: 1, released: 1, pressed: -1 },
   brake: { kind: 'button', index: 6, released: 0, pressed: 1 },
@@ -28,6 +28,18 @@ describe('controller profiles', () => {
       expect(calibration.deviceId).toBe('device-17');
       expect(validateCalibration(calibration)).toEqual(calibration);
     }
+
+    for (const profile of controllerProfiles) {
+      const calibration = calibrationForProfile(profile.id, 'd');
+      if (profile.kind === 'gamepad') expect(calibration.lookStick).toEqual({ xAxis: 2, yAxis: 3 });
+      else expect(calibration).not.toHaveProperty('lookStick');
+      for (const key of ['lookLeftButton', 'lookRightButton', 'lookBackButton', 'recenterButton']) {
+        expect(calibration).not.toHaveProperty(key);
+      }
+    }
+    const first = calibrationForProfile('xbox-series-x', 'a');
+    const second = calibrationForProfile('xbox-series-x', 'b');
+    expect(first.lookStick).not.toBe(second.lookStick);
 
     expect(calibrationForProfile('xbox-series-x', 'xbox-pad').throttle)
       .toEqual({ kind: 'button', index: 7, released: 0, pressed: 1 });
@@ -97,9 +109,52 @@ describe('calibration', () => {
     expect(validateCalibration(JSON.parse(JSON.stringify(wheel)))).toEqual(wheel);
   });
 
+  it('upgrades a stored v1 entry to v2 with no look fields', () => {
+    const upgraded = validateCalibration({ ...wheel, version: 1 });
+    expect(upgraded).toEqual(wheel);
+    expect(upgraded).not.toHaveProperty('lookStick');
+    expect(upgraded).not.toHaveProperty('lookLeftButton');
+  });
+
+  it('keeps valid look buttons and stick', () => {
+    const look = { ...wheel, lookLeftButton: 8, lookRightButton: 9, lookBackButton: 10,
+      recenterButton: 11, lookStick: { xAxis: 3, yAxis: 4 } };
+    expect(validateCalibration(look)).toEqual(look);
+  });
+
+  it('drops conflicting look buttons individually and keeps the calibration', () => {
+    const base = { ...wheel, lookStick: undefined };
+    expect(validateCalibration({ ...base, lookLeftButton: 0 })).toEqual(wheel);
+    expect(validateCalibration({ ...base, lookLeftButton: 4, lookRightButton: 5 })).toEqual(wheel);
+    expect(validateCalibration({ ...base, lookBackButton: 64, recenterButton: 1.5 })).toEqual(wheel);
+    expect(validateCalibration({ ...base, lookLeftButton: 8, lookRightButton: 8,
+      lookBackButton: 8, recenterButton: 9 }))
+      .toEqual({ ...wheel, lookLeftButton: 8, recenterButton: 9 });
+  });
+
+  it('drops look buttons that clash with button-kind pedals', () => {
+    expect(validateCalibration({ ...wheel, lookLeftButton: 6, lookRightButton: 8 }))
+      .toEqual({ ...wheel, lookRightButton: 8 });
+  });
+
+  it('drops a conflicting look stick and keeps the calibration', () => {
+    const base = { ...wheel, brake: { kind: 'axis', index: 2, released: -1, pressed: 1 } } as const;
+    const withStick = (lookStick: unknown) => validateCalibration({ ...base, lookStick });
+    expect(withStick({ xAxis: 3, yAxis: 4 })).toEqual({ ...base, lookStick: { xAxis: 3, yAxis: 4 } });
+    for (const stick of [{ xAxis: 0, yAxis: 3 }, { xAxis: 3, yAxis: 0 }, { xAxis: 2, yAxis: 3 },
+      { xAxis: 3, yAxis: 2 }, { xAxis: 3, yAxis: 3 }, { xAxis: 64, yAxis: 3 },
+      { xAxis: 3, yAxis: 1.5 }, { xAxis: 3 }, 'x']) {
+      expect(withStick(stick)).toEqual(base);
+    }
+    // button-kind pedals do not occupy axes
+    expect(validateCalibration({ ...wheel, lookStick: { xAxis: 2, yAxis: 6 } }))
+      .toEqual({ ...wheel, lookStick: { xAxis: 2, yAxis: 6 } });
+    expect(validateCalibration({ ...wheel, lookStick: { xAxis: 1, yAxis: 3 } })).toEqual(wheel);
+  });
+
   const bad: [string, unknown][] = [
     ['null', null], ['string', 'x'], ['array', []], ['empty object', {}],
-    ['wrong version', { ...wheel, version: 2 }],
+    ['wrong version', { ...wheel, version: 3 }],
     ['numeric device id', { ...wheel, deviceId: 7 }],
     ['empty device id', { ...wheel, deviceId: '' }],
     ['missing brake', { ...wheel, brake: undefined }],
@@ -680,5 +735,137 @@ describe('mirror adjustment mode', () => {
     key(target, 'keydown', 'KeyM');
     controller.clear();
     expect(controller.mirrorInput().selected).toBeNull();
+  });
+});
+
+describe('controller look input', () => {
+  const neutral = { glance: null, recenter: false, stickX: 0, stickY: 0 };
+  const lookCal: ControllerCalibration = { ...wheel, lookLeftButton: 8, lookRightButton: 9,
+    lookBackButton: 10, recenterButton: 11, lookStick: { xAxis: 2, yAxis: 3 } };
+  const padWith = (pressed: number[] = [], axes: number[] = [0.1, 1, 0, 0]) => {
+    const buttons = new Array<number>(12).fill(0);
+    pressed.forEach((index) => { buttons[index] = 1; });
+    return makePad({ axes, buttons });
+  };
+  function lookController(pad: Gamepad = padWith()) {
+    const ctx = gamepadController(pad);
+    ctx.controller.setCalibration(lookCal);
+    return ctx;
+  }
+
+  it('is neutral before any poll and for the keyboard source', () => {
+    const { controller } = setup();
+    expect(controller.lookInput()).toEqual(neutral);
+    controller.poll();
+    expect(controller.lookInput()).toEqual(neutral);
+  });
+
+  it('reports a held look button as a glance', () => {
+    const { controller, world } = lookController();
+    controller.poll(); // released at the reset, so the next press counts
+    world.pads = [padWith([8])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('left');
+    world.pads = [padWith([9])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('right');
+  });
+
+  it('lets the latest pressed button win and falls back to a still-held one', () => {
+    const { controller, world } = lookController();
+    controller.poll(); // released at the reset, so the next press counts
+    world.pads = [padWith([8])];
+    controller.poll();
+    world.pads = [padWith([8, 10])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('back');
+    world.pads = [padWith([8, 10, 9])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('right');
+    world.pads = [padWith([8, 10])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('back');
+    world.pads = [padWith([8])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('left');
+    world.pads = [padWith()];
+    controller.poll();
+    expect(controller.lookInput().glance).toBeNull();
+  });
+
+  it('reports recenter once per press and not for a button held at start', () => {
+    const { controller, world } = lookController(padWith([11]));
+    controller.poll();
+    expect(controller.lookInput().recenter).toBe(false);
+    world.pads = [padWith()];
+    controller.poll();
+    world.pads = [padWith([11])];
+    controller.poll();
+    expect(controller.lookInput().recenter).toBe(true);
+    controller.poll();
+    expect(controller.lookInput().recenter).toBe(false);
+  });
+
+  it.each([
+    ['clear', (c: ReturnType<typeof lookController>['controller']) => c.clear()],
+    ['setCalibration', (c: ReturnType<typeof lookController>['controller']) => c.setCalibration(lookCal)],
+    ['selectSource', (c: ReturnType<typeof lookController>['controller']) => c.selectSource('gamepad', 0)],
+  ] as const)('does not glance from a button held across %s until it is released and pressed again', (_name, reset) => {
+    const { controller, world } = lookController();
+    controller.poll();
+    world.pads = [padWith([8])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('left');
+    reset(controller);
+    controller.poll();
+    expect(controller.lookInput().glance).toBeNull();
+    world.pads = [padWith([8, 9])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('right'); // a fresh press still works
+    world.pads = [padWith([9])];
+    controller.poll();
+    world.pads = [padWith([])];
+    controller.poll();
+    world.pads = [padWith([8])];
+    controller.poll();
+    expect(controller.lookInput().glance).toBe('left');
+  });
+
+  it('passes raw stick axes through, treating missing and non-finite as 0', () => {
+    const { controller, world } = lookController();
+    world.pads = [padWith([], [0.1, 1, 0.05, -0.8])];
+    controller.poll();
+    expect(controller.lookInput()).toMatchObject({ stickX: 0.05, stickY: -0.8 });
+    world.pads = [padWith([], [0.1, 1, Number.NaN])];
+    controller.poll();
+    expect(controller.lookInput()).toMatchObject({ stickX: 0, stickY: 0 });
+  });
+
+  it('resets on a poll fault, clear, selectSource and setCalibration', () => {
+    const { controller, world } = lookController();
+    const look = padWith([8], [0.1, 1, 0.5, 0.5]);
+    world.pads = [look];
+    controller.poll();
+    world.pads = [];
+    expect(controller.poll().issue).toBe('controllerDisconnected');
+    expect(controller.lookInput()).toEqual(neutral);
+    world.pads = [look];
+    controller.poll();
+    controller.clear();
+    expect(controller.lookInput()).toEqual(neutral);
+    controller.poll();
+    controller.setCalibration(lookCal);
+    expect(controller.lookInput()).toEqual(neutral);
+    controller.poll();
+    controller.selectSource('gamepad', 0);
+    expect(controller.lookInput()).toEqual(neutral);
+  });
+
+  it('is neutral for a calibration without look fields', () => {
+    const { controller, world } = gamepadController();
+    world.pads = [padWith([8, 9, 10, 11], [0.1, 1, 0.5, 0.5])];
+    controller.poll();
+    controller.poll();
+    expect(controller.lookInput()).toEqual(neutral);
   });
 });

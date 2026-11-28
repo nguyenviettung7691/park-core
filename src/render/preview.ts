@@ -30,10 +30,12 @@ import {
 import { scheduleForMode } from '../world/actor-schedules';
 import { vehicleFootprint } from '../vehicle/geometry';
 import { createViews, type ViewSystem } from '../views/cameras';
+import type { SeatOffset } from '../views/head-pose';
+import { createLookController, type LookPose } from '../views/look';
 import {
   clampMirrorOffsets, stepMirrorOffsets, ZERO_MIRROR_OFFSETS, type MirrorOffsets,
 } from '../views/mirror-adjust';
-import type { MirrorId } from '../vehicle/asset-contract';
+import { deriveVehicleAssetContract, type MirrorId } from '../vehicle/asset-contract';
 import type { RendererPort } from '../views/auxiliary';
 import { createActorsScene } from './actors-scene';
 import { createAssetScene, type AssetScene } from './asset-scene';
@@ -106,7 +108,12 @@ export interface Preview {
   setCalibration(value: ControllerCalibration): void;
   requestPointerLock(): Promise<boolean>;
   updateSettings(settings: SettingsSaveV1): void;
+  /** Eases the free look pose back to straight ahead on the next fixed step. */
   recenterView(): void;
+  /** Moves the driver eye and seat, clamped to this vehicle's seat range. */
+  setSeatOffset(seat: SeatOffset): void;
+  /** True while the car is held (stopped, in P or with the parking brake on). */
+  seatAdjustAllowed(): boolean;
   /** Applies saved mirror adjustments for the current vehicle. */
   setMirrorOffsets(offsets: MirrorOffsets): void;
   /** Returns every mirror to its default aim and reports it for saving. */
@@ -298,6 +305,29 @@ export function createPreview(
     );
     cleanups.push(() => views.dispose());
     let currentSettings = prototype.settings;
+    const seatRange = deriveVehicleAssetContract(profile).seatRangeM;
+    const look = createLookController();
+    /**
+     * Stepped look poses before and after the latest fixed step. The look controller holds the
+     * authoritative stepped pose; only the render interpolates between these with `alpha`.
+     */
+    let lookPrevious: LookPose = look.pose();
+    let lookCurrent: LookPose = lookPrevious;
+    function renderedLookPose(alpha: number): LookPose {
+      return {
+        yawRad: lookPrevious.yawRad + (lookCurrent.yawRad - lookPrevious.yawRad) * alpha,
+        pitchRad: lookPrevious.pitchRad + (lookCurrent.pitchRad - lookPrevious.pitchRad) * alpha,
+      };
+    }
+    let mouseDx = 0;
+    let mouseDy = 0;
+    /** Latched recenter request (button edge or recenterView), fed to exactly one fixed step. */
+    let recenterPending = false;
+    /** Mirrors and seat are adjusted only in a held, stopped car, never while it is still rolling. */
+    function carHeld() {
+      return current.telemetry.totalSpeedMps < GEAR_SPEED_MPS &&
+        (current.telemetry.gear === 'P' || current.telemetry.parkingBrake);
+    }
     function applySettings(value: SettingsSaveV1) {
       views.setCamera(value.cameraMode);
       views.setOverhead(value.overhead);
@@ -393,9 +423,7 @@ export function createPreview(
       frameId = null;
       if (!running || disposed || faulted) return;
       try {
-        // Mirrors are adjusted only in a held, stopped car, never while it is still rolling.
-        input.setMirrorAdjustAllowed(current.telemetry.totalSpeedMps < GEAR_SPEED_MPS &&
-          (current.telemetry.gear === 'P' || current.telemetry.parkingBrake));
+        input.setMirrorAdjustAllowed(carHeld());
         const poll = input.poll();
         if (poll.issue) {
           pause(prototype.source === 'gamepad' ? 'controller' : 'focus');
@@ -407,6 +435,7 @@ export function createPreview(
           return;
         }
         pending.push(...poll.actions);
+        if (input.lookInput().recenter) recenterPending = true;
         const time = deps.now();
         syncMirror(Math.min(0.1, Math.max(0, (time - lastTime) / 1000)));
         const audioUpdates: {
@@ -419,6 +448,17 @@ export function createPreview(
           if (!running || disposed || faulted) return;
           const actions = pending;
           pending = [];
+          // Mouse movement of the whole frame (and any recenter) goes to the first step only.
+          const lookInput = input.lookInput();
+          lookPrevious = lookCurrent;
+          look.step({
+            mouseDx, mouseDy, stickX: lookInput.stickX, stickY: lookInput.stickY,
+            glance: lookInput.glance, recenter: recenterPending,
+          }, 1 / 120);
+          lookCurrent = look.pose();
+          mouseDx = 0;
+          mouseDy = 0;
+          recenterPending = false;
           for (const notice of rig.applyInput(poll.frame, actions, 1 / 120)) {
             events.onNotice(notice.messageKey);
           }
@@ -545,6 +585,7 @@ export function createPreview(
         if (frameRateCap === 'display' || time - lastRenderTime >= 1000 / frameRateCap) {
           sceneContent.apply({ previous, current, alpha });
           actorsScene.update(previousPoses, currentPoses, alpha);
+          views.setLookPose(renderedLookPose(alpha));
           views.render({ previous, current, alpha }, time);
           lastRenderTime = time;
           events.onFrame?.({
@@ -590,8 +631,9 @@ export function createPreview(
     function onPointerLockError() { settlePointerLockWaiters(false); }
     function onMouseMove(event: MouseEvent) {
       if (!running || document.pointerLockElement !== canvas) return;
-      try { views.look(event.movementX, event.movementY); }
-      catch (error) { fault('runtime-error', error); }
+      // Non-finite movement is rejected by the look controller inside the fixed step.
+      mouseDx += event.movementX;
+      mouseDy += event.movementY;
     }
     function onLost(event: Event) {
       event.preventDefault();
@@ -640,6 +682,7 @@ export function createPreview(
     }));
     resize();
     sceneContent.apply({ previous, current, alpha: 0 });
+    views.setLookPose(look.pose());
     views.render({ previous, current, alpha: 0 }, lastTime);
     return {
       unlockAudio() {
@@ -666,6 +709,10 @@ export function createPreview(
         }
         input.clear();
         pending = [];
+        mouseDx = 0;
+        mouseDy = 0;
+        // The clock restarts at alpha 0, so continue from the stepped pose the paused view shows.
+        lookPrevious = lookCurrent;
         clock.reset();
         lastTime = deps.now();
         lastRenderTime = Number.NEGATIVE_INFINITY;
@@ -723,7 +770,28 @@ export function createPreview(
           resize();
         } catch (error) { fault('runtime-error', error); }
       },
-      recenterView: () => views.recenter(),
+      recenterView() { recenterPending = true; },
+      setSeatOffset(seat) {
+        if (disposed || faulted) return;
+        try {
+          if (!Number.isFinite(seat.foreAftM) || !Number.isFinite(seat.heightM)) {
+            throw new RangeError('Seat offset must be finite');
+          }
+          const clamped: SeatOffset = {
+            foreAftM: Math.max(seatRange.foreAft[0], Math.min(seatRange.foreAft[1], seat.foreAftM)),
+            heightM: Math.max(seatRange.height[0], Math.min(seatRange.height[1], seat.heightM)),
+          };
+          views.setSeatOffset(clamped);
+          sceneContent.setSeatOffset(clamped);
+          if (!running) {
+            views.setLookPose(look.pose());
+            views.invalidateMirrors();
+            views.render({ previous, current, alpha: 0 }, lastTime);
+          }
+        } catch (error) { fault('runtime-error', error); }
+      },
+      // Read from the latest stepped snapshot so it is never a frame behind the hold state.
+      seatAdjustAllowed: () => carHeld(),
       setMirrorOffsets(offsets) {
         if (disposed || faulted) return;
         try {

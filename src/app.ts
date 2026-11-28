@@ -27,6 +27,10 @@ import {
   parseGraphicsSettings,
 } from './views/graphics-settings';
 import { offsetsFromSaved, savedFromOffsets, ZERO_MIRROR_OFFSETS } from './views/mirror-adjust';
+import { seatFromSaved, savedFromSeat } from './views/seat-position';
+import { ZERO_SEAT } from './views/head-pose';
+import { deriveVehicleAssetContract } from './vehicle/asset-contract';
+import { profiles as vehicleProfiles } from './vehicle/profiles';
 
 export interface AppDeps {
   createOnboarding: () => OnboardingStore;
@@ -94,6 +98,8 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
   let currentLesson: LessonRuntime | null = null;
   let activeLessonStageId: StageId | null = null;
   let activeLessonVehicleId: VehicleId | null = null;
+  /** Vehicle of the open preview; its seat is the one the settings panel adjusts. */
+  let previewVehicleId: VehicleId | null = null;
   let historySnapshot: AttemptHistorySnapshot | null = null;
   let historyRequest = 0;
   let canvas: HTMLCanvasElement | null = null;
@@ -203,6 +209,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       ready: context.settings.inputSource === 'keyboard' ||
         (pad !== undefined && verifiedCalibration && calibration !== undefined),
       savedCalibrationAvailable: calibration !== undefined && !verifiedCalibration,
+      lookButtonsMissing: calibration !== undefined && calibration.lookLeftButton === undefined &&
+        calibration.lookRightButton === undefined && calibration.lookBackButton === undefined &&
+        calibration.recenterButton === undefined,
       profiles: controllerProfiles,
       matchedProfileId: pad ? findControllerProfile(pad)?.id ?? null : null,
     };
@@ -247,9 +256,19 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       unmountScreen = undefined;
     } else {
       unmountScreen = mountScreen(
-        layer, view.state, context, onAction, view, inputSetup(), () => context.settings,
+        layer, view.state, context, onAction, { ...view, seat: seatView() }, inputSetup(),
+        () => context.settings,
       );
     }
+  }
+  function seatView() {
+    return {
+      vehicleId: preview && previewVehicleId ? previewVehicleId : context.selectedVehicleId,
+      adjustable: preview?.seatAdjustAllowed() ?? true,
+    };
+  }
+  function seatRange(vehicleId: VehicleId) {
+    return deriveVehicleAssetContract(vehicleProfiles[vehicleId]).seatRangeM;
   }
   function restoreOverlayFocus(label: string | null) {
     if (!label) return;
@@ -288,6 +307,7 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
     loading?.abort();
     const current = preview;
     preview = null;
+    previewVehicleId = null;
     current?.dispose();
     retainedAssets?.dispose();
     retainedAssets = null;
@@ -499,7 +519,9 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
       if (disposed || token !== generation) opened.dispose();
       else {
         opened.setMirrorOffsets(offsetsFromSaved(context.settings.mirrorAdjustments?.[vehicleId]));
+        opened.setSeatOffset(seatFromSaved(context.settings.seatPositions?.[vehicleId], seatRange(vehicleId)));
         preview = opened;
+        previewVehicleId = vehicleId;
         void resumePreview();
       }
     } catch (error) {
@@ -862,14 +884,16 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
         drawScreen();
         break;
       case 'update-settings': {
-        // Mirror adjustments are owned by the cockpit and the reset button, never by the
-        // panel's possibly stale copy of the settings.
-        const { mirrorAdjustments: _panelCopy, ...panelSettings } = action.settings;
+        // Mirror adjustments and seat positions are owned by the cockpit and their own panel
+        // actions, never by the panel's possibly stale copy of the settings.
+        const { mirrorAdjustments: _mirrorCopy, seatPositions: _seatCopy, ...panelSettings } =
+          action.settings;
         const nextSettings: typeof context.settings = {
           ...panelSettings,
           ...parseGraphicsSettings(action.settings, DEFAULT_GRAPHICS_CAPABILITIES),
           ...(context.settings.mirrorAdjustments
             ? { mirrorAdjustments: context.settings.mirrorAdjustments } : {}),
+          ...(context.settings.seatPositions ? { seatPositions: context.settings.seatPositions } : {}),
         };
         if (view.preview === 'running' ||
             (view.preview === 'paused' && !graphicsSettingsEqual(context.settings, nextSettings))) {
@@ -902,6 +926,21 @@ export function createApp(root: HTMLElement, overrides: Partial<AppDeps> = {}): 
           refreshPersistence();
         }
         break;
+      case 'set-seat':
+      case 'reset-seat': {
+        if (view.preview === 'running') return;
+        const { vehicleId, adjustable } = seatView();
+        if (!adjustable) return;
+        const seat = action.type === 'reset-seat' ? ZERO_SEAT
+          : seatFromSaved(action.seat, seatRange(vehicleId));
+        preview?.setSeatOffset(seat);
+        context = { ...context, settings: { ...context.settings, seatPositions: {
+          ...context.settings.seatPositions, [vehicleId]: savedFromSeat(seat),
+        } } };
+        reportPersistence(persistence.saveSettings(context.settings));
+        refreshPersistence();
+        break;
+      }
       case 'open-calibration':
         if (view.preview === 'running' || gamepadIndex === null || view.pauseReason === 'contact') return;
         view = { ...view, calibrating: true, calibrationProfileId: null };

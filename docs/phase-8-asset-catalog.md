@@ -23,8 +23,8 @@ unbranded.
 
 | Asset | Width x height x length (m) | Stored triangles | Nodes / meshes | GLB bytes |
 |---|---|---:|---:|---:|
-| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 5,108 | 42 / 31 | 382,376 |
-| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,758 | 43 / 32 | 426,388 |
+| [Sedan](../public/assets/vehicles/sedan.glb) | 1.8 x 1.45 x 4.6 | 5,108 | 44 / 32 | 383,492 |
+| [CUV](../public/assets/vehicles/cuv.glb) | 1.8 x 1.62 x 4.35 | 5,758 | 45 / 33 | 427,492 |
 
 Counts include the cockpit, mirror surfaces and both stored glazing variants,
 even when one is hidden, and the four hidden exterior lit-lamp meshes (next
@@ -50,6 +50,29 @@ carry them. Promoted SHA-256: sedan
 hidden. These hashes differ from the pre-merge candidates (`84eaccc0…`,
 `d4626703…`) only because the PR #21 mirror glass and housings were merged in
 before promotion; the lamp geometry is unchanged.
+
+### Driver seat (issue #23): approved and promoted
+
+The driver's cushion, backrest, bolsters and headrest are one mesh,
+`DriverSeatParts`, under `Cockpit/DriverSeat` (origin at the cushion-top centre,
+x = -0.31 m, unrotated). `src/render/asset-scene.ts` sets it to its authored
+position plus the seat offset (fore/aft -0.10 to +0.10 m, +Z rearward; height
+-0.03 to +0.05 m for the sedan and -0.03 to +0.03 m for the CUV, whose headliner
+is closer to the eye). The passenger seat and rear bench stay in
+`SeatsAndInterior`. Stored triangles are unchanged (5,108 sedan, 5,758 CUV); the
+split adds two nodes and one mesh per vehicle.
+
+The seat was **approved by the developer** by hash and appearance (2026-11-28,
+PR #28) and is promoted: default generation authors it and the public GLBs carry
+it. Promoted SHA-256 (superseding the lamp hashes above): sedan
+`702d24364c3d362f87d108d2145d1116099ee64236aed8745eeafed04a4b3af3`, CUV
+`c3ee1543916650ba2f2b18a753faa1d538a512b7a23c8c1c05da5bfe0b6d65a7`. In the
+candidate seat review (garage, 1280 x 720, default and both extreme seats, neutral,
+left 110, right 110, back 160 and look-down poses) the sandbox main pass peaked at
+35 calls / 6,166 triangles (sedan) and 33 / 6,758 (CUV), one call above the
+pre-seat baseline (34 and 32). The lesson main pass, including the widest looks at
+the maximum seat, peaked at 67 (sedan, Stage 1) and 65 (CUV, Stage 1). All are
+within the 100 sandbox / 140 lesson gates.
 
 ### Sedan: front and rear
 
@@ -327,10 +350,10 @@ All GLBs are self-contained and use no external image/buffer resources.
 
 | Selected pair | Uncompressed bytes |
 |---|---:|
-| Sedan + garage | 571,172 |
-| Sedan + roadside | 545,176 |
-| CUV + garage | 615,184 |
-| CUV + roadside | 589,188 |
+| Sedan + garage | 572,288 |
+| Sedan + roadside | 546,292 |
+| CUV + garage | 616,288 |
+| CUV + roadside | 590,292 |
 
 All pairs are below the 5,000,000-byte gate.
 
@@ -358,6 +381,8 @@ main-pass calls (Stage 1, 11,714 triangles). At the wheel-stop touching poses
 sampled frame stayed at or below the 100 sandbox / 140 lesson main-pass gates.
 Parked clones are 2,790 (sedan) and 2,996 (CUV) triangles, below the 4,000 gate.
 The hidden lit-lamp meshes add no draw calls; each is one batched mesh, so a lit node adds one call where it is in view.
+The table predates the issue #23 `DriverSeat` split, which adds at most one
+main-pass call where the seat is in view (see "Driver seat (issue #23)" above).
 
 The gates are <=100 **main-pass** calls in sandbox and <=140 in lessons,
 not limits on the sum of all camera passes. These sampled poses pass; their
@@ -384,7 +409,7 @@ npx playwright test phase-8-assets.spec.ts
 ```
 
 Plain generation reproduces the approved public GLBs, including the promoted
-issue #11 exterior lamps.
+issue #11 exterior lamps and the issue #23 `DriverSeat`.
 
 Exterior lamp captures (unlit, brake, reverse, left, right and all-lit, from the
 rear and front quarter) come from `asset-review.spec.ts`. It loads the public GLB,

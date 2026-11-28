@@ -85,7 +85,7 @@ export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline }
   const sourceFiles = ['src/vehicle/profiles.ts', 'src/vehicle/asset-contract.ts',
     'tools/asset-designs/vehicles.mjs', 'tools/asset-designs/palette.mjs',
     'tools/asset-geometry.mjs', 'tools/generate-assets.mjs', 'tools/asset-workflow.mjs',
-    'src/world/assets.ts', 'src/views/cameras.ts', 'src/render/asset-scene.ts',
+    'src/world/assets.ts', 'src/views/cameras.ts', 'src/views/head-pose.ts', 'src/render/asset-scene.ts',
     'src/vehicle/geometry.ts', 'src/vehicle/rig.ts', 'src/contracts.ts', 'tests/browser/fixtures/phase-8.ts',
     'tests/browser/asset-review.spec.ts', 'playwright.config.ts', 'package-lock.json'];
   const report = { version: 1, vehicle, automated: 'running', visualApproval: 'pending',
@@ -98,7 +98,7 @@ export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline }
     // An unapproved feature must stay an opt-in generator option, so the checked-in sync test
     // (public GLBs vs default generation) holds before and after promotion.
     run('node_modules/vitest/vitest.mjs', ['run', 'src/world/generate-assets.test.mjs',
-      'src/world/assets.test.mjs', 'src/vehicle/asset-contract.test.ts',
+      'src/world/assets.test.mjs', 'src/world/head-clearance.test.ts', 'src/vehicle/asset-contract.test.ts',
       'src/views/views.test.ts', 'src/render/parked-vehicle.test.ts']);
     run('node_modules/@playwright/test/cli.js', ['test', 'asset-review.spec.ts',
       '--output', join(output, 'browser')], {
@@ -126,7 +126,7 @@ export function reviewAssets({ vehicle, candidate = projectRoot, out, baseline }
     writeFileSync(join(output, 'index.html'), `<!doctype html><meta charset="utf-8">
 <title>${vehicle} asset review</title><h1>${vehicle} asset review</h1>
 <p>Automated: ${report.automated}. Developer visual approval: pending. Hardware and optical validation: unverified.</p>
-<ul>${['garage', 'roadside', 'view-limits', 'lamps'].map((view) =>
+<ul>${['garage', 'roadside', 'view-limits', 'seat', 'lamps'].map((view) =>
     `<li><a href="${vehicle}-${view}/review.html">${view}</a></li>`).join('')}</ul>
 <p>Links may be unavailable when validation failed; see report.json and browser artifacts.</p><pre>${text}</pre>`);
   }

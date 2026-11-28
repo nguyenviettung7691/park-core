@@ -3,6 +3,7 @@ import { Quaternion, Vector3 } from 'three';
 import { deriveVehicleAssetContract, mirrorBoxes } from './asset-contract';
 import { profiles } from './profiles';
 import { deriveGeometry, vehicleFootprint } from './geometry';
+import { headEyeLocal, headOffsetLocal, type SeatOffset } from '../views/head-pose';
 
 describe('shared vehicle asset contract', () => {
   it('propagates changed dimensions, eye and mirror heights into dependent geometry', () => {
@@ -131,6 +132,63 @@ describe.each(['sedan', 'cuv'] as const)('%s mirror glass contract', (id) => {
       expect(glass.right.y, mirror).toBeCloseTo(0, 9);
       expect(glass.up.y, mirror).toBeGreaterThan(0.9);
       expect(eye.clone().sub(glass.center).dot(glass.normal), mirror).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe.each(['sedan', 'cuv'] as const)('%s seat range and head clearance contract', (id) => {
+  const profile = profiles[id];
+  const contract = deriveVehicleAssetContract(profile);
+  const corners: SeatOffset[] = [];
+  for (const foreAftM of contract.seatRangeM.foreAft) {
+    for (const heightM of contract.seatRangeM.height) corners.push({ foreAftM, heightM });
+  }
+  const yawsRad: number[] = [];
+  for (let deg = -160; deg <= 110; deg += 2) yawsRad.push(deg * Math.PI / 180);
+
+  it('seat range matches spec, narrowed only where the exported cockpit requires it', () => {
+    expect(contract.seatRangeM.foreAft).toEqual([-0.1, 0.1]);
+    // CUV: +5 cm brought the looking-back eye within 0.11 m of the headliner (head-clearance.test.ts).
+    expect(contract.seatRangeM.height).toEqual(id === 'cuv' ? [-0.03, 0.03] : [-0.03, 0.05]);
+  });
+
+  it('keeps >= 1 cm between every raw eye and the clearance box', () => {
+    const { minM, maxM } = contract.headClearance;
+    const base = profile.driverEyeLocalM;
+    for (const seat of corners) for (const yaw of yawsRad) {
+      const o = headOffsetLocal(yaw);
+      const raw = [base[0] + o[0], base[1] + seat.heightM + o[1], base[2] + seat.foreAftM + o[2]];
+      for (let axis = 0; axis < 3; axis++) {
+        expect(raw[axis]! - minM[axis]!, `axis ${axis} min`).toBeGreaterThanOrEqual(0.01 - 1e-9);
+        expect(maxM[axis]! - raw[axis]!, `axis ${axis} max seat ${JSON.stringify(seat)} yaw ${yaw}`)
+          .toBeGreaterThanOrEqual(0.01 - 1e-9);
+      }
+    }
+  });
+
+  it('eye stays in front of every mirror glass', () => {
+    for (const seat of corners) for (const yaw of yawsRad) {
+      const eye = headEyeLocal(profile.driverEyeLocalM, seat, yaw, contract.headClearance);
+      for (const mirror of ['rear', 'left', 'right'] as const) {
+        const spec = contract.mirrors[mirror];
+        const q = new Quaternion(...spec.rotation);
+        const normal = new Vector3(0, 0, 1).applyQuaternion(q);
+        const distance = new Vector3(...eye).sub(new Vector3(...spec.positionM)).dot(normal);
+        expect(distance, `${mirror} seat ${JSON.stringify(seat)} yaw ${yaw}`).toBeGreaterThan(0.05);
+      }
+    }
+  });
+
+  it('clearance box contains default eye with full offsets', () => {
+    const { minM, maxM } = contract.headClearance;
+    const base = profile.driverEyeLocalM;
+    for (const seat of corners) for (const yaw of yawsRad) {
+      const o = headOffsetLocal(yaw);
+      const raw = [base[0] + o[0], base[1] + seat.heightM + o[1], base[2] + seat.foreAftM + o[2]];
+      for (let axis = 0; axis < 3; axis++) {
+        expect(raw[axis]!, `axis ${axis} seat ${JSON.stringify(seat)} yaw ${yaw}`).toBeGreaterThanOrEqual(minM[axis]! - 1e-9);
+        expect(raw[axis]!).toBeLessThanOrEqual(maxM[axis]! + 1e-9);
+      }
     }
   });
 });

@@ -51,6 +51,8 @@ interface CaptureReport {
   /** Most actors visible on any step up to `actorsAtS` (null without the parameter). */
   actorsMaxVisible: number | null;
 }
+/** Seat offset (metres, +Z rearward) and look pose (radians, +yaw left) for seat review shots. */
+export interface DriverPose { foreAftM: number; heightM: number; yawRad: number; pitchRad: number }
 declare global {
   interface Window {
     phase8Capture: {
@@ -61,6 +63,8 @@ declare global {
       /** Applies overridden telemetry for a lamp state; returns each lit node's visibility (null if absent). */
       setLamps(state: LampState): Record<(typeof LAMP_NODES)[number], boolean | null>;
       report(): CaptureReport;
+      /** Driver camera at a seat offset and look pose; returns the eye and that frame's main pass. */
+      setDriverPose(pose: DriverPose): { eyeLocalM: number[]; main: Pass };
     };
   }
 }
@@ -307,6 +311,27 @@ async function setup() {
     ready: true,
     report: () => ({ ...report, mirrorVisibility: mirrorVisibility() }),
     setOcclusionFault(enabled) { occluder.visible = enabled; },
+    setDriverPose({ foreAftM, heightM, yawRad, pitchRad }) {
+      const seat = { foreAftM, heightM };
+      content.setSeatOffset(seat);
+      views.setSeatOffset(seat);
+      views.setCamera('driver');
+      views.setLookPose({ yawRad, pitchRad });
+      assets.environment.visible = true;
+      if (lesson) lesson.group.visible = true;
+      studioFloor.visible = false;
+      alignment.visible = false;
+      content.scene.background = new Color(environment === 'roadside' ? '#b7b3af' : '#211e25');
+      passes = [];
+      mirrorIndex = 0;
+      recording = true;
+      // Mirrors are due (15 FPS) so their targets reflect this eye before any mirror shot.
+      views.render(frame, time += 100);
+      recording = false;
+      const main = passes.find((pass) => pass.name === 'main');
+      if (!main) throw new Error('Driver pose rendered no main pass');
+      return { eyeLocalM: [...views.driverEyeLocal()], main };
+    },
     setLamps(state) {
       const base = current.telemetry;
       const telemetry = {
@@ -393,10 +418,9 @@ async function setup() {
       }
       if (shot === 'driver' || shot.startsWith('driver-')) {
         views.setCamera('driver');
-        views.recenter();
-        if (shot === 'driver') views.look(0, 80);
-        if (shot === 'driver-left') views.look(550, 0);
-        if (shot === 'driver-right') views.look(-550, 0);
+        // Same poses as the former mouse-look deltas (0.002 rad/px): (0, 80), (550, 0), (-550, 0).
+        const yawRad = shot === 'driver-left' ? -1.1 : shot === 'driver-right' ? 1.1 : 0;
+        views.setLookPose({ yawRad, pitchRad: shot === 'driver' ? -0.16 : 0 });
         views.render(frame, time += 100);
         return;
       }
