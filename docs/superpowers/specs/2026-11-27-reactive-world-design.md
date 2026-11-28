@@ -144,16 +144,22 @@ because any touch either fails the attempt or is prevented by the yield rule.
     contact, and a `near-miss` event is emitted once per actor per encounter,
     but only when the learner's car was moving when the actor had to stop.
     Waiting for an actor that was already in the way is not a near miss.
-  - **Yield and detour:** an actor stopped because of a *stationary* learner
-    car waits 3 s, then switches to its detour path. That might mean turning
-    back, or for a car, steering around inside the lane when there is room.
-    It never sits blocked for longer than that.
-    In free drive (ambient schedule) "stationary" also covers a learner that
-    is creeping or rocking in place: while the actor is stopped, a learner
-    whose footprint centre has moved less than 1.0 m since the hold began
-    counts as stationary, whatever its reported speed. A learner that really
-    drives on clears the corridor instead. Lessons keep the plain speed test
-    (they are bounded by the 15 s lifetime).
+  - **Yield and detour:** a hold timer counts while the actor is stopped by
+    the learner (the learner is in its corridor, or the coach guard stopped
+    it) or by another actor. While the learner stays in the corridor but the
+    actor is not stopped, the timer pauses. It resets only when neither the
+    learner nor another actor holds the actor (for the learner: once the
+    corridor is clear of it). The actor switches to its detour path:
+    - after 3 s if the learner is truly stopped (below 0.2 m/s) at that
+      moment, or another actor holds it;
+    - after 10 s (`HELD_BY_LEARNER_MAX_S`) whatever the learner does, so a
+      creeping or rocking learner that keeps the corridor occupied cannot
+      hold an actor for ever. A learner slowly crossing the corridor (above
+      0.2 m/s) is waited for up to 10 s.
+    The detour might mean turning back, or for a car, steering around inside
+    the lane when there is room. A learner that moves in and out of the
+    corridor (each time letting the actor move on) restarts the timer each
+    time it clears the corridor.
   - **Bounded lifetime:** every lesson actor finishes its path, or is removed
     at its path end, within about 15 s of its trigger. It is gone afterwards.
   - **Actors yield to each other at runtime.** The schedules keep actors
@@ -171,20 +177,27 @@ because any touch either fails the attempt or is prevented by the yield rule.
       other actor's path ahead (the projection plus 3 m). Stopping there
       would leave it in the way; it keeps going to clear the path, and the
       other actor yields to its current box;
-    - an actor on its detour ignores other actors (others yield to it), so
-      there is no yield cycle.
+    - an actor on its detour yields only to other actors' current boxes,
+      never to projections (others treat it as committed and yield to its
+      projection).
     Yielding to an actor never produces a near miss or a contact. A hold by
     another actor feeds the same 3 s timer as a stationary learner, so a
-    mutual hold (two boxes in each other's corridors) ends with a detour. For
-    example, a car held 3 s by a crossing pedestrian turns back. Pairs whose
+    mutual hold (two boxes in each other's corridors) ends with a detour, and
+    a detouring actor held 3 s finishes (is removed), so there is no
+    deadlock. For example, a car held 3 s by a crossing pedestrian turns
+    back. Pairs whose
     scheduled paths can never bring their boxes together (all roadside
     pairs) are skipped, unless one of them is on a detour.
-  - **Ambient starts are deferred, never dropped.** In free drive, a due
-    start waits, and is retried every step, while 3 ambient actors are
-    already visible (`MAX_AMBIENT_ACTIVE`), or while the learner's footprint
-    overlaps the actor's box swept over the first 3 m of its path. The actor
-    starts on the first step both are clear. This is a pure function of the
-    state, so it stays deterministic.
+  - **Ambient starts can be deferred, and are never restarted while
+    visible.** In free drive, a due start waits, and is retried every step,
+    while the actor is still visible from its previous appearance (or was at
+    the start of the step), while 3 ambient actors are already visible
+    (`MAX_AMBIENT_ACTIVE`), or while the learner's footprint or another
+    visible actor's box overlaps the actor's box swept over the first 3 m of
+    its path. The actor starts on the first step all are clear, late in its
+    cycle if need be. Only the latest due cycle starts: an appearance
+    deferred past its period is skipped, not queued. This is a pure function
+    of the state, so it stays deterministic.
   - Unit tests enforce no actor/actor overlap, for stationary learners on a
     pose grid and for a learner that parks across the garage aisle and then
     drives away at a sweep of times.
