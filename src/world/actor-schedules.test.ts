@@ -610,6 +610,36 @@ describe('actor schedules', () => {
       }
     }, 60_000);
 
+    it('a learner wandering the garage never makes a detouring actor drive through another', () => {
+      // Deterministic LCG; every 3 s the learner either holds still or picks a new random velocity.
+      let seed = 1;
+      const random = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+      for (let run = 0; run < 150; run += 1) {
+        let state = sandboxWorld('garage');
+        let x = -10 + random() * 20, z = -3 + random() * 6, vx = 0, vz = 0;
+        const yawRad = random() < 0.5 ? 0 : Math.PI / 2;
+        for (let i = 0; i < 150 / DT; i += 1) {
+          if (i % (120 * 3) === 0) {
+            const hold = random() < 0.5;
+            vx = hold ? 0 : (random() - 0.5) * 3;
+            vz = hold ? 0 : (random() - 0.5) * 1.5;
+          }
+          x = Math.max(-12, Math.min(12, x + vx * DT));
+          z = Math.max(-5, Math.min(5, z + vz * DT));
+          const learner = { ...poseLearner(profiles.sedan, x, z, yawRad),
+            signedSpeedMps: Math.hypot(vx, vz), gear: 'D' as const, parkingBrake: false };
+          state = stepActors(state, learner, DT).state;
+          const boxes = actorBoxes(state);
+          if (boxes.length === 2 && polygonsOverlap(boxPolygon(boxes[0]), boxPolygon(boxes[1]))) {
+            throw new Error(`run ${run} ${boxes[0].id}/${boxes[1].id} overlap at ${((i + 1) * DT).toFixed(2)} s`);
+          }
+        }
+      }
+    }, 120_000);
+
     it('actors on crossing paths yield to each other and both finish', () => {
       const far = poseLearner(profiles.sedan, 50, 50);
       const walker = pedestrian('ped-cross', [[0, -10], [0, 10]], turnBackDetour);

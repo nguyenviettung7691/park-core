@@ -702,15 +702,18 @@ function advanceActor(
   // - its projected boxes (next OTHER_HORIZON_S) only when it is an earlier schedule entry or is
   //   committed (held by the learner, or leaving on a detour), and only while this actor's own box
   //   is not already on the other's path ahead (then stopping would leave it there; keep clearing);
-  // - a detouring actor ignores other actors.
+  // - a detouring actor yields only to other actors' current boxes (never to projections), and
+  //   a detourer held BLOCKED_WAIT_S simply finishes, so there is no deadlock.
   // A mutual hold (both boxes in each other's corridors) ends via the Rule 5 detour timer.
   const own = frames[index];
   const yieldsTo = (other: ActorFrame | undefined): boolean => {
     if (own === undefined || other === undefined || other === own) return false;
-    if (!other.onDetour && state.apart[index * state.cursors.length + other.index]) return false;
+    if (!own.onDetour && !other.onDetour
+      && state.apart[index * state.cursors.length + other.index]) return false;
     ensureCorridor(own);
     if (boundsApart(own.corridorBounds, 0, other.sweepBounds, 0)) return false;
     if (corridorMeets(own, other, 0)) return true;
+    if (own.onDetour) return false;
     if (!(other.index < index || other.committed)) return false;
     let projected = false;
     for (let k = 1; k < other.projectionEnd && !projected; k += 1) {
@@ -723,7 +726,7 @@ function advanceActor(
     }
     return true;
   };
-  const actorAhead = !learnerAhead && cursor.detour === null && frames.some(yieldsTo);
+  const actorAhead = !learnerAhead && frames.some(yieldsTo);
   const braking = learnerAhead;
   const slowing = learnerAhead || actorAhead;
   // Rule 3: near miss on entering the corridor while the learner is moving.
