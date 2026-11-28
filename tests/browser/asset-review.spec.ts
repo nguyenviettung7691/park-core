@@ -4,8 +4,9 @@ import process from 'node:process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
-import type { LampState, Shot } from './fixtures/phase-8';
-import type { MirrorId } from '../../src/vehicle/asset-contract';
+import type { DriverPose, LampState, Shot } from './fixtures/phase-8';
+import { deriveVehicleAssetContract, type MirrorId } from '../../src/vehicle/asset-contract';
+import { profiles } from '../../src/vehicle/profiles';
 
 const requested = process.env.PARK_CORE_REVIEW_VEHICLE;
 const vehicles = requested ? [requested] : ['sedan', 'cuv'];
@@ -156,6 +157,108 @@ for (const vehicle of vehicles) {
 <title>${vehicle} view limits</title><h1>${vehicle}: aspect, FOV and quality limits</h1>
 <p>Actual candidate renders. Developer inspection pending; sightline and mirror landmark checks passed.</p>
 ${captures.map((name) => `<h2>${name}</h2><img width="640" src="${name}" alt="${name}">`).join('')}`);
+  });
+}
+
+const DEG = Math.PI / 180;
+// Seat-review looks (positive yaw = left): shoulder checks at the limits, back over the right
+// shoulder, and a look down at the seat. Mirrors are captured at neutral and at the left lean.
+const seatLooks = {
+  neutral: { yawRad: 0, pitchRad: 0 },
+  left: { yawRad: 110 * DEG, pitchRad: 0 },
+  right: { yawRad: -110 * DEG, pitchRad: 0 },
+  back: { yawRad: -160 * DEG, pitchRad: -5 * DEG },
+  down: { yawRad: 30 * DEG, pitchRad: -45 * DEG },
+} as const;
+const mirrorLooks = ['neutral', 'left'] as const;
+const seatShots = [...Object.keys(seatLooks),
+  ...mirrorLooks.flatMap((look) => mirrorIds.map((id) => `mirror-${id}-${look}`))];
+
+for (const vehicle of vehicles) {
+  test(`${vehicle} seat and shoulder-check review @assets`, async ({ page }, info) => {
+    test.setTimeout(300000);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const output = process.env.PARK_CORE_REVIEW_OUTPUT
+      ? join(resolve(process.env.PARK_CORE_REVIEW_OUTPUT), `${vehicle}-seat`)
+      : info.outputPath('seat');
+    mkdirSync(output, { recursive: true });
+    const range = deriveVehicleAssetContract(profiles[vehicle as 'sedan' | 'cuv']).seatRangeM;
+    // Default seat and the two most extreme corners of the fore/aft x height range.
+    const seats = {
+      default: { foreAftM: 0, heightM: 0 },
+      min: { foreAftM: range.foreAft[0], heightM: range.height[0] },
+      max: { foreAftM: range.foreAft[1], heightM: range.height[1] },
+    };
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    const serve = async (bytes: Buffer) => {
+      await page.unrouteAll();
+      await page.route(`**/assets/vehicles/${vehicle}.glb`, (route) =>
+        route.fulfill({ status: 200, contentType: 'model/gltf-binary', body: bytes }));
+    };
+    const open = async (query: string) => {
+      await page.goto(`/tests/browser/fixtures/phase-8.html?vehicle=${vehicle}&${query}`);
+      await expect.poll(() => page.evaluate(() => window.phase8Capture?.ready
+        ? 'ready' : document.querySelector('#failure')?.textContent || 'loading')).toBe('ready');
+    };
+    const pose = (driver: DriverPose) => page.evaluate((value) => window.phase8Capture.setDriverPose(value), driver);
+    const results: object[] = [];
+    for (const variant of ['baseline', 'candidate']) {
+      const root = variant === 'candidate' && process.env.PARK_CORE_REVIEW_CANDIDATE
+        ? resolve(process.env.PARK_CORE_REVIEW_CANDIDATE) : process.cwd();
+      const bytes = readFileSync(join(root, 'public', 'assets', 'vehicles', `${vehicle}.glb`));
+      await serve(bytes);
+      await open('environment=garage');
+      const captures: object[] = [];
+      for (const [seatName, seat] of Object.entries(seats)) {
+        for (const [look, angles] of Object.entries(seatLooks)) {
+          const { eyeLocalM, main } = await pose({ ...seat, ...angles });
+          expect(main.calls, `${seatName} ${look} sandbox main-pass calls`).toBeLessThanOrEqual(100);
+          const file = `${variant}-${seatName}-${look}.png`;
+          const screenshot = await page.screenshot({ path: join(output, file) });
+          captures.push({ seat: seatName, shot: look, ...seat, ...angles, eyeLocalM,
+            mainCalls: main.calls, mainTriangles: main.triangles, file, sha256: hash(screenshot) });
+        }
+        for (const look of mirrorLooks) {
+          const { eyeLocalM } = await pose({ ...seat, ...seatLooks[look] });
+          for (const id of mirrorIds) {
+            await page.evaluate((value) => window.phase8Capture.setShot(value), `mirror-${id}` as const);
+            const file = `${variant}-${seatName}-mirror-${id}-${look}.png`;
+            const screenshot = await page.screenshot({ path: join(output, file) });
+            captures.push({ seat: seatName, shot: `mirror-${id}-${look}`, ...seat, ...seatLooks[look],
+              eyeLocalM, file, sha256: hash(screenshot) });
+          }
+        }
+      }
+      const lessons: object[] = [];
+      if (variant === 'candidate') {
+        // Lesson main-pass gate with the candidate: settled frames and the widest looks at the max seat.
+        for (const stage of [1, 2, 3, 4, 5]) {
+          await open(`environment=${stage === 3 || stage === 5 ? 'roadside' : 'garage'}&stage=${stage}`);
+          const report = await page.evaluate(() => window.phase8Capture.report());
+          const calls = report.frames.map((frame) => frame.find((pass) => pass.name === 'main')!.calls);
+          for (const look of ['left', 'back'] as const) {
+            calls.push((await pose({ ...seats.max, ...seatLooks[look] })).main.calls);
+          }
+          for (const count of calls) expect(count, `stage ${stage} lesson main-pass calls`).toBeLessThanOrEqual(140);
+          lessons.push({ stage, mainCalls: calls });
+        }
+      }
+      results.push({ variant, sha256: hash(bytes), seats, captures, lessons });
+    }
+    expect(errors).toEqual([]);
+    const evidence = { vehicle, environment: 'garage', visualApproval: 'pending', seatRangeM: range, results };
+    writeFileSync(join(output, 'seat-review.json'), JSON.stringify(evidence, null, 2) + '\n');
+    writeFileSync(join(output, 'review.html'), `<!doctype html><meta charset="utf-8">
+<title>${vehicle} seat review</title>
+<style>body{font:16px sans-serif;background:#19161d;color:#eee;margin:24px}section{display:flex;gap:12px}figure{width:48%;margin:0}img{width:100%}pre{white-space:pre-wrap}h2{color:#c698d9}</style>
+<h1>${vehicle}: seat positions and shoulder checks (garage)</h1>
+<p>Seats: default, min (fore/aft ${range.foreAft[0]} m, height ${range.height[0]} m) and max (fore/aft ${range.foreAft[1]} m, height ${range.height[1]} m); +Z is rearward. Looks: neutral, left 110&deg;, right &minus;110&deg;, back &minus;160&deg; pitch &minus;5&deg;, down at the seat (yaw 30&deg;, pitch &minus;45&deg;); mirrors at neutral and at the left 110&deg; lean. Developer visual approval pending.</p>
+${Object.keys(seats).flatMap((seatName) => seatShots.map((shot) => `<h2>${seatName} seat / ${shot}</h2><section>${
+    ['baseline', 'candidate'].map((variant) => `<figure><figcaption>${variant}</figcaption><img src="${variant}-${seatName}-${shot}.png" alt="${variant} ${seatName} ${shot}"></figure>`).join('')
+  }</section>`)).join('')}
+<pre>${escape(JSON.stringify(evidence, null, 2))}</pre>`);
+    await info.attach('seat-review', { path: join(output, 'seat-review.json'), contentType: 'application/json' });
   });
 }
 
