@@ -11,6 +11,8 @@ import {
   createActorWorld,
   stepActors,
   BLOCKED_WAIT_S,
+  MAX_AMBIENT_ACTIVE,
+  sensorBoxes,
   type ActorWorldState,
   type LearnerState,
 } from './actors';
@@ -372,6 +374,85 @@ describe('actor schedules', () => {
         expect(peak, environmentId).toBeGreaterThanOrEqual(1);
       }
     });
+
+    const poseLearner = (profile: VehicleProfile, x: number, z: number, yawRad = 0): LearnerState => ({
+      footprint: vehicleFootprint({
+        positionM: [x, 0, z], rotation: [0, Math.sin(yawRad / 2), 0, Math.cos(yawRad / 2)],
+      }, profile),
+      headingRad: yawRad, signedSpeedMps: 0, gear: 'P', parkingBrake: true, indicator: 'off',
+    });
+
+    it('a learner parked at the right kerb never makes an ambient car vanish or alarm for long', () => {
+      const CYCLE_S = 20;
+      const NEAR_M = 6;
+      for (const profile of vehicles) {
+        for (const x of [2.9, 2.0]) {
+          let state = sandboxWorld('roadside');
+          const lastAt = new Map<string, readonly [number, number]>();
+          const sensorS = new Map<string, number>();
+          const seconds = 100;
+          for (let i = 0; i < seconds / DT; i += 1) {
+            const learner = poseLearner(profile, x, 0);
+            const before = state;
+            const result = stepActors(state, learner, DT);
+            state = result.state;
+            expect(result.contactId, `${profile.id} x=${x}`).toBeNull();
+            state.cursors.forEach((cursor, index) => {
+              const id = state.schedule.entries[index].actor.id;
+              if (cursor.finished && !before.cursors[index].finished
+                && before.cursors[index].activeSinceS !== null) {
+                const at = lastAt.get(id)!;
+                expect(Math.hypot(at[0] - x, at[1]),
+                  `${profile.id} x=${x} ${id} vanished near learner at ${(i * DT).toFixed(2)} s`)
+                  .toBeGreaterThan(NEAR_M);
+              }
+            });
+            actorBoxes(state).forEach((box) => lastAt.set(box.id, [box.centerM[0], box.centerM[2]]));
+            sensorBoxes(state, learner)
+              .filter((box) => box.id.startsWith('car-')
+                && Math.hypot(box.centerM[0] - x, box.centerM[2]) <= NEAR_M)
+              .forEach((box) => sensorS.set(box.id, (sensorS.get(box.id) ?? 0) + DT));
+          }
+          for (const [id, total] of sensorS) {
+            expect(total, `${profile.id} x=${x} ${id} near-sensor time`)
+              .toBeLessThanOrEqual((seconds / CYCLE_S) * (BLOCKED_WAIT_S + 1));
+          }
+        }
+      }
+    });
+
+    it('a blocking learner never lifts the visible ambient actors above the cap or into each other', () => {
+      expect(MAX_AMBIENT_ACTIVE).toBe(3);
+      
+      const poses: readonly (readonly [number, number])[] = [
+        [-2.2, -8], [-2.9, -8], [2.9, 0],
+      ];
+      for (const profile of vehicles) {
+        for (const environmentId of ['roadside', 'garage'] as const) {
+          const spawn = prototypeSpawn(profile).positionM;
+          const candidates = [...poses, [spawn[0], spawn[2]] as const];
+          for (const [x, z] of candidates) {
+            let state = sandboxWorld(environmentId);
+            let peak = 0;
+            for (let i = 0; i < 240 / DT; i += 1) {
+              state = stepActors(state, poseLearner(profile, x, z), DT).state;
+              peak = Math.max(peak, activeActorCount(state));
+              if (i % 12 !== 0) continue;
+              const boxes = actorBoxes(state);
+              for (let a = 0; a < boxes.length; a += 1) {
+                for (let b = a + 1; b < boxes.length; b += 1) {
+                  expect(polygonsOverlap(boxPolygon(boxes[a]), boxPolygon(boxes[b])),
+                    `${profile.id}/${environmentId}@(${x},${z}) ${boxes[a].id}/${boxes[b].id}`
+                    + ` at ${(i * DT).toFixed(2)} s`).toBe(false);
+                }
+              }
+            }
+            expect(peak, `${profile.id}/${environmentId}@(${x},${z})`)
+              .toBeLessThanOrEqual(MAX_AMBIENT_ACTIVE);
+          }
+        }
+      }
+    }, 60_000);
 
     it('ambient schedule is periodic', () => {
       const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));

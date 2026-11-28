@@ -26,6 +26,8 @@ export const CAR_DECEL_MPS2 = 6;
 export const LOOKAHEAD_MARGIN_M = { pedestrian: 0.5, car: 1.0 } as const;
 export const COACH_GAP_M = 0.3;
 export const BLOCKED_WAIT_S = 3;
+/** Free-drive cap: an ambient start waits while this many ambient actors are visible. */
+export const MAX_AMBIENT_ACTIVE = 3;
 /** Corridor must stay clear this long before a new encounter can record another near miss. */
 export const NEAR_MISS_REARM_S = 1;
 export const LESSON_LIFETIME_S = 15;
@@ -183,6 +185,8 @@ function startDueActors(state: ActorWorldState, cursors: ActorCursor[]): void {
     if (timeS < entry.startS - TIME_EPSILON_S) return;
     const cycle = Math.floor((timeS - entry.startS) / entry.periodS + TIME_EPSILON_S);
     if (cycle > cursors[index].cycle) {
+      // Free-drive cap: stay hidden (and retry next step) while the cap is already reached.
+      if (cursors.filter(isVisible).length >= MAX_AMBIENT_ACTIVE) return;
       cursors[index] = activate(cursors[index], entry.actor, timeS, cycle);
     }
   });

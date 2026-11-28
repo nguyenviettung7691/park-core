@@ -58,7 +58,7 @@ export const ambientSchedules: Readonly<Record<EnvironmentId, readonly AmbientAc
       ambient(car('car-roadside-a', [[-2.35, 18.5], [-2.35, -18.5]], ROADSIDE_CAR_MPS,
         turnBack), 8, 20),
       ambient(car('car-roadside-b', [[2.1, -18.5], [2.1, 18.5]], ROADSIDE_CAR_MPS,
-        offset(0.6)), 18, 20),
+        turnBack), 18, 20),
     ]),
   });
 
