@@ -30,6 +30,14 @@ export const CAR_DECEL_MPS2 = 6;
 export const LOOKAHEAD_MARGIN_M = { pedestrian: 0.5, car: 1.0 } as const;
 export const COACH_GAP_M = 0.3;
 export const BLOCKED_WAIT_S = 3;
+/**
+ * Free drive: while an actor is stopped, a learner that has moved less than this since the hold
+ * began counts as stationary for the BLOCKED_WAIT_S timer, whatever its reported speed (a
+ * creeping or rocking learner cannot hold an actor forever).
+ */
+export const HOLD_DISPLACEMENT_M = 1;
+/** Free drive: an ambient start waits while the learner overlaps this much of the start of its path. */
+export const START_CLEAR_M = 3;
 /** Free-drive cap: an ambient start waits while this many ambient actors are visible. */
 export const MAX_AMBIENT_ACTIVE = 3;
 /** Corridor must stay clear this long before a new encounter can record another near miss. */
@@ -87,6 +95,8 @@ interface ActorCursor {
   readonly strideBaseM: number;
   /** True while braking for the learner (not for another actor); lets earlier actors yield to it. */
   readonly learnerHeld: boolean;
+  /** Free drive: learner footprint centre when this hold (actor stopped) began; null while moving. */
+  readonly holdAnchorM: GroundPoint | null;
 }
 
 interface PathGeometry {
@@ -156,6 +166,7 @@ const idleCursor: ActorCursor = {
   detour: null,
   strideBaseM: 0,
   learnerHeld: false,
+  holdAnchorM: null,
 };
 
 function activate(cursor: ActorCursor, definition: ActorDefinition, timeS: number,
@@ -174,11 +185,16 @@ function activate(cursor: ActorCursor, definition: ActorDefinition, timeS: numbe
     detour: null,
     strideBaseM: 0,
     learnerHeld: false,
+    holdAnchorM: null,
   };
 }
 
-/** Starts every actor whose scheduled appearance time has been reached. */
-function startDueActors(state: ActorWorldState, cursors: ActorCursor[]): void {
+/**
+ * Starts every actor whose scheduled appearance time has been reached. `learnerLoaded`: the
+ * learner scratch holds this step's learner (not at creation).
+ */
+function startDueActors(state: ActorWorldState, cursors: ActorCursor[],
+  learnerLoaded: boolean): void {
   const { schedule, timeS } = state;
   if (schedule.kind === 'lesson') {
     schedule.entries.forEach((entry, index) => {
@@ -197,6 +213,9 @@ function startDueActors(state: ActorWorldState, cursors: ActorCursor[]): void {
     if (cycle > cursors[index].cycle) {
       // Free-drive cap: stay hidden (and retry next step) while the cap is already reached.
       if (cursors.filter(isVisible).length >= MAX_AMBIENT_ACTIVE) return;
+      // Spawn clear: same retry while the learner sits on the first START_CLEAR_M of the path.
+      if (learnerLoaded && corridorBlocked(entry.actor, state.paths[index], 0, START_CLEAR_M,
+        learnerScratch.points, 0, learnerScratch.count, learnerScratch.bounds)) return;
       cursors[index] = activate(cursors[index], entry.actor, timeS, cycle);
     }
   });
@@ -226,7 +245,7 @@ export function createActorWorld(
     hasMoved: false,
     slowSteps: 0,
   };
-  startDueActors(state, cursors);
+  startDueActors(state, cursors, false);
   return freezeState(state);
 }
 
@@ -390,7 +409,9 @@ function writeCorridorBounds(
 }
 
 const boxScratch = new Float64Array(8);
-const learnerScratch = { points: new Float64Array(8), count: 0, bounds: new Float64Array(4) };
+const learnerScratch = {
+  points: new Float64Array(8), count: 0, bounds: new Float64Array(4), centerX: 0, centerZ: 0,
+};
 const corridorBoundsScratch = new Float64Array(4);
 
 function loadLearner(learner: LearnerState): void {
@@ -401,6 +422,10 @@ function loadLearner(learner: LearnerState): void {
     learnerScratch.points[2 * i + 1] = point[2];
   });
   learnerScratch.count = count;
+  let sumX = 0, sumZ = 0;
+  for (const point of learner.footprint) { sumX += point[0]; sumZ += point[2]; }
+  learnerScratch.centerX = sumX / count;
+  learnerScratch.centerZ = sumZ / count;
   writeBounds(learnerScratch.bounds, learnerScratch.points, 0, count);
 }
 
@@ -718,13 +743,20 @@ function advanceActor(
   // Rule 4: contact after the move.
   const contact = !finished && overlapsLearner(definition, path, distanceM, 0);
 
-  // Rule 5: blocked by a stationary learner.
-  const blocked = speedMps < STOPPED_SPEED_MPS
-    && (learnerSpeed < MOVING_SPEED_MPS || actorAhead);
+  // Rule 5: blocked by a stationary learner (free drive: or one that has stayed within
+  // HOLD_DISPLACEMENT_M since the hold began), or held by another actor.
+  const stopped = speedMps < STOPPED_SPEED_MPS;
+  const holdAnchorM: GroundPoint | null = stopped && state.schedule.kind === 'ambient'
+    ? cursor.holdAnchorM ?? [learnerScratch.centerX, learnerScratch.centerZ]
+    : null;
+  const learnerStill = learnerSpeed < MOVING_SPEED_MPS || (holdAnchorM !== null
+    && Math.hypot(learnerScratch.centerX - holdAnchorM[0],
+      learnerScratch.centerZ - holdAnchorM[1]) < HOLD_DISPLACEMENT_M);
+  const blocked = stopped && (learnerStill || actorAhead);
   const blockedS = blocked ? cursor.blockedS + dtS : 0;
   const moved: ActorCursor = {
     ...cursor, distanceM, speedMps, finished, braking: slowing, encounterLatched, clearS,
-    blockedS, learnerHeld: learnerAhead,
+    blockedS, learnerHeld: learnerAhead, holdAnchorM,
   };
   if (!finished && blockedS >= BLOCKED_WAIT_S - TIME_EPSILON_S) {
     if (cursor.detour !== null) {
@@ -735,7 +767,7 @@ function advanceActor(
       : offsetPath(path, distanceM, definition.detour.lateralM);
     return {
       cursor: {
-        ...moved, distanceM: 0, speedMps: 0, blockedS: 0, detour,
+        ...moved, distanceM: 0, speedMps: 0, blockedS: 0, detour, holdAnchorM: null,
         strideBaseM: cursor.strideBaseM + distanceM,
       },
       nearMiss,
@@ -790,7 +822,7 @@ export function stepActors(
       }
     });
   }
-  startDueActors(next, cursors);
+  startDueActors(next, cursors, true);
 
   return { state: freezeState(next), contactId, nearMissIds };
 }

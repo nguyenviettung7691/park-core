@@ -511,6 +511,64 @@ describe('actor schedules', () => {
       }
     }, 120_000);
 
+    it('a learner creeping in place in a car lane cannot hold the car for longer than the wait', () => {
+      const carA = ambientSchedules.roadside.findIndex(({ actor }) => actor.id === 'car-roadside-a');
+      for (const speed of [0.25, 0.5]) {
+        for (const motion of ['reported', 'rocking'] as const) {
+          const label = `${motion} ${speed} m/s`;
+          let state = sandboxWorld('roadside');
+          let heldAtS: number | null = null;
+          let detourAtS: number | null = null;
+          for (let i = 0; i < 20 / DT && detourAtS === null; i += 1) {
+            const timeS = (i + 1) * DT;
+            // Rocking: back and forth over +-0.4 m at the given peak speed (net displacement < 1 m).
+            const z = motion === 'rocking' ? 0.4 * Math.sin((timeS * speed) / 0.4) : 0;
+            const learner = { ...poseLearner(profiles.sedan, -2.35, z), signedSpeedMps: speed,
+              gear: 'D' as const, parkingBrake: false };
+            const result = stepActors(state, learner, DT);
+            state = result.state;
+            expect(result.contactId, `${label} at ${timeS.toFixed(2)} s`).toBeNull();
+            const cursor = state.cursors[carA];
+            if (cursor.activeSinceS !== null && cursor.speedMps < 0.05) heldAtS ??= timeS;
+            if (cursor.detour !== null) detourAtS = timeS;
+          }
+          expect(heldAtS, label).not.toBeNull();
+          expect(detourAtS, label).not.toBeNull();
+          // In place: one wait. Rocking lets the car creep on now and then (each creep restarts the
+          // hold), so allow a second wait; before the fix both were held for ever.
+          expect(detourAtS! - heldAtS!, label)
+            .toBeLessThanOrEqual(motion === 'reported' ? BLOCKED_WAIT_S + 1 : 2 * BLOCKED_WAIT_S + 1);
+        }
+      }
+    });
+
+    it('an ambient actor does not start into a learner parked on its first stretch', () => {
+      const cases = [
+        { environmentId: 'garage', x: -9, z: -1, actorId: 'car-garage-ambient', leaveS: 30 },
+        { environmentId: 'roadside', x: -2, z: 12, actorId: 'car-roadside-a', leaveS: 15 },
+      ] as const;
+      for (const profile of vehicles) {
+        for (const { environmentId, x, z, actorId, leaveS } of cases) {
+          const label = `${profile.id}/${environmentId}@(${x},${z})`;
+          const index = ambientSchedules[environmentId].findIndex(({ actor }) => actor.id === actorId);
+          let state = sandboxWorld(environmentId);
+          let startedAtS: number | null = null;
+          for (let i = 0; i < (leaveS + 15) / DT; i += 1) {
+            const timeS = (i + 1) * DT;
+            const learner = timeS < leaveS ? poseLearner(profile, x, z) : poseLearner(profile, 60, 60);
+            const result = stepActors(state, learner, DT);
+            state = result.state;
+            expect(result.contactId, `${label} at ${timeS.toFixed(2)} s`).toBeNull();
+            const cursor = state.cursors[index];
+            if (cursor.activeSinceS !== null) startedAtS ??= cursor.activeSinceS;
+          }
+          expect(startedAtS, label).not.toBeNull();
+          expect(startedAtS!, label).toBeGreaterThanOrEqual(leaveS - 1e-6);
+          expect(startedAtS!, label).toBeLessThanOrEqual(leaveS + 2 * DT);
+        }
+      }
+    });
+
     it('actors on crossing paths yield to each other and both finish', () => {
       const far = poseLearner(profiles.sedan, 50, 50);
       const walker = pedestrian('ped-cross', [[0, -10], [0, 10]], turnBackDetour);
