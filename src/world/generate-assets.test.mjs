@@ -217,13 +217,13 @@ describe('phase 5 original GLB generator', () => {
   const triangleCount = (json) => json.meshes.reduce((sum, mesh) => sum + mesh.primitives.reduce(
     (part, primitive) => part + json.accessors[primitive.indices].count / 3, 0), 0);
 
-  it.each(['sedan', 'cuv'])('authors a movable DriverSeat under Cockpit for %s only with driverSeat: true', (id) => {
-    // The adjustable seat (issue #23) awaits developer approval, so it stays opt-in.
-    expect(DRIVER_SEAT_DEFAULT).toBe(false);
-    expect(readGlbBytes(buildGlb(id)).nodes.map((node) => node.name)).not.toContain('DriverSeat');
-    expect(buildGlb(id, { driverSeat: false })).toEqual(buildGlb(id));
-    const plain = readGlbBytes(buildGlb(id));
-    const glb = readGlbBytes(buildGlb(id, { driverSeat: true }));
+  it.each(['sedan', 'cuv'])('authors a movable DriverSeat under Cockpit for %s by default', (id) => {
+    // The adjustable seat was approved and promoted (issue #23), so default generation authors it.
+    expect(DRIVER_SEAT_DEFAULT).toBe(true);
+    expect(buildGlb(id, { driverSeat: true })).toEqual(buildGlb(id));
+    const plain = readGlbBytes(buildGlb(id, { driverSeat: false }));
+    expect(plain.nodes.map((node) => node.name)).not.toContain('DriverSeat');
+    const glb = readGlbBytes(buildGlb(id));
     const seatIndex = glb.nodes.findIndex((node) => node.name === 'DriverSeat');
     expect(seatIndex).toBeGreaterThan(0);
     expect(glb.nodes.filter((node) => node.name === 'DriverSeat')).toHaveLength(1);
@@ -246,15 +246,13 @@ describe('phase 5 original GLB generator', () => {
     expect(seated).toBeLessThanOrEqual(10_000);
   });
 
-  it('accepts the --driver-seat candidate flag for a selected vehicle', () => {
+  it('no longer accepts the retired --driver-seat candidate flag', () => {
     const root = mkdtempSync(join(tmpdir(), 'park-core-driver-seat-'));
     temporaryRoots.push(root);
     const result = spawnSync(process.execPath, [generator, '--driver-seat', '--vehicle', 'sedan', '--out', root],
       { encoding: 'utf8' });
-    expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(assetPath(root, 'sedan'))).toEqual(Buffer.from(buildGlb('sedan', { driverSeat: true })));
-    expect(checkAssets(root, ['sedan'], { driverSeat: true })[0].id).toBe('sedan');
-    expect(() => checkAssets(root, ['sedan'])).toThrow('stale or foreign');
+    expect(result.status).not.toBe(0);
+    expect(existsSync(assetPath(root, 'sedan'))).toBe(false);
   });
 
   it.each(['sedan', 'cuv'])('keeps the hood below the driver eye for %s', (assetId) => {

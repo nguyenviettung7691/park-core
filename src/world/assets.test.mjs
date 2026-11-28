@@ -110,10 +110,10 @@ describe('phase 5 scene asset loading', () => {
   });
 
   it.each(['sedan', 'cuv'])('loads %s with or without the optional DriverSeat node', async (id) => {
-    mockedFetch();
+    mockedFetch({ ...assetBytes, [`/assets/vehicles/${id}.glb`]: buildGlb(id, { driverSeat: false }) });
     const plain = await loadSceneAssets('garage', id, new AbortController().signal);
     try { expect(plain.vehicle.getObjectByName('DriverSeat')).toBeUndefined(); } finally { plain.dispose(); }
-    mockedFetch({ ...assetBytes, [`/assets/vehicles/${id}.glb`]: buildGlb(id, { driverSeat: true }) });
+    mockedFetch();
     const seated = await loadSceneAssets('garage', id, new AbortController().signal);
     try {
       const seat = seated.vehicle.getObjectByName('DriverSeat');
@@ -123,7 +123,7 @@ describe('phase 5 scene asset loading', () => {
   });
 
   it('rejects a rotated DriverSeat, whose seat offset would not follow the vehicle axes', async () => {
-    const bytes = rewriteJson(buildGlb('sedan', { driverSeat: true }), (json) => {
+    const bytes = rewriteJson(buildGlb('sedan'), (json) => {
       json.nodes.find((node) => node.name === 'DriverSeat').rotation = [0, Math.SQRT1_2, 0, Math.SQRT1_2];
     });
     mockedFetch({ ...assetBytes, '/assets/vehicles/sedan.glb': bytes });

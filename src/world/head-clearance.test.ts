@@ -44,7 +44,7 @@ function nearest(eye: Vector3, triangles: readonly Triangle[]): number {
 
 describe('driver head clearance in the exported cockpit', () => {
   it.each(['sedan', 'cuv'] as const)('keeps every %s eye >= 0.12 m from the vehicle at the seat corners', async (id: VehicleId) => {
-    const scene = await parse(buildGlb(id, { driverSeat: true }));
+    const scene = await parse(buildGlb(id));
     const root = scene.children[0]!;
     expect(root.position.toArray()).toEqual([0, 0, 0]);
     const seatNode = root.getObjectByName('DriverSeat');

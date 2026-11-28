@@ -124,6 +124,19 @@ programmatic opt-out. Promoted vehicle GLB SHA-256: sedan
 `e409a8961635fad8fea9a355979baf46e9546d45f774177a0ea5a9ff624d9a5b`, CUV
 `7cb934d717dc51da168959d9a3876324bec6a8e21b48eed1917b39ea3133276b`.
 
+The issue #23 movable `DriverSeat` went through the same gate and is promoted:
+the developer approved both candidates by hash and appearance (2026-11-28,
+PR #28), so `DRIVER_SEAT_DEFAULT` in `tools\generate-assets.mjs` is on and the
+former opt-in `--driver-seat` flag is retired from the generator and the asset
+workflow. `buildGlb(id, { driverSeat: false })` remains as a programmatic
+opt-out. Promoted vehicle GLB SHA-256 (these supersede the #11 hashes above,
+which remain the lamp-promotion record): sedan
+`702d24364c3d362f87d108d2145d1116099ee64236aed8745eeafed04a4b3af3`, CUV
+`c3ee1543916650ba2f2b18a753faa1d538a512b7a23c8c1c05da5bfe0b6d65a7`.
+`src\world\head-clearance.test.ts` parses the default GLBs and checks that every
+sampled eye (seat range corners x yaw -160 to +110 degrees) stays at least
+0.12 m from every vehicle triangle.
+
 Use your session workspace in place of `C:\asset-work`. Choose an empty output
 directory for each review: existing evidence is never overwritten or mixed with
 another run. The review output must be outside the repository or inside
@@ -198,7 +211,9 @@ drives from telemetry each rendered frame. `SteeringWheelPivot` (under the raked
 1.5 Hz on simulation time. `ParkingBrakeLamp` follows the parking brake, and
 `BrakePedal`/`AcceleratorPedal` rotate about their hinges with brake and the
 optional `throttle` telemetry. The CUV console `ParkingBrakeLever` lifts 0.35 rad
-while the parking brake is applied. Vehicles without a node are left untouched;
+while the parking brake is applied. `DriverSeat` (issue #23; the driver's cushion,
+backrest, bolsters and headrest as one mesh, `DriverSeatParts`) sits at its authored
+position plus the seat offset, moved with the driver eye. Vehicles without a node are left untouched;
 geometry alone is not the feature.
 Exterior lamp nodes (issue #11) are hidden by default and shown from telemetry:
 `BrakeLampsLit` (brake above 0.05), `ReverseLampsLit` (gear R) and

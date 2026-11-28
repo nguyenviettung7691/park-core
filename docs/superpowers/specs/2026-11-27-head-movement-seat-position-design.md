@@ -98,6 +98,10 @@ fixed-step clock.
 - Mirrors do not re-aim when the seat moves: default aim stays computed from the profile
   (default-seat) eye, and the learner re-adjusts mirrors as in a real car. "Reset mirrors"
   still returns to that default aim.
+- As built: the CUV height range is narrowed to −3…+3 cm (headliner clearance: its
+  headliner is 0.19 m above the default eye, and at +5 cm with the look-back lean the eye
+  came within 0.110 m of it); the sedan keeps −3…+5 cm. Glance easing uses a critically
+  damped spring with ω = 16 rad/s (~0.36 s settle).
 
 ### Head pose (`src/views/head-pose.ts`, new, pure)
 

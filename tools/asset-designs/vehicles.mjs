@@ -213,9 +213,9 @@ function authorCabin({ root, addNode, addMesh }, data, { roofFront: roofFrontZ, 
         part([1.42, 0.71, 0.02], [0, floorY + 0.355, 0.76], floorColor)]),
   ];
   // Front seats: cushion under the hip just behind the eye, backrest reclined 15 degrees.
-  // With data.driverSeat (issue #23 candidate, DRIVER_SEAT_DEFAULT in tools/generate-assets.mjs)
+  // With data.driverSeat (issue #23, approved; DRIVER_SEAT_DEFAULT in tools/generate-assets.mjs)
   // the driver seat is its own mesh under `DriverSeat`, whose origin is the cushion-top centre,
-  // so asset-scene.ts moves it by the seat offset; otherwise it stays in SeatsAndInterior.
+  // so asset-scene.ts moves it by the seat offset; `{ driverSeat: false }` keeps it in SeatsAndInterior.
   const cushionZ = eyeZ + 0.045, backZ = cushionZ + 0.25, recline = 0.26;
   const along = (base, distance, angle) => [0.5 + distance * Math.cos(angle), base + distance * Math.sin(angle)];
   const driverX = -0.31, seatOrigin = [driverX, 0.5, cushionZ], driverSeat = [];

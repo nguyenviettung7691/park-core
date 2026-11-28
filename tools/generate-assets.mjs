@@ -16,12 +16,11 @@ import { deriveVehicleAssetContract, MIRROR_HOUSING } from '../src/vehicle/asset
 export const EXTERIOR_LAMPS_DEFAULT = true;
 
 /**
- * The movable `DriverSeat` node (issue #23) is a candidate awaiting developer visual approval, so
- * default generation leaves the driver seat in `SeatsAndInterior` and reproduces the public GLBs.
- * Candidates are generated with `--driver-seat` (or `{ driverSeat: true }`); promotion after
- * approval flips this default to true and regenerates public/ (see docs/asset-pipeline.md).
+ * The movable `DriverSeat` node (issue #23) was approved by the developer (2026-11-28, PR #28) and
+ * is authored by default, so default generation reproduces the promoted public vehicle GLBs.
+ * `buildGlb(id, { driverSeat: false })` remains as a programmatic opt-out.
  */
-export const DRIVER_SEAT_DEFAULT = false;
+export const DRIVER_SEAT_DEFAULT = true;
 
 function authoringProfile(id, { lamps, driverSeat }) {
   const profile = profiles[id];
@@ -197,8 +196,7 @@ export function writeAssets(outputRoot, assetIds = allAssetIds, options = {}) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { vehicle: { type: 'string' }, out: { type: 'string' },
-      'driver-seat': { type: 'boolean' } },
+    options: { vehicle: { type: 'string' }, out: { type: 'string' } },
   });
   if (positionals.length > 1 || (positionals.length && values.out)) {
     throw new Error('Use one output root: --out <directory> or the legacy positional directory');
@@ -207,6 +205,5 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     throw new RangeError('--vehicle must be sedan or cuv');
   }
   const outputRoot = resolve(values.out ?? positionals[0] ?? projectRoot);
-  writeAssets(outputRoot, values.vehicle ? [values.vehicle] : allAssetIds,
-    values['driver-seat'] === undefined ? {} : { driverSeat: values['driver-seat'] });
+  writeAssets(outputRoot, values.vehicle ? [values.vehicle] : allAssetIds);
 }

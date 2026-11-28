@@ -29,6 +29,8 @@ driver sets them, and the ability to adjust each mirror like in a real car.
 
 - Head movement/parallax: mouse-look rotates the view but does not move the eye, so
   reflections don't change with look direction (true to a fixed head position).
+  (Later note: head movement and mirror parallax became in scope in issue #23; see
+  `2026-11-27-head-movement-seat-position-design.md`.)
 - Gamepad bindings for adjustment (keyboard only in this issue).
 - Power-folding mirrors, auto-dimming, blind-spot indicators.
 - Retuning handling, lessons, colliders or the parking footprint.
