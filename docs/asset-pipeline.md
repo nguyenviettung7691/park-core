@@ -125,7 +125,9 @@ programmatic opt-out. Promoted vehicle GLB SHA-256: sedan
 `7cb934d717dc51da168959d9a3876324bec6a8e21b48eed1917b39ea3133276b`.
 
 The pedestrian template (issue #25) is the current unapproved candidate. `node
-tools\generate-assets.mjs --pedestrians` (or `buildGlb(id, { pedestrians: true })`) adds a
+tools\generate-assets.mjs --pedestrians --out <candidate dir>` (the generator
+refuses `--pedestrians` without `--out`, so the candidate cannot overwrite `public\assets`; or
+`buildGlb(id, { pedestrians: true })`) adds a
 hidden `PedestrianTemplate` to both environment GLBs: a ~460-triangle, 1.7 m, flat-shaded
 adult built from six mesh nodes (`PedestrianBody`, `PedestrianHead`, `PedestrianLegL/R` and
 `PedestrianArmL/R`, legs pivoting at the hip y = 0.8 and arms at the shoulder y = 1.4,

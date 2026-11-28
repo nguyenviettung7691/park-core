@@ -396,5 +396,11 @@ describe('phase 5 original GLB generator', () => {
         expect(names).toContain('PedestrianTemplate');
       }
     });
+
+    it('refuses --pedestrians without --out so it cannot overwrite the public GLBs', () => {
+      const result = spawnSync(process.execPath, [generator, '--pedestrians'], { encoding: 'utf8' });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toMatch(/--pedestrians requires --out/);
+    });
   });
 });

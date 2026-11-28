@@ -197,6 +197,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   if (values.vehicle && !vehicleNames.has(values.vehicle)) {
     throw new RangeError('--vehicle must be sedan or cuv');
   }
+  if (values.pedestrians && !values.out && !positionals.length) {
+    throw new Error('--pedestrians requires --out <candidate directory>: the pedestrian template is an '
+      + 'unapproved candidate and must not overwrite public/assets');
+  }
   const outputRoot = resolve(values.out ?? positionals[0] ?? projectRoot);
   writeAssets(outputRoot, values.vehicle ? [values.vehicle] : allAssetIds,
     { pedestrians: values.pedestrians ?? false });
