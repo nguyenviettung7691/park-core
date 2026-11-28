@@ -15,6 +15,13 @@ import { deriveVehicleAssetContract, MIRROR_HOUSING } from '../src/vehicle/asset
  */
 export const EXTERIOR_LAMPS_DEFAULT = true;
 
+/**
+ * The hidden `PedestrianTemplate` (issue #25) was approved by the developer (2026-11-28, PR #29)
+ * and is authored into both environment GLBs by default; the former opt-in `--pedestrians` flag is
+ * retired. `buildGlb(id, { pedestrians: false })` remains as a programmatic opt-out.
+ */
+export const PEDESTRIAN_TEMPLATE_DEFAULT = true;
+
 function authoringProfile(id, lamps) {
   const profile = profiles[id];
   return { ...profile, clearanceM: profile.groundClearanceM,
@@ -160,11 +167,11 @@ function createGltf(assetId, dimensionsM, origin, lamps, pedestrians) {
 /**
  * @param {'sedan' | 'cuv' | 'roadside' | 'garage'} assetId
  * @param {{ lamps?: boolean, pedestrians?: boolean }} [options] lamps: author the exterior lit-lamp
- *   nodes (vehicles only); pedestrians: add the hidden `PedestrianTemplate` (environments only; an
- *   unapproved candidate, off by default so plain generation reproduces the public GLBs)
+ *   nodes (vehicles only); pedestrians: add the hidden `PedestrianTemplate` (environments only;
+ *   approved and on by default, so plain generation reproduces the public GLBs)
  * @returns {Uint8Array}
  */
-export function buildGlb(assetId, { lamps = EXTERIOR_LAMPS_DEFAULT, pedestrians = false } = {}) {
+export function buildGlb(assetId, { lamps = EXTERIOR_LAMPS_DEFAULT, pedestrians = PEDESTRIAN_TEMPLATE_DEFAULT } = {}) {
   if (!allAssetIds.includes(assetId)) throw new RangeError(`Unknown asset: ${assetId}`);
   const dimensionsM = vehicleNames.has(assetId)
     ? profiles[assetId].bodySizeM
@@ -189,7 +196,7 @@ export function writeAssets(outputRoot, assetIds = allAssetIds, options = {}) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { vehicle: { type: 'string' }, out: { type: 'string' }, pedestrians: { type: 'boolean' } },
+    options: { vehicle: { type: 'string' }, out: { type: 'string' } },
   });
   if (positionals.length > 1 || (positionals.length && values.out)) {
     throw new Error('Use one output root: --out <directory> or the legacy positional directory');
@@ -197,11 +204,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   if (values.vehicle && !vehicleNames.has(values.vehicle)) {
     throw new RangeError('--vehicle must be sedan or cuv');
   }
-  if (values.pedestrians && !values.out && !positionals.length) {
-    throw new Error('--pedestrians requires --out <candidate directory>: the pedestrian template is an '
-      + 'unapproved candidate and must not overwrite public/assets');
-  }
   const outputRoot = resolve(values.out ?? positionals[0] ?? projectRoot);
-  writeAssets(outputRoot, values.vehicle ? [values.vehicle] : allAssetIds,
-    { pedestrians: values.pedestrians ?? false });
+  writeAssets(outputRoot, values.vehicle ? [values.vehicle] : allAssetIds);
 }

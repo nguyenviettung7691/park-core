@@ -11,7 +11,6 @@ import { profiles } from '../vehicle/profiles.ts';
 const projectRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const generator = join(projectRoot, 'tools', 'generate-assets.mjs');
 const assetIds = ['sedan', 'cuv', 'roadside', 'garage'];
-const allIds = assetIds;
 const temporaryRoots = [];
 
 function generate(root) {
@@ -376,31 +375,21 @@ describe('phase 5 original GLB generator', () => {
       expect(total).toBeLessThanOrEqual(30_000);
     });
 
-    it.each(allIds)('keeps default generation free of the template for %s', (id) => {
+    it.each(['roadside', 'garage'])('authors the approved template by default in %s', (id) => {
       const names = readGlbBytes(buildGlb(id)).nodes.map((node) => node.name);
-      expect(names).not.toContain('PedestrianTemplate');
+      expect(names).toContain('PedestrianTemplate');
+      expect(buildGlb(id, { pedestrians: true })).toEqual(buildGlb(id));
+      const optOut = readGlbBytes(buildGlb(id, { pedestrians: false })).nodes.map((node) => node.name);
+      expect(optOut).not.toContain('PedestrianTemplate');
+    });
+
+    it.each(['sedan', 'cuv'])('does not change vehicle %s with the option off', (id) => {
       expect(buildGlb(id, { pedestrians: false })).toEqual(buildGlb(id));
     });
 
-    it.each(['sedan', 'cuv'])('does not change vehicle %s with the option on', (id) => {
-      expect(buildGlb(id, { pedestrians: true })).toEqual(buildGlb(id));
-    });
-
-    it('accepts --pedestrians on the CLI and writes the template', () => {
-      const root = mkdtempSync(join(tmpdir(), 'park-core-pedestrians-'));
-      temporaryRoots.push(root);
-      const result = spawnSync(process.execPath, [generator, '--pedestrians', '--out', root], { encoding: 'utf8' });
-      expect(result.status, result.stderr).toBe(0);
-      for (const id of ['roadside', 'garage']) {
-        const names = readGlb(assetPath(root, id)).nodes.map((node) => node.name);
-        expect(names).toContain('PedestrianTemplate');
-      }
-    });
-
-    it('refuses --pedestrians without --out so it cannot overwrite the public GLBs', () => {
+    it('rejects the retired --pedestrians flag', () => {
       const result = spawnSync(process.execPath, [generator, '--pedestrians'], { encoding: 'utf8' });
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toMatch(/--pedestrians requires --out/);
     });
   });
 });

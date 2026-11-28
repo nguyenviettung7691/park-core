@@ -363,11 +363,11 @@ describe('phase 5 scene asset loading', () => {
   });
 
   it.each(['garage', 'roadside'])('hides the optional PedestrianTemplate in %s and loads without it', async (id) => {
-    mockedFetch();
+    mockedFetch({ ...assetBytes, [`/assets/environments/${id}.glb`]: buildGlb(id, { pedestrians: false }) });
     const plain = await loadSceneAssets(id, 'sedan', new AbortController().signal);
     expect(plain.environment.getObjectByName('PedestrianTemplate')).toBeUndefined();
     plain.dispose();
-    mockedFetch({ ...assetBytes, [`/assets/environments/${id}.glb`]: buildGlb(id, { pedestrians: true }) });
+    mockedFetch();
     const candidate = await loadSceneAssets(id, 'sedan', new AbortController().signal);
     const template = candidate.environment.getObjectByName('PedestrianTemplate');
     expect(template).toBeTruthy();
