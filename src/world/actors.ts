@@ -26,6 +26,8 @@ export const CAR_DECEL_MPS2 = 6;
 export const LOOKAHEAD_MARGIN_M = { pedestrian: 0.5, car: 1.0 } as const;
 export const COACH_GAP_M = 0.3;
 export const BLOCKED_WAIT_S = 3;
+/** Corridor must stay clear this long before a new encounter can record another near miss. */
+export const NEAR_MISS_REARM_S = 1;
 export const LESSON_LIFETIME_S = 15;
 export const ACCEL_MPS2 = { pedestrian: 1, car: 2 } as const;
 
@@ -67,6 +69,10 @@ interface ActorCursor {
   readonly triggeredAtS: number | null;
   /** True while the actor is braking for the learner. */
   readonly braking: boolean;
+  /** True from the first braking of an encounter until the corridor has been clear for NEAR_MISS_REARM_S. */
+  readonly encounterLatched: boolean;
+  /** Continuous time the corridor has been clear while latched. */
+  readonly clearS: number;
   /** Continuous time stopped by a stationary learner. */
   readonly blockedS: number;
   /** Path taken after being blocked; null while on the scheduled path. */
@@ -134,6 +140,8 @@ const idleCursor: ActorCursor = {
   cycle: -1,
   triggeredAtS: null,
   braking: false,
+  encounterLatched: false,
+  clearS: 0,
   blockedS: 0,
   detour: null,
   strideBaseM: 0,
@@ -149,6 +157,8 @@ function activate(cursor: ActorCursor, definition: ActorDefinition, timeS: numbe
     finished: false,
     cycle,
     braking: false,
+    encounterLatched: false,
+    clearS: 0,
     blockedS: 0,
     detour: null,
     strideBaseM: 0,
@@ -331,7 +341,11 @@ function advanceActor(
     cursor.distanceM + stopM + LOOKAHEAD_MARGIN_M[definition.kind], learner,
   );
   // Rule 3: near miss on entering the corridor while the learner is moving.
-  const nearMiss = braking && !cursor.braking && learnerSpeed > MOVING_SPEED_MPS;
+  // Latched per encounter; re-armed only after the corridor has been clear for NEAR_MISS_REARM_S.
+  const nearMiss = braking && !cursor.encounterLatched && learnerSpeed > MOVING_SPEED_MPS;
+  const clearS = braking ? 0 : cursor.clearS + dtS;
+  const encounterLatched = braking
+    || (cursor.encounterLatched && clearS < NEAR_MISS_REARM_S - TIME_EPSILON_S);
   let speedMps = braking
     ? Math.max(0, cursor.speedMps - decel * dtS)
     : Math.min(definition.cruiseMps, cursor.speedMps + ACCEL_MPS2[definition.kind] * dtS);
@@ -368,7 +382,9 @@ function advanceActor(
   // Rule 5: blocked by a stationary learner.
   const blocked = speedMps < STOPPED_SPEED_MPS && learnerSpeed < MOVING_SPEED_MPS;
   const blockedS = blocked ? cursor.blockedS + dtS : 0;
-  const moved: ActorCursor = { ...cursor, distanceM, speedMps, finished, braking, blockedS };
+  const moved: ActorCursor = {
+    ...cursor, distanceM, speedMps, finished, braking, encounterLatched, clearS, blockedS,
+  };
   if (!finished && blockedS >= BLOCKED_WAIT_S - TIME_EPSILON_S) {
     if (cursor.detour !== null) {
       return { cursor: { ...moved, finished: true }, nearMiss, contact };

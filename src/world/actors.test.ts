@@ -19,6 +19,7 @@ import {
   BLOCKED_WAIT_S,
   CAR_DECEL_MPS2,
   LESSON_LIFETIME_S,
+  NEAR_MISS_REARM_S,
   type ActorWorldState,
   type LearnerState,
 } from './actors';
@@ -356,6 +357,42 @@ describe('scripted actors', () => {
         quiet.push(...result.nearMissIds);
       }
       expect(quiet).toEqual([]);
+    });
+
+    describe('near-miss latch per encounter', () => {
+      /** Learner moving at 1 m/s either in the actor's corridor or well clear of it. */
+      const blockedLearner = () => rectangle(0.8, 2.3, -1, 1, 1);
+      const clearLearner = () => rectangle(0.8, 2.3, 20, 22, 1);
+      const phase = (world: ActorWorldState, input: () => LearnerState, seconds: number,
+        emitted: string[]): ActorWorldState => {
+        let current = world;
+        for (let i = 0; i < Math.round(seconds / DT); i += 1) {
+          const result = stepActors(current, input(), DT);
+          current = result.state;
+          emitted.push(...result.nearMissIds);
+        }
+        return current;
+      };
+
+      it('braking flicker inside one encounter records one near miss', () => {
+        let world = start(actor('ped-1', [[0, 0], [30, 0]]), 'realistic');
+        const emitted: string[] = [];
+        world = phase(world, blockedLearner, 0.5, emitted);
+        world = phase(world, clearLearner, 0.3, emitted);
+        world = phase(world, blockedLearner, 0.5, emitted);
+        world = phase(world, clearLearner, 0.3, emitted);
+        phase(world, blockedLearner, 0.5, emitted);
+        expect(emitted).toEqual(['ped-1']);
+      });
+
+      it('re-arms after the corridor has been clear for NEAR_MISS_REARM_S', () => {
+        let world = start(actor('ped-1', [[0, 0], [30, 0]]), 'realistic');
+        const emitted: string[] = [];
+        world = phase(world, blockedLearner, 0.5, emitted);
+        world = phase(world, clearLearner, NEAR_MISS_REARM_S + 0.05, emitted);
+        phase(world, blockedLearner, 0.5, emitted);
+        expect(emitted).toEqual(['ped-1', 'ped-1']);
+      });
     });
 
     const detours: readonly [string, ActorDefinition['detour']][] = [
