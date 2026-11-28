@@ -3,7 +3,9 @@ import type { LessonActorEntry, StageId, VehicleProfile } from '../contracts';
 import { scenarios } from '../lessons/scenarios';
 import { profiles } from '../vehicle/profiles';
 import { rotate, vehicleFootprint } from '../vehicle/geometry';
-import { ambientSchedules, scheduleForMode } from './actor-schedules';
+import {
+  ambientSchedules, car, pedestrian, ROADSIDE_CAR_MPS, scheduleForMode, turnBackDetour,
+} from './actor-schedules';
 import {
   activeActorCount,
   actorBoxes,
@@ -419,13 +421,13 @@ describe('actor schedules', () => {
           }
         }
       }
-    });
+    }, 60_000);
 
     it('a blocking learner never lifts the visible ambient actors above the cap or into each other', () => {
       expect(MAX_AMBIENT_ACTIVE).toBe(3);
       
       const poses: readonly (readonly [number, number])[] = [
-        [-2.2, -8], [-2.9, -8], [2.9, 0],
+        [-2.2, -8], [-2.9, -8], [2.9, 0], [-2.2, 0],
       ];
       for (const profile of vehicles) {
         for (const environmentId of ['roadside', 'garage'] as const) {
@@ -451,6 +453,57 @@ describe('actor schedules', () => {
               .toBeLessThanOrEqual(MAX_AMBIENT_ACTIVE);
           }
         }
+      }
+    }, 60_000);
+
+    it('a stationary learner anywhere on a pose grid causes no contact, overlap or fourth actor', () => {
+      for (const profile of vehicles) {
+        for (const environmentId of ['roadside', 'garage'] as const) {
+          for (const x of [-6, -2.2, 0, 2.2, 6]) {
+            for (const z of [-8, -1, 0, 8]) {
+              let state = sandboxWorld(environmentId);
+              for (let i = 0; i < 120 / DT; i += 1) {
+                const result = stepActors(state, poseLearner(profile, x, z), DT);
+                state = result.state;
+                const label = `${profile.id}/${environmentId}@(${x},${z}) at ${(i * DT).toFixed(2)} s`;
+                expect(result.contactId, label).toBeNull();
+                expect(activeActorCount(state), label).toBeLessThanOrEqual(MAX_AMBIENT_ACTIVE);
+                if (i % 12 !== 0) continue;
+                const boxes = actorBoxes(state);
+                for (let a = 0; a < boxes.length; a += 1) {
+                  for (let b = a + 1; b < boxes.length; b += 1) {
+                    expect(polygonsOverlap(boxPolygon(boxes[a]), boxPolygon(boxes[b])),
+                      `${label} ${boxes[a].id}/${boxes[b].id}`).toBe(false);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }, 300_000);
+
+    it('actors on crossing paths yield to each other and both finish', () => {
+      const far = poseLearner(profiles.sedan, 50, 50);
+      const walker = pedestrian('ped-cross', [[0, -10], [0, 10]], turnBackDetour);
+      const driver = car('car-cross', [[-10, 0], [10, 0]], ROADSIDE_CAR_MPS, turnBackDetour);
+      const orders = [
+        [{ actor: walker, startS: 0, periodS: 1000 }, { actor: driver, startS: 5, periodS: 1000 }],
+        [{ actor: driver, startS: 5, periodS: 1000 }, { actor: walker, startS: 0, periodS: 1000 }],
+        [{ actor: driver, startS: 0, periodS: 1000 }, { actor: walker, startS: 0, periodS: 1000 }],
+      ];
+      for (const entries of orders) {
+        let state = createActorWorld({ kind: 'ambient', entries }, 'realistic');
+        for (let i = 0; i < 60 / DT; i += 1) {
+          state = stepActors(state, { ...far }, DT).state;
+          const boxes = actorBoxes(state);
+          if (boxes.length === 2) {
+            expect(polygonsOverlap(boxPolygon(boxes[0]), boxPolygon(boxes[1])),
+              `${entries[0].actor.id} first at ${(i * DT).toFixed(2)} s`).toBe(false);
+          }
+        }
+        expect(state.cursors.map((cursor) => cursor.finished), entries[0].actor.id)
+          .toEqual([true, true]);
       }
     }, 60_000);
 

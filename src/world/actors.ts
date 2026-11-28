@@ -17,6 +17,10 @@ const FIRST_STOP_DWELL_S = 0.5;
 const TIME_EPSILON_S = 1e-9;
 const SWEEP_STEP_M = 0.05;
 const STOPPED_SPEED_MPS = 0.05;
+const OTHER_HORIZON_S = 1.5;
+const OTHER_SAMPLE_M = 0.5;
+/** Margin for box half-lengths (cars 2.3 m) in the cheap distance reject. */
+const OTHER_NEAR_M = 6;
 const DETOUR_MIN_TRANSITION_M = 2;
 /** Side-steps never yaw the actor more than this. */
 const DETOUR_MAX_YAW_RAD = Math.PI / 9;
@@ -81,6 +85,8 @@ interface ActorCursor {
   readonly detour: PathGeometry | null;
   /** Distance walked on earlier paths, so strides stay continuous. */
   readonly strideBaseM: number;
+  /** True while braking for the learner (not for another actor); lets earlier actors yield to it. */
+  readonly learnerHeld: boolean;
 }
 
 interface PathGeometry {
@@ -147,6 +153,7 @@ const idleCursor: ActorCursor = {
   blockedS: 0,
   detour: null,
   strideBaseM: 0,
+  learnerHeld: false,
 };
 
 function activate(cursor: ActorCursor, definition: ActorDefinition, timeS: number,
@@ -164,6 +171,7 @@ function activate(cursor: ActorCursor, definition: ActorDefinition, timeS: numbe
     blockedS: 0,
     detour: null,
     strideBaseM: 0,
+    learnerHeld: false,
   };
 }
 
@@ -259,6 +267,16 @@ function boxPolygon(
   );
 }
 
+function overlapsPolygon(
+  definition: ActorDefinition,
+  path: PathGeometry,
+  distanceM: number,
+  inflateM: number,
+  target: readonly Vec3Data[],
+): boolean {
+  return polygonsOverlap(boxPolygon(definition, path, distanceM, inflateM), target);
+}
+
 function overlapsLearner(
   definition: ActorDefinition,
   path: PathGeometry,
@@ -266,7 +284,7 @@ function overlapsLearner(
   inflateM: number,
   learner: LearnerState,
 ): boolean {
-  return polygonsOverlap(boxPolygon(definition, path, distanceM, inflateM), learner.footprint);
+  return overlapsPolygon(definition, path, distanceM, inflateM, learner.footprint);
 }
 
 /** Sweeps the actor's box along its path every SWEEP_STEP_M. */
@@ -275,13 +293,48 @@ function corridorBlocked(
   path: PathGeometry,
   fromM: number,
   toM: number,
-  learner: LearnerState,
+  target: readonly Vec3Data[],
 ): boolean {
   const end = Math.min(toM, path.lengthM);
   for (let distanceM = fromM; distanceM < end; distanceM += SWEEP_STEP_M) {
-    if (overlapsLearner(definition, path, distanceM, 0, learner)) return true;
+    if (overlapsPolygon(definition, path, distanceM, 0, target)) return true;
   }
-  return overlapsLearner(definition, path, Math.max(end, fromM), 0, learner);
+  return overlapsPolygon(definition, path, Math.max(end, fromM), 0, target);
+}
+
+/** Another active actor's box this step. */
+interface OtherActor {
+  readonly index: number;
+  /** Its box now and where it will be over the next OTHER_HORIZON_S at its current speed. */
+  readonly polygons: readonly (readonly Vec3Data[])[];
+  /** Held by the learner or already leaving on a detour: it will not yield, so others do. */
+  readonly committed: boolean;
+  /** Current centre and how far it will travel within the horizon (for a cheap reject). */
+  readonly centerX: number;
+  readonly centerZ: number;
+  readonly reachM: number;
+}
+
+function otherActors(state: ActorWorldState): readonly OtherActor[] {
+  const others: OtherActor[] = [];
+  if (state.cursors.filter(isVisible).length < 2) return others;
+  state.cursors.forEach((cursor, index) => {
+    if (!isVisible(cursor)) return;
+    const definition = definitionOf(state.schedule, index);
+    const path = pathOf(state, index, cursor);
+    const reachM = Math.min(path.lengthM, cursor.distanceM + cursor.speedMps * OTHER_HORIZON_S);
+    const polygons = [boxPolygon(definition, path, cursor.distanceM, 0)];
+    for (let at = cursor.distanceM + OTHER_SAMPLE_M; at < reachM; at += OTHER_SAMPLE_M) {
+      polygons.push(boxPolygon(definition, path, at, 0));
+    }
+    if (reachM > cursor.distanceM) polygons.push(boxPolygon(definition, path, reachM, 0));
+    const at = pointAlong(path, cursor.distanceM);
+    others.push({
+      index, polygons, committed: cursor.learnerHeld || cursor.detour !== null,
+      centerX: at.x, centerZ: at.z, reachM: Math.max(0, reachM - cursor.distanceM),
+    });
+  });
+  return others;
 }
 
 function decelOf(definition: ActorDefinition): number {
@@ -332,6 +385,7 @@ function advanceActor(
   learner: LearnerState,
   timeS: number,
   dtS: number,
+  others: readonly OtherActor[],
 ): ActorAdvance {
   const definition = definitionOf(state.schedule, index);
   const path = pathOf(state, index, cursor);
@@ -340,17 +394,28 @@ function advanceActor(
 
   // Rule 1: corridor ahead.
   const stopM = (cursor.speedMps * cursor.speedMps) / (2 * decel);
-  const braking = corridorBlocked(
-    definition, path, cursor.distanceM,
-    cursor.distanceM + stopM + LOOKAHEAD_MARGIN_M[definition.kind], learner,
-  );
+  const aheadM = cursor.distanceM + stopM + LOOKAHEAD_MARGIN_M[definition.kind];
+  const learnerAhead = corridorBlocked(definition, path, cursor.distanceM, aheadM, learner.footprint);
+  // Rule 1b: other actors in the corridor. Tie-break (deadlock-free): an actor always yields to
+  // earlier schedule entries, and yields to a later entry only while that entry is committed (held
+  // by the learner, or leaving on a detour; a detouring actor ignores other actors, so no cycle). Never
+  // produces near misses or contacts; a mutual hold still ends via the Rule 5 detour timer.
+  const here = pointAlong(path, cursor.distanceM);
+  const nearM = aheadM - cursor.distanceM + OTHER_NEAR_M;
+  const actorAhead = !learnerAhead && cursor.detour === null && others.some((other) => other.index !== index
+    && (other.index < index || other.committed)
+    && Math.hypot(other.centerX - here.x, other.centerZ - here.z) <= nearM + other.reachM
+    && other.polygons.some((polygon) =>
+      corridorBlocked(definition, path, cursor.distanceM, aheadM, polygon)));
+  const braking = learnerAhead;
+  const slowing = learnerAhead || actorAhead;
   // Rule 3: near miss on entering the corridor while the learner is moving.
   // Latched per encounter; re-armed only after the corridor has been clear for NEAR_MISS_REARM_S.
   const nearMiss = braking && !cursor.encounterLatched && learnerSpeed > MOVING_SPEED_MPS;
   const clearS = braking ? 0 : cursor.clearS + dtS;
   const encounterLatched = braking
     || (cursor.encounterLatched && clearS < NEAR_MISS_REARM_S - TIME_EPSILON_S);
-  let speedMps = braking
+  let speedMps = slowing
     ? Math.max(0, cursor.speedMps - decel * dtS)
     : Math.min(definition.cruiseMps, cursor.speedMps + ACCEL_MPS2[definition.kind] * dtS);
   let distanceM = cursor.distanceM + speedMps * dtS;
@@ -384,10 +449,12 @@ function advanceActor(
   const contact = !finished && overlapsLearner(definition, path, distanceM, 0, learner);
 
   // Rule 5: blocked by a stationary learner.
-  const blocked = speedMps < STOPPED_SPEED_MPS && learnerSpeed < MOVING_SPEED_MPS;
+  const blocked = speedMps < STOPPED_SPEED_MPS
+    && (learnerSpeed < MOVING_SPEED_MPS || actorAhead);
   const blockedS = blocked ? cursor.blockedS + dtS : 0;
   const moved: ActorCursor = {
-    ...cursor, distanceM, speedMps, finished, braking, encounterLatched, clearS, blockedS,
+    ...cursor, distanceM, speedMps, finished, braking: slowing, encounterLatched, clearS,
+    blockedS, learnerHeld: learnerAhead,
   };
   if (!finished && blockedS >= BLOCKED_WAIT_S - TIME_EPSILON_S) {
     if (cursor.detour !== null) {
@@ -423,9 +490,10 @@ export function stepActors(
 
   const nearMissIds: string[] = [];
   let contactId: string | null = null;
+  const others = otherActors(state);
   const cursors: ActorCursor[] = state.cursors.map((cursor, index) => {
     if (cursor.activeSinceS === null || cursor.finished) return cursor;
-    const result = advanceActor(state, index, cursor, learner, timeS, dtS);
+    const result = advanceActor(state, index, cursor, learner, timeS, dtS, others);
     const { id } = definitionOf(state.schedule, index);
     if (result.nearMiss) nearMissIds.push(id);
     if (result.contact && contactId === null) contactId = id;
