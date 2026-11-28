@@ -190,11 +190,29 @@ function activate(cursor: ActorCursor, definition: ActorDefinition, timeS: numbe
 }
 
 /**
- * Starts every actor whose scheduled appearance time has been reached. `learnerLoaded`: the
- * learner scratch holds this step's learner (not at creation).
+ * Starts every actor whose scheduled appearance time has been reached. `before`: the cursors at
+ * the start of this step (null at creation, when there is no learner either); otherwise the
+ * learner scratch holds this step's learner.
  */
+const spawnBox = new Float64Array(8);
+const spawnBounds = new Float64Array(4);
+
+function spawnClear(state: ActorWorldState, cursors: readonly ActorCursor[], index: number): boolean {
+  const definition = definitionOf(state.schedule, index);
+  const path = state.paths[index];
+  if (corridorBlocked(definition, path, 0, START_CLEAR_M,
+    learnerScratch.points, 0, learnerScratch.count, learnerScratch.bounds)) return false;
+  return cursors.every((cursor, other) => {
+    if (other === index || !isVisible(cursor)) return true;
+    writeBox(spawnBox, 0, definitionOf(state.schedule, other), pathOf(state, other, cursor),
+      cursor.distanceM, 0);
+    writeBounds(spawnBounds, spawnBox, 0, 4);
+    return !corridorBlocked(definition, path, 0, START_CLEAR_M, spawnBox, 0, 4, spawnBounds);
+  });
+}
+
 function startDueActors(state: ActorWorldState, cursors: ActorCursor[],
-  learnerLoaded: boolean): void {
+  before: readonly ActorCursor[] | null): void {
   const { schedule, timeS } = state;
   if (schedule.kind === 'lesson') {
     schedule.entries.forEach((entry, index) => {
@@ -211,11 +229,15 @@ function startDueActors(state: ActorWorldState, cursors: ActorCursor[],
     if (timeS < entry.startS - TIME_EPSILON_S) return;
     const cycle = Math.floor((timeS - entry.startS) / entry.periodS + TIME_EPSILON_S);
     if (cycle > cursors[index].cycle) {
+      // Never restart an actor that is (or was, at the start of this step) still visible: its
+      // appearance for this cycle waits until it has finished and been hidden for a step. Only the
+      // latest due cycle starts, so an appearance deferred past its period is skipped.
+      if (isVisible(cursors[index]) || (before !== null && isVisible(before[index]))) return;
       // Free-drive cap: stay hidden (and retry next step) while the cap is already reached.
       if (cursors.filter(isVisible).length >= MAX_AMBIENT_ACTIVE) return;
-      // Spawn clear: same retry while the learner sits on the first START_CLEAR_M of the path.
-      if (learnerLoaded && corridorBlocked(entry.actor, state.paths[index], 0, START_CLEAR_M,
-        learnerScratch.points, 0, learnerScratch.count, learnerScratch.bounds)) return;
+      // Spawn clear: same retry while the learner or another visible actor sits on the first
+      // START_CLEAR_M of the path.
+      if (before !== null && !spawnClear(state, cursors, index)) return;
       cursors[index] = activate(cursors[index], entry.actor, timeS, cycle);
     }
   });
@@ -245,7 +267,7 @@ export function createActorWorld(
     hasMoved: false,
     slowSteps: 0,
   };
-  startDueActors(state, cursors, false);
+  startDueActors(state, cursors, null);
   return freezeState(state);
 }
 
@@ -822,7 +844,7 @@ export function stepActors(
       }
     });
   }
-  startDueActors(next, cursors, true);
+  startDueActors(next, cursors, state.cursors);
 
   return { state: freezeState(next), contactId, nearMissIds };
 }

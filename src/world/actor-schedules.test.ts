@@ -569,6 +569,47 @@ describe('actor schedules', () => {
       }
     });
 
+    it('a deferred ambient start never restarts a visible actor (no teleport, no overlap)', () => {
+      type Case = { environmentId: 'garage' | 'roadside'; x: number; z: number; leaveS: number;
+        speed?: number; seconds: number };
+      const cases: Case[] = [
+        ...[15, 20, 25, 30, 32].map((leaveS) => ({
+          environmentId: 'garage' as const, x: -6, z: 12, leaveS, seconds: 80 })),
+        { environmentId: 'roadside', x: -2.35, z: 16, leaveS: 20, seconds: 60 },
+        // A learner holding car-roadside-a in its lane (creeping in place) across period boundaries.
+        { environmentId: 'roadside', x: -2.35, z: 0, leaveS: 70, speed: 0.5, seconds: 80 },
+      ];
+      for (const { environmentId, x, z, leaveS, speed = 0, seconds } of cases) {
+        const label = `${environmentId}@(${x},${z}) leave ${leaveS} s`;
+        const entries = ambientSchedules[environmentId];
+        let state = sandboxWorld(environmentId);
+        let before = actorPoses(state);
+        for (let i = 0; i < seconds / DT; i += 1) {
+          const timeS = (i + 1) * DT;
+          const learner = timeS < leaveS
+            ? { ...poseLearner(profiles.sedan, x, z), signedSpeedMps: speed }
+            : poseLearner(profiles.sedan, 60, 60);
+          state = stepActors(state, learner, DT).state;
+          const poses = actorPoses(state);
+          poses.forEach((pose, index) => {
+            if (!pose.visible || !before[index].visible) return;
+            const movedM = Math.hypot(pose.positionM[0] - before[index].positionM[0],
+              pose.positionM[2] - before[index].positionM[2]);
+            expect(movedM, `${label} ${pose.id} at ${timeS.toFixed(2)} s`)
+              .toBeLessThanOrEqual(entries[index].actor.cruiseMps * DT + 1e-6);
+          });
+          before = poses;
+          const boxes = actorBoxes(state);
+          for (let a = 0; a < boxes.length; a += 1) {
+            for (let b = a + 1; b < boxes.length; b += 1) {
+              expect(polygonsOverlap(boxPolygon(boxes[a]), boxPolygon(boxes[b])),
+                `${label} ${boxes[a].id}/${boxes[b].id} at ${timeS.toFixed(2)} s`).toBe(false);
+            }
+          }
+        }
+      }
+    }, 60_000);
+
     it('actors on crossing paths yield to each other and both finish', () => {
       const far = poseLearner(profiles.sedan, 50, 50);
       const walker = pedestrian('ped-cross', [[0, -10], [0, 10]], turnBackDetour);
