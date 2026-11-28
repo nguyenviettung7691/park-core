@@ -13,6 +13,7 @@ import {
   createActorWorld,
   stepActors,
   BLOCKED_WAIT_S,
+  HELD_BY_LEARNER_MAX_S,
   MAX_AMBIENT_ACTIVE,
   sensorBoxes,
   type ActorWorldState,
@@ -511,33 +512,74 @@ describe('actor schedules', () => {
       }
     }, 120_000);
 
-    it('a learner creeping in place in a car lane cannot hold the car for longer than the wait', () => {
-      const carA = ambientSchedules.roadside.findIndex(({ actor }) => actor.id === 'car-roadside-a');
+    /** Runs the garage or roadside world with a scripted learner; returns when car `carId` detours. */
+    const holdRun = (environmentId: 'garage' | 'roadside', carId: string, seconds: number,
+      learnerAt: (timeS: number) => LearnerState) => {
+      const index = ambientSchedules[environmentId].findIndex(({ actor }) => actor.id === carId);
+      let state = sandboxWorld(environmentId);
+      let heldAtS: number | null = null;
+      let detourAtS: number | null = null;
+      let contacts = 0;
+      for (let i = 0; i < seconds / DT && detourAtS === null; i += 1) {
+        const timeS = (i + 1) * DT;
+        const result = stepActors(state, learnerAt(timeS), DT);
+        state = result.state;
+        if (result.contactId !== null) contacts += 1;
+        const cursor = state.cursors[index];
+        if (cursor.activeSinceS !== null && cursor.speedMps < 0.05) heldAtS ??= timeS;
+        if (cursor.detour !== null) detourAtS = timeS;
+      }
+      return { heldAtS, detourAtS, contacts };
+    };
+    const moving = (learner: LearnerState, speed: number): LearnerState =>
+      ({ ...learner, signedSpeedMps: speed, gear: 'D', parkingBrake: false });
+    /** Triangle wave between 0 and 2 * amplitude at the given speed. */
+    const rock = (timeS: number, amplitudeM: number, speed: number) => {
+      const periodS = (4 * amplitudeM) / speed;
+      const phase = (timeS % periodS) / periodS;
+      return 2 * amplitudeM * (phase < 0.5 ? 2 * phase : 2 - 2 * phase);
+    };
+
+    it('a learner creeping in place in a car lane holds the car at most HELD_BY_LEARNER_MAX_S', () => {
+      expect(HELD_BY_LEARNER_MAX_S).toBe(10);
       for (const speed of [0.25, 0.5]) {
-        for (const motion of ['reported', 'rocking'] as const) {
-          const label = `${motion} ${speed} m/s`;
-          let state = sandboxWorld('roadside');
-          let heldAtS: number | null = null;
-          let detourAtS: number | null = null;
-          for (let i = 0; i < 20 / DT && detourAtS === null; i += 1) {
-            const timeS = (i + 1) * DT;
-            // Rocking: back and forth over +-0.4 m at the given peak speed (net displacement < 1 m).
-            const z = motion === 'rocking' ? 0.4 * Math.sin((timeS * speed) / 0.4) : 0;
-            const learner = { ...poseLearner(profiles.sedan, -2.35, z), signedSpeedMps: speed,
-              gear: 'D' as const, parkingBrake: false };
-            const result = stepActors(state, learner, DT);
-            state = result.state;
-            expect(result.contactId, `${label} at ${timeS.toFixed(2)} s`).toBeNull();
-            const cursor = state.cursors[carA];
-            if (cursor.activeSinceS !== null && cursor.speedMps < 0.05) heldAtS ??= timeS;
-            if (cursor.detour !== null) detourAtS = timeS;
-          }
-          expect(heldAtS, label).not.toBeNull();
-          expect(detourAtS, label).not.toBeNull();
-          // In place: one wait. Rocking lets the car creep on now and then (each creep restarts the
-          // hold), so allow a second wait; before the fix both were held for ever.
-          expect(detourAtS! - heldAtS!, label)
-            .toBeLessThanOrEqual(motion === 'reported' ? BLOCKED_WAIT_S + 1 : 2 * BLOCKED_WAIT_S + 1);
+        const { heldAtS, detourAtS, contacts } = holdRun('roadside', 'car-roadside-a', 40,
+          () => moving(poseLearner(profiles.sedan, -2.35, 0), speed));
+        expect(contacts, `${speed} m/s`).toBe(0);
+        expect(heldAtS, `${speed} m/s`).not.toBeNull();
+        expect(detourAtS, `${speed} m/s`).not.toBeNull();
+        expect(detourAtS! - heldAtS!, `${speed} m/s`).toBeLessThanOrEqual(HELD_BY_LEARNER_MAX_S + DT);
+      }
+    });
+
+    it('a learner rocking in front of a car holds it at most HELD_BY_LEARNER_MAX_S', () => {
+      for (const [amplitudeM, speed] of [[0.4, 0.5], [0.4, 1.0], [1.2, 1.0], [1.2, 1.5], [3, 1.5]] as const) {
+        const label = `+-${amplitudeM} m at ${speed} m/s`;
+        // Garage: the car drives +x along z = -1; the learner straddles its lane at x = 0 and rocks
+        // back and forth across it (z centre -1 - a .. -1 + a), so the corridor never clears.
+        const { heldAtS, detourAtS, contacts } = holdRun('garage', 'car-garage-ambient', 60,
+          (timeS) => moving(poseLearner(profiles.sedan, 0,
+            -1 - amplitudeM + rock(timeS, amplitudeM, speed)), speed));
+        expect(contacts, label).toBe(0);
+        expect(heldAtS, label).not.toBeNull();
+        expect(detourAtS, label).not.toBeNull();
+        expect(detourAtS! - heldAtS!, label).toBeLessThanOrEqual(HELD_BY_LEARNER_MAX_S + DT);
+      }
+    });
+
+    it('a learner slowly crossing the garage aisle is waited for (no early detour)', () => {
+      for (const speed of [0.3, 0.5]) { // above the 0.2 m/s "stopped" threshold
+        // Rear already in the lane at z = -3.5 (x = 0), reversing +z from 18 s (heading 0 faces -z);
+        // clears the lane (z centre beyond about 2 m) long after the car arrives at about 22 s.
+        const startZ = -3.5;
+        const zAt = (timeS: number) => (timeS < 18 ? startZ : startZ + (timeS - 18) * speed);
+        const { heldAtS, detourAtS, contacts } = holdRun('garage', 'car-garage-ambient', 60,
+          (timeS) => moving(poseLearner(profiles.sedan, 0, zAt(timeS)), -speed));
+        const label = `${speed} m/s`;
+        expect(contacts, label).toBe(0);
+        expect(heldAtS, label).not.toBeNull();
+        if (detourAtS !== null) {
+          expect(detourAtS - heldAtS!, label).toBeGreaterThanOrEqual(HELD_BY_LEARNER_MAX_S - DT - 1e-6);
         }
       }
     });
