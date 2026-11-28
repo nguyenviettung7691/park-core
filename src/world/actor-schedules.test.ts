@@ -483,6 +483,34 @@ describe('actor schedules', () => {
       }
     }, 300_000);
 
+    it('a learner that parks across the garage aisle and then drives away never makes actors overlap', () => {
+      const away = (profile: VehicleProfile) => poseLearner(profile, 60, 60);
+      for (const profile of vehicles) {
+        const here = poseLearner(profile, -1, -1);
+        for (let leaveS = 100; leaveS <= 106 + 1e-9; leaveS += 0.25) {
+          let state = sandboxWorld('garage');
+          const label = `${profile.id} leave ${leaveS.toFixed(2)} s`;
+          for (let i = 0; i < 124 / DT; i += 1) {
+            const timeS = (i + 1) * DT;
+            const learner = timeS >= 90 && timeS < leaveS ? here : away(profile);
+            const result = stepActors(state, { ...learner }, DT);
+            state = result.state;
+            expect(result.contactId, `${label} at ${timeS.toFixed(2)} s`).toBeNull();
+            const boxes = actorBoxes(state);
+            for (let a = 0; a < boxes.length; a += 1) {
+              for (let b = a + 1; b < boxes.length; b += 1) {
+                if (polygonsOverlap(boxPolygon(boxes[a]), boxPolygon(boxes[b]))) {
+                  throw new Error(`${label} ${boxes[a].id}/${boxes[b].id} overlap at ${timeS.toFixed(2)} s`);
+                }
+              }
+            }
+          }
+          // Both garage actors last appeared at 95 s and 100 s (next at 125 s and 140 s); both are done by 124 s.
+          expect(state.cursors.map((cursor) => cursor.finished), label).toEqual([true, true]);
+        }
+      }
+    }, 120_000);
+
     it('actors on crossing paths yield to each other and both finish', () => {
       const far = poseLearner(profiles.sedan, 50, 50);
       const walker = pedestrian('ped-cross', [[0, -10], [0, 10]], turnBackDetour);

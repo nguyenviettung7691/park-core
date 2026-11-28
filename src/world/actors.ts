@@ -19,8 +19,8 @@ const SWEEP_STEP_M = 0.05;
 const STOPPED_SPEED_MPS = 0.05;
 const OTHER_HORIZON_S = 1.5;
 const OTHER_SAMPLE_M = 0.5;
-/** Margin for box half-lengths (cars 2.3 m) in the cheap distance reject. */
-const OTHER_NEAR_M = 6;
+/** How far past its projection another actor's path counts as \"its path\" for the keep-clearing rule. */
+const OTHER_PATH_MARGIN_M = 3;
 const DETOUR_MIN_TRANSITION_M = 2;
 /** Side-steps never yaw the actor more than this. */
 const DETOUR_MAX_YAW_RAD = Math.PI / 9;
@@ -100,6 +100,8 @@ export interface ActorWorldState {
   readonly rules: ActorRules;
   readonly forceTriggersAtS: number | null;
   readonly paths: readonly PathGeometry[];
+  /** apart[i * n + j]: the scheduled paths of entries i and j can never bring their boxes together. */
+  readonly apart: readonly boolean[];
   readonly stepCount: number;
   readonly timeS: number;
   readonly cursors: readonly ActorCursor[];
@@ -215,6 +217,8 @@ export function createActorWorld(
     rules,
     forceTriggersAtS: forceS,
     paths: schedule.entries.map((entry) => buildPath(entry.actor.path)),
+    apart: Object.freeze(schedule.entries.flatMap((a, i) => schedule.entries.map((b, j) =>
+      i !== j && pathsApart(a.actor, b.actor)))),
     stepCount: 0,
     timeS: 0,
     cursors,
@@ -252,90 +256,340 @@ function pathOf(state: ActorWorldState, index: number, cursor: ActorCursor): Pat
   return cursor.detour ?? state.paths[index];
 }
 
-function boxPolygon(
-  definition: ActorDefinition,
-  path: PathGeometry,
-  distanceM: number,
-  inflateM: number,
-): readonly Vec3Data[] {
-  const at = pointAlong(path, distanceM);
-  return orientedRectangle(
-    [at.x, definition.halfExtentsM[1], at.z],
-    definition.halfExtentsM[0] + inflateM,
-    definition.halfExtentsM[2] + inflateM,
-    at.yawRad,
-  );
+// ---- Non-allocating geometry. Bit-identical to orientedRectangle + polygonsOverlap: the same
+// corner arithmetic, the same separating axes (edges of the concatenated point list) and the
+// same 1e-8 tolerance; only the storage differs (flat x,z pairs in Float64Arrays). ----
+
+/** pointAlong results, written by locate() (avoids an object per sample). */
+let atX = 0;
+let atZ = 0;
+let atYaw = 0;
+
+function locate(path: PathGeometry, distanceM: number): void {
+  const clamped = Math.min(Math.max(distanceM, 0), path.lengthM);
+  let segment = path.points.length - 2;
+  for (let i = 1; i < path.points.length; i += 1) {
+    if (clamped <= path.cumulativeM[i]) { segment = i - 1; break; }
+  }
+  const [x0, z0] = path.points[segment];
+  const [x1, z1] = path.points[segment + 1];
+  const length = path.cumulativeM[segment + 1] - path.cumulativeM[segment];
+  const t = length > 0 ? (clamped - path.cumulativeM[segment]) / length : 0;
+  // Local -z faces travel, matching the vehicle convention (yaw 0 faces -z).
+  atX = x0 + (x1 - x0) * t;
+  atZ = z0 + (z1 - z0) * t;
+  atYaw = Math.atan2(0 - (x1 - x0), 0 - (z1 - z0)); // 0 - avoids -0 flipping pi sign
 }
 
-function overlapsPolygon(
+/** Writes the 4 corners (x,z) of the actor's box at distanceM into out[offset..offset+8). */
+function writeBox(
+  out: Float64Array,
+  offset: number,
   definition: ActorDefinition,
   path: PathGeometry,
   distanceM: number,
   inflateM: number,
-  target: readonly Vec3Data[],
+): void {
+  locate(path, distanceM);
+  const halfWidthM = definition.halfExtentsM[0] + inflateM;
+  const halfLengthM = definition.halfExtentsM[2] + inflateM;
+  const cos = Math.cos(atYaw), sin = Math.sin(atYaw);
+  const nw = -halfWidthM, nl = -halfLengthM;
+  out[offset] = atX + cos * nw + sin * nl;
+  out[offset + 1] = atZ - sin * nw + cos * nl;
+  out[offset + 2] = atX + cos * halfWidthM + sin * nl;
+  out[offset + 3] = atZ - sin * halfWidthM + cos * nl;
+  out[offset + 4] = atX + cos * halfWidthM + sin * halfLengthM;
+  out[offset + 5] = atZ - sin * halfWidthM + cos * halfLengthM;
+  out[offset + 6] = atX + cos * nw + sin * halfLengthM;
+  out[offset + 7] = atZ - sin * nw + cos * halfLengthM;
+}
+
+function pointX(a: Float64Array, aOff: number, aN: number, b: Float64Array, bOff: number,
+  k: number): number {
+  return k < aN ? a[aOff + 2 * k] : b[bOff + 2 * (k - aN)];
+}
+
+function pointZ(a: Float64Array, aOff: number, aN: number, b: Float64Array, bOff: number,
+  k: number): number {
+  return k < aN ? a[aOff + 2 * k + 1] : b[bOff + 2 * (k - aN) + 1];
+}
+
+/** polygonsOverlap on flat polygons of aN and bN points. */
+function flatOverlap(
+  a: Float64Array, aOff: number, aN: number,
+  b: Float64Array, bOff: number, bN: number,
 ): boolean {
-  return polygonsOverlap(boxPolygon(definition, path, distanceM, inflateM), target);
+  const n = aN + bN;
+  for (let k = 0; k < n; k += 1) {
+    const m = (k + 1) % n;
+    const px = pointX(a, aOff, aN, b, bOff, k), pz = pointZ(a, aOff, aN, b, bOff, k);
+    const nx = pointX(a, aOff, aN, b, bOff, m), nz = pointZ(a, aOff, aN, b, bOff, m);
+    const axisX = -(nz - pz), axisZ = nx - px;
+    let aMin = Infinity, aMax = -Infinity, bMin = Infinity, bMax = -Infinity;
+    for (let i = 0; i < aN; i += 1) {
+      const v = a[aOff + 2 * i] * axisX + a[aOff + 2 * i + 1] * axisZ;
+      if (v < aMin) aMin = v;
+      if (v > aMax) aMax = v;
+    }
+    for (let i = 0; i < bN; i += 1) {
+      const v = b[bOff + 2 * i] * axisX + b[bOff + 2 * i + 1] * axisZ;
+      if (v < bMin) bMin = v;
+      if (v > bMax) bMax = v;
+    }
+    if (!(aMax >= bMin - 1e-8 && bMax >= aMin - 1e-8)) return false;
+  }
+  return true;
 }
 
+/** Axis-aligned bounds [minX, minZ, maxX, maxZ] of `count` points (cheap pre-reject only). */
+function writeBounds(out: Float64Array, points: Float64Array, offset: number, count: number): void {
+  let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i < count; i += 1) {
+    const x = points[offset + 2 * i], z = points[offset + 2 * i + 1];
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (z < minZ) minZ = z;
+    if (z > maxZ) maxZ = z;
+  }
+  out[0] = minX; out[1] = minZ; out[2] = maxX; out[3] = maxZ;
+}
+
+/** Bounds slack: far above rounding, far below any meaningful gap. */
+const BOUNDS_SLACK_M = 1e-3;
+
+function boundsApart(a: Float64Array, aOff: number, b: Float64Array, bOff: number): boolean {
+  return a[aOff] > b[bOff + 2] + BOUNDS_SLACK_M || b[bOff] > a[aOff + 2] + BOUNDS_SLACK_M
+    || a[aOff + 1] > b[bOff + 3] + BOUNDS_SLACK_M || b[bOff + 1] > a[aOff + 3] + BOUNDS_SLACK_M;
+}
+
+/** Conservative bounds of every box centred on the path between fromM and toM. */
+function writeCorridorBounds(
+  out: Float64Array,
+  definition: ActorDefinition,
+  path: PathGeometry,
+  fromM: number,
+  toM: number,
+  inflateM: number,
+): void {
+  const radiusM = Math.hypot(definition.halfExtentsM[0] + inflateM,
+    definition.halfExtentsM[2] + inflateM);
+  locate(path, fromM);
+  let minX = atX, maxX = atX, minZ = atZ, maxZ = atZ;
+  locate(path, toM);
+  minX = Math.min(minX, atX); maxX = Math.max(maxX, atX);
+  minZ = Math.min(minZ, atZ); maxZ = Math.max(maxZ, atZ);
+  for (let i = 1; i < path.points.length - 1; i += 1) {
+    if (path.cumulativeM[i] <= fromM || path.cumulativeM[i] >= toM) continue;
+    const [x, z] = path.points[i];
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+  }
+  out[0] = minX - radiusM; out[1] = minZ - radiusM;
+  out[2] = maxX + radiusM; out[3] = maxZ + radiusM;
+}
+
+const boxScratch = new Float64Array(8);
+const learnerScratch = { points: new Float64Array(8), count: 0, bounds: new Float64Array(4) };
+const corridorBoundsScratch = new Float64Array(4);
+
+function loadLearner(learner: LearnerState): void {
+  const count = learner.footprint.length;
+  if (learnerScratch.points.length < 2 * count) learnerScratch.points = new Float64Array(2 * count);
+  learner.footprint.forEach((point, i) => {
+    learnerScratch.points[2 * i] = point[0];
+    learnerScratch.points[2 * i + 1] = point[2];
+  });
+  learnerScratch.count = count;
+  writeBounds(learnerScratch.bounds, learnerScratch.points, 0, count);
+}
+
+/** The loaded learner footprint overlaps the actor's box at distanceM. */
 function overlapsLearner(
   definition: ActorDefinition,
   path: PathGeometry,
   distanceM: number,
   inflateM: number,
-  learner: LearnerState,
 ): boolean {
-  return overlapsPolygon(definition, path, distanceM, inflateM, learner.footprint);
+  writeBox(boxScratch, 0, definition, path, distanceM, inflateM);
+  return flatOverlap(boxScratch, 0, 4, learnerScratch.points, 0, learnerScratch.count);
 }
 
-/** Sweeps the actor's box along its path every SWEEP_STEP_M. */
+/** Sweeps the actor's box along its path every SWEEP_STEP_M (first sample fromM, last the end). */
 function corridorBlocked(
   definition: ActorDefinition,
   path: PathGeometry,
   fromM: number,
   toM: number,
-  target: readonly Vec3Data[],
+  target: Float64Array,
+  targetOffset: number,
+  targetCount: number,
+  targetBounds: Float64Array,
 ): boolean {
   const end = Math.min(toM, path.lengthM);
+  writeCorridorBounds(corridorBoundsScratch, definition, path, fromM, Math.max(end, fromM), 0);
+  if (boundsApart(corridorBoundsScratch, 0, targetBounds, 0)) return false;
   for (let distanceM = fromM; distanceM < end; distanceM += SWEEP_STEP_M) {
-    if (overlapsPolygon(definition, path, distanceM, 0, target)) return true;
+    writeBox(boxScratch, 0, definition, path, distanceM, 0);
+    if (flatOverlap(boxScratch, 0, 4, target, targetOffset, targetCount)) return true;
   }
-  return overlapsPolygon(definition, path, Math.max(end, fromM), 0, target);
+  writeBox(boxScratch, 0, definition, path, Math.max(end, fromM), 0);
+  return flatOverlap(boxScratch, 0, 4, target, targetOffset, targetCount);
 }
 
-/** Another active actor's box this step. */
-interface OtherActor {
-  readonly index: number;
-  /** Its box now and where it will be over the next OTHER_HORIZON_S at its current speed. */
-  readonly polygons: readonly (readonly Vec3Data[])[];
+/**
+ * One visible actor this step, as seen by the others (only built when 2 or more are visible).
+ * Box lists are flat: box k occupies [8k, 8k+8). Scratch storage is reused across steps.
+ */
+interface ActorFrame {
+  index: number;
+  definition: ActorDefinition;
+  path: PathGeometry;
+  distanceM: number;
+  aheadM: number;
   /** Held by the learner or already leaving on a detour: it will not yield, so others do. */
-  readonly committed: boolean;
-  /** Current centre and how far it will travel within the horizon (for a cheap reject). */
-  readonly centerX: number;
-  readonly centerZ: number;
-  readonly reachM: number;
+  committed: boolean;
+  onDetour: boolean;
+  /** Box 0: current box. Boxes 1..projectionEnd-1: next OTHER_HORIZON_S at its current speed
+   * (sampled every OTHER_SAMPLE_M, then the end of the horizon, box `reachBox`, or -1).
+   * Boxes 0..pathEnd-1 except reachBox: its path ahead (OTHER_PATH_MARGIN_M past the horizon). */
+  boxes: Float64Array;
+  reachBox: number;
+  projectionEnd: number;
+  pathEnd: number;
+  /** Bounds of each box (4 per box) and of all of them (`sweepBounds`). */
+  boxBounds: Float64Array;
+  sweepBounds: Float64Array;
+  /** Own corridor (Rule 1 samples), built on first use this step. */
+  corridor: Float64Array;
+  corridorCount: number;
+  corridorBounds: Float64Array;
+  corridorBuilt: boolean;
 }
 
-function otherActors(state: ActorWorldState): readonly OtherActor[] {
-  const others: OtherActor[] = [];
-  if (state.cursors.filter(isVisible).length < 2) return others;
+const framePool: ActorFrame[] = [];
+
+function frameAt(slot: number): ActorFrame {
+  framePool[slot] ??= {
+    index: 0, definition: undefined as unknown as ActorDefinition,
+    path: undefined as unknown as PathGeometry, distanceM: 0, aheadM: 0, committed: false,
+    onDetour: false, boxes: new Float64Array(8 * 32), reachBox: -1, projectionEnd: 0, pathEnd: 0,
+    boxBounds: new Float64Array(4 * 32), sweepBounds: new Float64Array(4),
+    corridor: new Float64Array(8 * 96), corridorCount: 0, corridorBounds: new Float64Array(4),
+    corridorBuilt: false,
+  };
+  return framePool[slot];
+}
+
+function aheadOf(definition: ActorDefinition, cursor: ActorCursor): number {
+  const stopM = (cursor.speedMps * cursor.speedMps) / (2 * decelOf(definition));
+  return cursor.distanceM + stopM + LOOKAHEAD_MARGIN_M[definition.kind];
+}
+
+function pushBox(frame: ActorFrame, count: number, distanceM: number): number {
+  if (frame.boxes.length < 8 * (count + 1)) {
+    const grown = new Float64Array(frame.boxes.length * 2);
+    grown.set(frame.boxes);
+    frame.boxes = grown;
+    const bounds = new Float64Array(frame.boxBounds.length * 2);
+    bounds.set(frame.boxBounds);
+    frame.boxBounds = bounds;
+  }
+  writeBox(frame.boxes, 8 * count, frame.definition, frame.path, distanceM, 0);
+  writeBounds(boxScratch, frame.boxes, 8 * count, 4);
+  frame.boxBounds.set(boxScratch.subarray(0, 4), 4 * count);
+  return count + 1;
+}
+
+/** Frames of the visible actors, by schedule index (empty unless 2 or more are visible). */
+function actorFrames(state: ActorWorldState): readonly (ActorFrame | undefined)[] {
+  const frames: (ActorFrame | undefined)[] = [];
+  let visible = 0;
+  for (const cursor of state.cursors) if (isVisible(cursor)) visible += 1;
+  if (visible < 2) return frames;
+  let slot = 0;
   state.cursors.forEach((cursor, index) => {
     if (!isVisible(cursor)) return;
-    const definition = definitionOf(state.schedule, index);
-    const path = pathOf(state, index, cursor);
+    const frame = frameAt(slot);
+    slot += 1;
+    frame.index = index;
+    frame.definition = definitionOf(state.schedule, index);
+    frame.path = pathOf(state, index, cursor);
+    frame.distanceM = cursor.distanceM;
+    frame.aheadM = aheadOf(frame.definition, cursor);
+    frame.committed = cursor.learnerHeld || cursor.detour !== null;
+    frame.onDetour = cursor.detour !== null;
+    frame.corridorBuilt = false;
+    const { path } = frame;
     const reachM = Math.min(path.lengthM, cursor.distanceM + cursor.speedMps * OTHER_HORIZON_S);
-    const polygons = [boxPolygon(definition, path, cursor.distanceM, 0)];
+    let count = pushBox(frame, 0, cursor.distanceM);
     for (let at = cursor.distanceM + OTHER_SAMPLE_M; at < reachM; at += OTHER_SAMPLE_M) {
-      polygons.push(boxPolygon(definition, path, at, 0));
+      count = pushBox(frame, count, at);
     }
-    if (reachM > cursor.distanceM) polygons.push(boxPolygon(definition, path, reachM, 0));
-    const at = pointAlong(path, cursor.distanceM);
-    others.push({
-      index, polygons, committed: cursor.learnerHeld || cursor.detour !== null,
-      centerX: at.x, centerZ: at.z, reachM: Math.max(0, reachM - cursor.distanceM),
-    });
+    frame.reachBox = -1;
+    if (reachM > cursor.distanceM) { frame.reachBox = count; count = pushBox(frame, count, reachM); }
+    frame.projectionEnd = count;
+    // Path ahead: the projection boxes, then on to OTHER_PATH_MARGIN_M past it.
+    const pathEndM = Math.min(path.lengthM, reachM + OTHER_PATH_MARGIN_M);
+    let at = cursor.distanceM + OTHER_SAMPLE_M;
+    while (at < reachM) at += OTHER_SAMPLE_M;
+    for (; at < pathEndM; at += OTHER_SAMPLE_M) count = pushBox(frame, count, at);
+    count = pushBox(frame, count, pathEndM);
+    frame.pathEnd = count;
+    writeBounds(frame.sweepBounds, frame.boxes, 0, 4 * count);
+    frames[index] = frame;
   });
-  return others;
+  return frames;
 }
+
+/** Builds the frame's own Rule 1 corridor boxes (same samples as corridorBlocked) once per step. */
+function ensureCorridor(frame: ActorFrame): void {
+  if (frame.corridorBuilt) return;
+  const { definition, path, distanceM: fromM } = frame;
+  const end = Math.min(frame.aheadM, path.lengthM);
+  let count = 0;
+  const add = (distanceM: number) => {
+    if (frame.corridor.length < 8 * (count + 1)) {
+      const grown = new Float64Array(frame.corridor.length * 2);
+      grown.set(frame.corridor);
+      frame.corridor = grown;
+    }
+    writeBox(frame.corridor, 8 * count, definition, path, distanceM, 0);
+    count += 1;
+  };
+  for (let distanceM = fromM; distanceM < end; distanceM += SWEEP_STEP_M) add(distanceM);
+  add(Math.max(end, fromM));
+  frame.corridorCount = count;
+  writeBounds(frame.corridorBounds, frame.corridor, 0, 4 * count);
+  frame.corridorBuilt = true;
+}
+
+/** The frame's corridor meets the other frame's box k. */
+function corridorMeets(frame: ActorFrame, other: ActorFrame, k: number): boolean {
+  if (boundsApart(frame.corridorBounds, 0, other.boxBounds, 4 * k)) return false;
+  for (let c = 0; c < frame.corridorCount; c += 1) {
+    if (flatOverlap(frame.corridor, 8 * c, 4, other.boxes, 8 * k, 4)) return true;
+  }
+  return false;
+}
+
+/** Static: the two scheduled paths' swept boxes can never touch (computed once per world). */
+function pathsApart(a: ActorDefinition, b: ActorDefinition): boolean {
+  const slabs = (definition: ActorDefinition) => definition.path.slice(1).map((to, i) => {
+    const from = definition.path[i];
+    const lengthM = Math.hypot(to[0] - from[0], to[1] - from[1]);
+    return orientedRectangle(
+      [(from[0] + to[0]) / 2, 0, (from[1] + to[1]) / 2],
+      definition.halfExtentsM[0] + PATHS_APART_SLACK_M,
+      lengthM / 2 + definition.halfExtentsM[2] + PATHS_APART_SLACK_M,
+      Math.atan2(0 - (to[0] - from[0]), 0 - (to[1] - from[1])),
+    );
+  });
+  const bSlabs = slabs(b);
+  return slabs(a).every((slab) => bSlabs.every((other) => !polygonsOverlap(slab, other)));
+}
+
+const PATHS_APART_SLACK_M = 0.05;
 
 function decelOf(definition: ActorDefinition): number {
   return definition.kind === 'car'
@@ -385,7 +639,7 @@ function advanceActor(
   learner: LearnerState,
   timeS: number,
   dtS: number,
-  others: readonly OtherActor[],
+  frames: readonly (ActorFrame | undefined)[],
 ): ActorAdvance {
   const definition = definitionOf(state.schedule, index);
   const path = pathOf(state, index, cursor);
@@ -393,20 +647,36 @@ function advanceActor(
   const decel = decelOf(definition);
 
   // Rule 1: corridor ahead.
-  const stopM = (cursor.speedMps * cursor.speedMps) / (2 * decel);
-  const aheadM = cursor.distanceM + stopM + LOOKAHEAD_MARGIN_M[definition.kind];
-  const learnerAhead = corridorBlocked(definition, path, cursor.distanceM, aheadM, learner.footprint);
-  // Rule 1b: other actors in the corridor. Tie-break (deadlock-free): an actor always yields to
-  // earlier schedule entries, and yields to a later entry only while that entry is committed (held
-  // by the learner, or leaving on a detour; a detouring actor ignores other actors, so no cycle). Never
-  // produces near misses or contacts; a mutual hold still ends via the Rule 5 detour timer.
-  const here = pointAlong(path, cursor.distanceM);
-  const nearM = aheadM - cursor.distanceM + OTHER_NEAR_M;
-  const actorAhead = !learnerAhead && cursor.detour === null && others.some((other) => other.index !== index
-    && (other.index < index || other.committed)
-    && Math.hypot(other.centerX - here.x, other.centerZ - here.z) <= nearM + other.reachM
-    && other.polygons.some((polygon) =>
-      corridorBlocked(definition, path, cursor.distanceM, aheadM, polygon)));
+  const aheadM = aheadOf(definition, cursor);
+  const learnerAhead = corridorBlocked(definition, path, cursor.distanceM, aheadM,
+    learnerScratch.points, 0, learnerScratch.count, learnerScratch.bounds);
+  // Rule 1b: other actors in the corridor (never near misses or contacts). Deadlock-free:
+  // - another actor's CURRENT box is always yielded to, whatever the schedule order;
+  // - its projected boxes (next OTHER_HORIZON_S) only when it is an earlier schedule entry or is
+  //   committed (held by the learner, or leaving on a detour), and only while this actor's own box
+  //   is not already on the other's path ahead (then stopping would leave it there; keep clearing);
+  // - a detouring actor ignores other actors.
+  // A mutual hold (both boxes in each other's corridors) ends via the Rule 5 detour timer.
+  const own = frames[index];
+  const yieldsTo = (other: ActorFrame | undefined): boolean => {
+    if (own === undefined || other === undefined || other === own) return false;
+    if (!other.onDetour && state.apart[index * state.cursors.length + other.index]) return false;
+    ensureCorridor(own);
+    if (boundsApart(own.corridorBounds, 0, other.sweepBounds, 0)) return false;
+    if (corridorMeets(own, other, 0)) return true;
+    if (!(other.index < index || other.committed)) return false;
+    let projected = false;
+    for (let k = 1; k < other.projectionEnd && !projected; k += 1) {
+      projected = corridorMeets(own, other, k);
+    }
+    if (!projected) return false;
+    for (let k = 0; k < other.pathEnd; k += 1) {
+      if (k !== other.reachBox && !boundsApart(own.boxBounds, 0, other.boxBounds, 4 * k)
+        && flatOverlap(own.boxes, 0, 4, other.boxes, 8 * k, 4)) return false;
+    }
+    return true;
+  };
+  const actorAhead = !learnerAhead && cursor.detour === null && frames.some(yieldsTo);
   const braking = learnerAhead;
   const slowing = learnerAhead || actorAhead;
   // Rule 3: near miss on entering the corridor while the learner is moving.
@@ -422,15 +692,15 @@ function advanceActor(
 
   // Rule 2: coach guard.
   if (state.rules === 'coach'
-    && overlapsLearner(definition, path, distanceM, COACH_GAP_M, learner)) {
-    if (overlapsLearner(definition, path, cursor.distanceM, COACH_GAP_M, learner)) {
+    && overlapsLearner(definition, path, distanceM, COACH_GAP_M)) {
+    if (overlapsLearner(definition, path, cursor.distanceM, COACH_GAP_M)) {
       distanceM = cursor.distanceM;
     } else {
       let low = cursor.distanceM;
       let high = distanceM;
       for (let i = 0; i < 16; i += 1) {
         const mid = (low + high) / 2;
-        if (overlapsLearner(definition, path, mid, COACH_GAP_M, learner)) high = mid;
+        if (overlapsLearner(definition, path, mid, COACH_GAP_M)) high = mid;
         else low = mid;
       }
       distanceM = low;
@@ -446,7 +716,7 @@ function advanceActor(
     && timeS - triggeredAtS >= LESSON_LIFETIME_S - TIME_EPSILON_S) finished = true;
 
   // Rule 4: contact after the move.
-  const contact = !finished && overlapsLearner(definition, path, distanceM, 0, learner);
+  const contact = !finished && overlapsLearner(definition, path, distanceM, 0);
 
   // Rule 5: blocked by a stationary learner.
   const blocked = speedMps < STOPPED_SPEED_MPS
@@ -490,10 +760,11 @@ export function stepActors(
 
   const nearMissIds: string[] = [];
   let contactId: string | null = null;
-  const others = otherActors(state);
+  loadLearner(learner);
+  const frames = actorFrames(state);
   const cursors: ActorCursor[] = state.cursors.map((cursor, index) => {
     if (cursor.activeSinceS === null || cursor.finished) return cursor;
-    const result = advanceActor(state, index, cursor, learner, timeS, dtS, others);
+    const result = advanceActor(state, index, cursor, learner, timeS, dtS, frames);
     const { id } = definitionOf(state.schedule, index);
     if (result.nearMiss) nearMissIds.push(id);
     if (result.contact && contactId === null) contactId = id;
@@ -531,21 +802,8 @@ function isVisible(cursor: ActorCursor): boolean {
 function pointAlong(path: PathGeometry, distanceM: number): {
   readonly x: number; readonly z: number; readonly yawRad: number;
 } {
-  const clamped = Math.min(Math.max(distanceM, 0), path.lengthM);
-  let segment = path.points.length - 2;
-  for (let i = 1; i < path.points.length; i += 1) {
-    if (clamped <= path.cumulativeM[i]) { segment = i - 1; break; }
-  }
-  const [x0, z0] = path.points[segment];
-  const [x1, z1] = path.points[segment + 1];
-  const length = path.cumulativeM[segment + 1] - path.cumulativeM[segment];
-  const t = length > 0 ? (clamped - path.cumulativeM[segment]) / length : 0;
-  // Local -z faces travel, matching the vehicle convention (yaw 0 faces -z).
-  return {
-    x: x0 + (x1 - x0) * t,
-    z: z0 + (z1 - z0) * t,
-    yawRad: Math.atan2(0 - (x1 - x0), 0 - (z1 - z0)), // 0 - avoids -0 flipping pi sign
-  };
+  locate(path, distanceM);
+  return { x: atX, z: atZ, yawRad: atYaw };
 }
 
 export function actorPoses(state: ActorWorldState): readonly ActorPose[] {
