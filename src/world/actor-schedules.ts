@@ -50,7 +50,7 @@ export const ambientSchedules: Readonly<Record<EnvironmentId, readonly AmbientAc
     garage: Object.freeze([
       ambient(pedestrian('ped-garage-ambient', [[-6, 14.2], [-6, -14.2]], turnBack), 5, 30),
       ambient(car('car-garage-ambient', [[-12.2, -1], [12.2, -1]], GARAGE_CAR_MPS, turnBack),
-        15, 40),
+        20, 40),
     ]),
     roadside: Object.freeze([
       ambient(pedestrian('ped-roadside-right', [[6, -15], [6, 15]], turnBack), 0, 30),

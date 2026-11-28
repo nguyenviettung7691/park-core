@@ -331,6 +331,35 @@ describe('actor schedules', () => {
       headingRad: 0, signedSpeedMps: 0, gear: 'P', parkingBrake: true, indicator: 'off',
     });
 
+    it('ambient actors never overlap each other over a full cycle with a stationary learner', () => {
+      const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+      for (const profile of vehicles) {
+        for (const environmentId of ['garage', 'roadside'] as const) {
+          const lcm = ambientSchedules[environmentId].map(({ periodS }) => periodS)
+            .reduce((a, b) => (a * b) / gcd(a, b));
+          const learner = (): LearnerState => ({
+            footprint: vehicleFootprint({
+              positionM: prototypeSpawn(profile).positionM, rotation: [0, 0, 0, 1],
+            }, profile),
+            headingRad: 0, signedSpeedMps: 0, gear: 'P', parkingBrake: true, indicator: 'off',
+          });
+          let state = sandboxWorld(environmentId);
+          for (let i = 0; i < lcm / DT; i += 1) {
+            state = stepActors(state, learner(), DT).state;
+            const boxes = actorBoxes(state);
+            for (let a = 0; a < boxes.length; a += 1) {
+              for (let b = a + 1; b < boxes.length; b += 1) {
+                if (polygonsOverlap(boxPolygon(boxes[a]), boxPolygon(boxes[b]))) {
+                  throw new Error(`${profile.id}/${environmentId} ${boxes[a].id}/${boxes[b].id}`
+                    + ` overlap at ${(i * DT).toFixed(2)} s`);
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
     it('at most 3 active at once over 240 s', () => {
       for (const environmentId of ['garage', 'roadside'] as const) {
         let state = sandboxWorld(environmentId);

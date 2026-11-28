@@ -130,8 +130,8 @@ for (const stage of [1, 2, 3, 4, 5] as const) {
   });
 }
 
-// Busiest ambient moments: three actors on the roadside at 19 s, two in the garage at 20 s.
-for (const [environment, actorsAtS, busiest] of [['garage', 20, 2], ['roadside', 19, 3]] as const) {
+// Busiest ambient moments: three actors on the roadside at 19 s, two in the garage at 22 s.
+for (const [environment, actorsAtS, busiest] of [['garage', 22, 2], ['roadside', 19, 3]] as const) {
   test(`${environment} ambient actors stay within the sandbox budget`, async ({ page }, info) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
