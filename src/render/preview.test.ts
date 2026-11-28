@@ -1461,20 +1461,28 @@ describe('preview look and seat wiring', () => {
     p.dispose();
   });
 
-  it('allows seat adjustment only while the car is held and reports changes', () => {
+  it('allows seat adjustment only while the car is held', () => {
     const f = fixture();
-    const onSeatAdjustAllowed = vi.fn();
-    const p = createPreview(f.canvas, f.container, { ...f.events, onSeatAdjustAllowed }, f.deps);
+    const p = createPreview(f.canvas, f.container, f.events, f.deps);
     f.frame(20);
     expect(p.seatAdjustAllowed()).toBe(true);
-    expect(onSeatAdjustAllowed).not.toHaveBeenCalled();
     f.key('KeyS'); f.key('Digit4'); f.key('Space');
     f.frame();
     f.frame();
     expect(p.seatAdjustAllowed()).toBe(false);
-    expect(onSeatAdjustAllowed).toHaveBeenCalledExactlyOnceWith(false);
-    f.frame();
-    expect(onSeatAdjustAllowed).toHaveBeenCalledOnce();
+    p.dispose();
+  });
+
+  it('re-renders the moved camera when the seat changes while paused', () => {
+    const f = fixture();
+    const p = startPreview(f.canvas, f.container, f.events, options(), f.deps);
+    const cameraAt = () => f.renderer.render.mock.calls.filter(([, candidate]) =>
+      candidate.name === 'driver-camera').at(-1)![1].position.clone();
+    const before = cameraAt();
+    const renders = f.renderer.render.mock.calls.length;
+    p.setSeatOffset({ foreAftM: 0.1, heightM: 0 });
+    expect(f.renderer.render.mock.calls.length).toBeGreaterThan(renders);
+    expect(cameraAt().distanceTo(before)).toBeCloseTo(0.1, 3);
     p.dispose();
   });
 });

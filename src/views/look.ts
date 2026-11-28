@@ -85,7 +85,7 @@ export function createLookController(): {
       if (dtS <= 0) throw new RangeError('dtS must be positive');
 
       const glance = input.glance;
-      if (glance === null && input.recenter) {
+      if (input.recenter) {
         freeYaw = 0;
         freePitch = 0;
         tracking = false;

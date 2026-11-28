@@ -82,6 +82,7 @@ export function validateCalibration(value: unknown): ControllerCalibration | nul
     const brake = validatePedal(v.brake);
     if (!throttle || !brake) return null;
     const taken = new Set<number>([0, reverseButton, driveButton]);
+    for (const pedal of [throttle, brake]) if (pedal.kind === 'button') taken.add(pedal.index);
     const look: { -readonly [K in LookButtonKey]?: number } = {};
     for (const key of LOOK_BUTTON_KEYS) {
       const button = v[key];

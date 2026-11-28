@@ -132,6 +132,11 @@ describe('calibration', () => {
       .toEqual({ ...wheel, lookLeftButton: 8, recenterButton: 9 });
   });
 
+  it('drops look buttons that clash with button-kind pedals', () => {
+    expect(validateCalibration({ ...wheel, lookLeftButton: 6, lookRightButton: 8 }))
+      .toEqual({ ...wheel, lookRightButton: 8 });
+  });
+
   it('drops a conflicting look stick and keeps the calibration', () => {
     const base = { ...wheel, brake: { kind: 'axis', index: 2, released: -1, pressed: 1 } } as const;
     const withStick = (lookStick: unknown) => validateCalibration({ ...base, lookStick });

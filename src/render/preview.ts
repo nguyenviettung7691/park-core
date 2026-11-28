@@ -81,8 +81,6 @@ export interface PreviewEvents {
   onAttemptOutcome?(summary: AttemptSummary): void;
   /** The driver finished adjusting (or reset) the mirrors of this vehicle. */
   onMirrorOffsets?(vehicleId: VehicleId, offsets: MirrorOffsets): void;
-  /** Whether the car is held so the seat may be adjusted; fires only when it changes. */
-  onSeatAdjustAllowed?(allowed: boolean): void;
 }
 export type PreviewSessionMode =
   | { readonly kind: 'sandbox' }
@@ -381,10 +379,7 @@ export function createPreview(
       try {
         const held = carHeld();
         input.setMirrorAdjustAllowed(held);
-        if (held !== seatAllowed) {
-          seatAllowed = held;
-          events.onSeatAdjustAllowed?.(held);
-        }
+        seatAllowed = held;
         const poll = input.poll();
         if (poll.issue) {
           pause(prototype.source === 'gamepad' ? 'controller' : 'focus');
@@ -725,6 +720,10 @@ export function createPreview(
           };
           views.setSeatOffset(clamped);
           sceneContent.setSeatOffset(clamped);
+          if (!running) {
+            views.setLookPose(look.pose());
+            views.render({ previous, current, alpha: 0 }, lastTime);
+          }
         } catch (error) { fault('runtime-error', error); }
       },
       seatAdjustAllowed: () => seatAllowed,

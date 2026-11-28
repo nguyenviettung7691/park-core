@@ -101,6 +101,16 @@ describe('look controller', () => {
     expect(d.pose().yawRad).toBeCloseTo(mid - 0.02, 6);
   });
 
+  it('recenter during a held glance resets the free pose so the release eases to centre', () => {
+    const c = createLookController();
+    c.step({ ...idle, mouseDx: -400 }, DT);
+    run(c, { glance: 'left' }, 60);
+    c.step({ ...idle, glance: 'left', recenter: true }, DT);
+    run(c, { glance: 'left' }, 10);
+    run(c, {}, 240);
+    expect(c.pose()).toEqual({ yawRad: 0, pitchRad: 0 });
+  });
+
   it('reset zeroes pose and velocity instantly', () => {
     const c = createLookController();
     run(c, { glance: 'back' }, 20);
