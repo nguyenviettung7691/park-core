@@ -148,10 +148,46 @@ because any touch either fails the attempt or is prevented by the yield rule.
     car waits 3 s, then switches to its detour path. That might mean turning
     back, or for a car, steering around inside the lane when there is room.
     It never sits blocked for longer than that.
+    In free drive (ambient schedule) "stationary" also covers a learner that
+    is creeping or rocking in place: while the actor is stopped, a learner
+    whose footprint centre has moved less than 1.0 m since the hold began
+    counts as stationary, whatever its reported speed. A learner that really
+    drives on clears the corridor instead. Lessons keep the plain speed test
+    (they are bounded by the 15 s lifetime).
   - **Bounded lifetime:** every lesson actor finishes its path, or is removed
     at its path end, within about 15 s of its trigger. It is gone afterwards.
-  - Contact between actors is ruled out when the schedules are authored, and a
-    unit test enforces it.
+  - **Actors yield to each other at runtime.** The schedules keep actors
+    apart when nobody is in the way, but a learner can delay one actor into
+    another's path, so each actor also checks other visible actors against
+    its own corridor (the same swept corridor as the learner check):
+    - it always yields to another actor's **current** box, whatever the
+      schedule order;
+    - it yields to another actor's **projection** (its boxes over the next
+      1.5 s at its current speed) only when that actor is an earlier schedule
+      entry, or is *committed* (braking for the learner, or on a detour).
+      This order tie-break is what keeps two moving actors from both
+      stopping;
+    - it never stops for a projection when its own box already lies on the
+      other actor's path ahead (the projection plus 3 m). Stopping there
+      would leave it in the way; it keeps going to clear the path, and the
+      other actor yields to its current box;
+    - an actor on its detour ignores other actors (others yield to it), so
+      there is no yield cycle.
+    Yielding to an actor never produces a near miss or a contact. A hold by
+    another actor feeds the same 3 s timer as a stationary learner, so a
+    mutual hold (two boxes in each other's corridors) ends with a detour. For
+    example, a car held 3 s by a crossing pedestrian turns back. Pairs whose
+    scheduled paths can never bring their boxes together (all roadside
+    pairs) are skipped, unless one of them is on a detour.
+  - **Ambient starts are deferred, never dropped.** In free drive, a due
+    start waits, and is retried every step, while 3 ambient actors are
+    already visible (`MAX_AMBIENT_ACTIVE`), or while the learner's footprint
+    overlaps the actor's box swept over the first 3 m of its path. The actor
+    starts on the first step both are clear. This is a pure function of the
+    state, so it stays deterministic.
+  - Unit tests enforce no actor/actor overlap, for stationary learners on a
+    pose grid and for a learner that parks across the garage aisle and then
+    drives away at a sweep of times.
 - **Outputs per step:** actor poses (for rendering, kept as previous and
   current so the renderer can interpolate with the clock `alpha`, as the car
   does), the **contact actor id**, if the learner footprint overlaps an
