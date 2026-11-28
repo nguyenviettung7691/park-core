@@ -119,7 +119,9 @@ export function createActorsScene(
       for (const pose of current) {
         const visual = visuals.get(pose.id);
         if (!visual) continue;
-        const from = before.get(pose.id) ?? pose;
+        // An invisible previous pose (finished cycle) must not be lerped from: snap instead.
+        const prior = before.get(pose.id);
+        const from = prior?.visible ? prior : pose;
         const { wrapper } = visual;
         wrapper.visible = pose.visible;
         wrapper.position.set(

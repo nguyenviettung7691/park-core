@@ -69,6 +69,17 @@ describe('actors scene', () => {
     expect(Math.abs(Math.abs(g.rotation.y) - Math.PI)).toBeLessThan(0.1);
   });
 
+  it('snaps to the current pose when the previous pose was invisible', () => {
+    const scene = build();
+    const prev = [pose('ped-1', { positionM: [0, 0.85, 0], visible: false }), pose('car-1')];
+    const cur = [pose('ped-1', { positionM: [10, 0.85, 8], visible: true }), pose('car-1')];
+    scene.update(prev, cur, 0.5);
+    const g = scene.group.children[0]!;
+    expect(g.visible).toBe(true);
+    expect(g.position.x).toBeCloseTo(10);
+    expect(g.position.z).toBeCloseTo(8);
+  });
+
   it('shows brake lamps only while braking', () => {
     const scene = build();
     const lamp = scene.group.getObjectByName('BrakeLampsLit')!;
